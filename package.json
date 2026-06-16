@@ -1,0 +1,19 @@
+{
+  "name": "pdd-aggregator",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^3.0.82",
+    "@ai-sdk/groq": "^3.0.41",
+    "ai": "^6.0.206",
+    "playwright": "^1.61.0",
+    "zod": "^4.4.3"
+  }
+}
