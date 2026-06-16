@@ -10,7 +10,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.s
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const ANON_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
 const DRY_RUN = process.env.DRY_RUN !== "false"; // default = dry
-const PUBLISH_STATUS = process.env.PUBLISH_STATUS || "pending"; // drafts by default
+const PUBLISH_STATUS = process.env.PUBLISH_STATUS || "draft"; // drafts by default (matches admin UI: active/ended/draft)
 const PER_OP = Number(process.env.PER_OP || 6);
 const READ_KEY = SERVICE_KEY || ANON_KEY; // service key sees pending rows too
 
@@ -40,8 +40,9 @@ function supervisor(d) {
   const pool = d.ticket_price * d.total_entries;
   if (d.ticket_price > 50) flags.push(`ticket £${d.ticket_price} >£50?`);
   if (d.total_entries > 5_000_000) flags.push(`${d.total_entries} entries >5M?`);
-  if (d.total_entries < 50) flags.push(`only ${d.total_entries} entries?`);
+  if (d.total_entries < 200) flags.push(`only ${d.total_entries} entries — likely a mis-read`);
   if (pool > 50_000_000) flags.push(`pool £${Math.round(pool)} >£50M?`);
+  if (["car-draws", "house-draws"].includes(d.category) && pool < 5000) flags.push(`${d.category} pool only £${Math.round(pool)} — likely wrong entries`);
   if (!/^https?:\/\/.+/.test(d.image_url || "")) flags.push("missing/bad image");
   if (!CATEGORIES.includes(d.category)) flags.push(`bad category ${d.category}`);
   if (!d.description || d.description.length < 20) flags.push("thin description");
@@ -105,7 +106,8 @@ for (const op of OPERATORS) {
       draw_date: d.draw_date,
       entry_url: d.entry_url,
       affiliate_url: null,
-      status: PUBLISH_STATUS,
+      // suspicious draws are always held as 'draft' for review, even when PUBLISH_STATUS='active'
+      status: flags.length ? "draft" : PUBLISH_STATUS,
       featured: false,
     };
     toInsert.push({ row, flags });

@@ -1,12 +1,18 @@
 // Shared extraction engine for the PrizeDrawsDaily aggregator.
 // A headless browser renders each operator's listing + each draw's detail page, then an
 // LLM maps the rendered page to our draw fields. WooCommerce Store API is a fast-path.
-import { createGroq } from "@ai-sdk/groq";
+import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
 import { z } from "zod";
 
-const groq = createGroq({ apiKey: process.env.GROQ_API_KEY });
-const MODEL = "openai/gpt-oss-120b";
+// GitHub Models (free for GitHub users, UK-accessible). Auth = a GitHub token with Models
+// access — locally `GITHUB_TOKEN=$(gh auth token)`, in Actions the built-in token + `models: read`.
+const github = createOpenAI({
+  apiKey: process.env.GITHUB_TOKEN,
+  baseURL: "https://models.github.ai/inference",
+  compatibility: "compatible",
+});
+const MODEL = "openai/gpt-4o-mini";
 
 export const CATEGORIES = ["car-draws", "cash-prizes", "house-draws", "tech-giveaways", "luxury"];
 export const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
@@ -34,9 +40,8 @@ export async function extract(operator, content, sourceUrl, knownImage) {
   const today = now.toISOString().slice(0, 10);
   const weekday = now.toLocaleDateString("en-GB", { weekday: "long", timeZone: "Europe/London" });
   const { object } = await generateObject({
-    model: groq(MODEL),
+    model: github.chat(MODEL), // .chat = /chat/completions (GitHub Models has no /responses endpoint)
     schema: DrawSchema,
-    mode: "json",
     maxRetries: 6,
     prompt: `You are extracting the CURRENT live prize draw(s) from ONE page of the UK competitions operator "${operator}".
 Today is ${today} (${weekday}), timezone Europe/London. Resolve relative dates ("today", "tomorrow", "Sunday", countdown timers) against this.
