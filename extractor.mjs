@@ -173,6 +173,13 @@ export function evaluate(d, now = new Date()) {
   const reasons = [];
   if (!(d.ticket_price > 0)) reasons.push("no/zero ticket price");
   if (!(d.total_entries > 0)) reasons.push("no total entries");
+  // Instant-wins, prize-drops and subscription "clubs" don't publish a real ticket cap — the
+  // model tends to invent a tiny number, which sneaks them past the no-entries check. Require a
+  // credible entry count, EXCEPT collectible/card draws which legitimately have small print runs.
+  const collectible = /pok[eé]mon|\bpsa\b|\bcard\b|holo|gem ?mint|ace ?10|\btcg\b|graded|\bslab\b|funko/i.test(`${d.title} ${d.grand_prize}`);
+  const minEntries = collectible ? 50 : 500;
+  if (d.total_entries > 0 && d.total_entries < minEntries)
+    reasons.push(`only ${d.total_entries} entries — instant-win/non-standard draw, not a raffle`);
   let inWindow = false;
   if (!d.draw_date) reasons.push("no draw date");
   else {
@@ -182,7 +189,7 @@ export function evaluate(d, now = new Date()) {
     else if (dt > windowEnd) reasons.push(`ends >${WINDOW_DAYS}d away`);
     else inWindow = true;
   }
-  return { pass: d.ticket_price > 0 && d.total_entries > 0 && inWindow, reasons };
+  return { pass: d.ticket_price > 0 && d.total_entries >= minEntries && inWindow, reasons };
 }
 
 export async function makeContext(browser) {
