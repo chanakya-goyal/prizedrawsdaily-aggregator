@@ -19,6 +19,16 @@ export const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/5
 export const WINDOW_DAYS = 21;
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// The model returns UK wall-clock time with no zone; we stamp the correct UK offset so the stored
+// instant is right (BST +01:00 roughly Apr–Sep, GMT +00:00 otherwise).
+function ukOffset(naive) { const m = Number((naive || "").slice(5, 7)); return m >= 4 && m <= 9 ? "+01:00" : "+00:00"; }
+export function normalizeUkDate(raw) {
+  if (!raw) return null;
+  const naive = String(raw).trim().replace(/(z|[+-]\d{2}:?\d{2})$/i, "");
+  const m = naive.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{1,2}):(\d{2})/);
+  return m ? `${m[1]}T${m[2].padStart(2, "0")}:${m[3]}:00${ukOffset(naive)}` : raw;
+}
+
 export const DrawSchema = z.object({
   draws: z.array(
     z.object({
@@ -50,7 +60,7 @@ Return one entry per distinct active draw on the page (usually 1 on a detail pag
 NEVER invent values — if a field isn't on the page, use null.
 - ticket_price: price for ONE ticket/entry in GBP (number). Free entry => 0.
 - total_entries: the MAXIMUM tickets available (NOT sold / NOT remaining). null if only a "% sold" bar is shown with no absolute maximum.
-- draw_date: closing/draw date-time as ISO8601 (assume year 2026 if no year shown).
+- draw_date: the LIVE DRAW date & time in UK LOCAL time, formatted EXACTLY as "YYYY-MM-DDTHH:MM" (24-hour, NO timezone, NO "Z"). ALWAYS use the explicit calendar date PRINTED on the page (e.g. "17-06-2026 @ 9:00PM" → "2026-06-17T21:00"; "draw will take place on 23/06/2026 ... 9pm" → "2026-06-23T21:00"). Do NOT use the words "today"/"tomorrow", and do NOT convert time zones — just copy the wall-clock time shown.
 - image_url: ${knownImage ? `use "${knownImage}"` : "absolute URL of the prize image, else null"}.
 - entry_url: "${sourceUrl}".
 - description: write a SHORT, ORIGINAL 2-3 sentence blurb in UK English for THIS draw — mention the prize, the entry price, and when it closes. Do NOT copy the operator's wording verbatim; write fresh, engaging copy.
@@ -64,6 +74,7 @@ NEVER invent values — if a field isn't on the page, use null.
 PAGE CONTENT:
 ${content.slice(0, 7000)}`,
   });
+  for (const dr of object.draws) dr.draw_date = normalizeUkDate(dr.draw_date);
   return object.draws;
 }
 
