@@ -36,5 +36,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DRY_RUN: "false"
-          PUBLISH_STATUS: "draft" # drafts for review; change to "active" once you trust it
+          PUBLISH_STATUS: "active" # clean draws go live automatically; supervisor still holds suspicious ones as draft
           PER_OP: "6"
