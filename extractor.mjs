@@ -60,7 +60,7 @@ Return one entry per distinct active draw on the page (usually 1 on a detail pag
 NEVER invent values — if a field isn't on the page, use null.
 - ticket_price: price for ONE ticket/entry in GBP (number). Free entry => 0.
 - total_entries: the MAXIMUM tickets available (NOT sold / NOT remaining). null if only a "% sold" bar is shown with no absolute maximum.
-- draw_date: the LIVE DRAW date & time in UK LOCAL time, formatted EXACTLY as "YYYY-MM-DDTHH:MM" (24-hour, NO timezone, NO "Z"). ALWAYS use the explicit calendar date PRINTED on the page (e.g. "17-06-2026 @ 9:00PM" → "2026-06-17T21:00"; "draw will take place on 23/06/2026 ... 9pm" → "2026-06-23T21:00"). Do NOT use the words "today"/"tomorrow", and do NOT convert time zones — just copy the wall-clock time shown.
+- draw_date: the LIVE DRAW date & time in UK LOCAL time, formatted EXACTLY as "YYYY-MM-DDTHH:MM" (24-hour, NO timezone, NO "Z"). ALWAYS use the explicit calendar date PRINTED on the page (e.g. "17-06-2026 @ 9:00PM" → "2026-06-17T21:00"; "draw will take place on 23/06/2026 ... 9pm" → "2026-06-23T21:00"). Do NOT use the words "today"/"tomorrow", and do NOT convert time zones — just copy the wall-clock time shown. If the page shows BOTH an entry-closing time and a separate draw time (e.g. "entries close 8:45pm, live draw 9pm"), ALWAYS use the DRAW time (9pm).
 - image_url: ${knownImage ? `use "${knownImage}"` : "absolute URL of the prize image, else null"}.
 - entry_url: "${sourceUrl}".
 - description: write a SHORT, ORIGINAL 2-3 sentence blurb in UK English for THIS draw — mention the prize, the entry price, and when it closes. Do NOT copy the operator's wording verbatim; write fresh, engaging copy.
