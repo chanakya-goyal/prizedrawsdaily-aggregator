@@ -1,0 +1,272 @@
+[
+  {
+    "name": "7Days Performance",
+    "slug": "seven-days-perf",
+    "base": "https://7daysperformance.co.uk",
+    "method": "render"
+  },
+  {
+    "name": "All Star Prizes",
+    "slug": "all-star-prizes",
+    "base": "https://allstarprizes.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Bigbeastie Competitions",
+    "slug": "bigbeastie-competitions",
+    "base": "https://bigbeastiecompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Brick Prize Draws",
+    "slug": "brick-prize-draws",
+    "base": "https://brickprizedraws.com",
+    "method": "shopify"
+  },
+  {
+    "name": "Bright Competitions",
+    "slug": "bright-competitions",
+    "base": "https://brightcompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Capital Competitions Carp / Catch",
+    "slug": "capital-competitions-carp-catch",
+    "base": "https://competitions.online",
+    "method": "woo"
+  },
+  {
+    "name": "Carpatic Giveaways",
+    "slug": "carpatic-giveaways",
+    "base": "https://carpaticgiveaways.com",
+    "method": "woo"
+  },
+  {
+    "name": "Collie Competitions",
+    "slug": "collie-competitions",
+    "base": "https://colliecompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Cosmetic Competitions Ltd",
+    "slug": "cosmetic-competitions-ltd",
+    "base": "https://cosmeticcompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Daydream Draws",
+    "slug": "daydream-draws",
+    "base": "https://daydreamdraws.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Dream Big Draws",
+    "slug": "dream-big-draws",
+    "base": "https://dreambigdraws.com",
+    "method": "woo"
+  },
+  {
+    "name": "Dream Car Giveaways",
+    "slug": "dream-car-giveaways",
+    "base": "https://dreamcargiveaways.co.uk",
+    "method": "render"
+  },
+  {
+    "name": "DreamTech Competitions",
+    "slug": "dreamtech-competitions",
+    "base": "https://dreamtechcompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Eastcoastraffles",
+    "slug": "eastcoastraffles",
+    "base": "https://eastcoastraffles.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Easy Living Competitions",
+    "slug": "easy-living-competitions",
+    "base": "https://easylivingcompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Game Changing Giveaways",
+    "slug": "game-changing-giveaways",
+    "base": "https://gamechanginggiveaways.com",
+    "method": "render"
+  },
+  {
+    "name": "Gaming Giveaways",
+    "slug": "gaming-giveaways",
+    "base": "https://www.gaminggiveaways.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Historia Prize Draw",
+    "slug": "historia-prize-draw",
+    "base": "https://historiaprizedraw.com",
+    "method": "woo"
+  },
+  {
+    "name": "Hot Comps",
+    "slug": "hot-comps",
+    "base": "https://hotcomps.com",
+    "method": "woo"
+  },
+  {
+    "name": "Island Competitions",
+    "slug": "island-competitions",
+    "base": "https://islandcompetitions.co.uk",
+    "method": "render"
+  },
+  {
+    "name": "Kabukicomps",
+    "slug": "kabukicomps",
+    "base": "https://kabukicomps.co.uk",
+    "method": "render"
+  },
+  {
+    "name": "Lavish Life Competitions",
+    "slug": "lavish-life-competitions",
+    "base": "https://lavishlifecompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Lincolnshire Competitions",
+    "slug": "lincolnshire-competitions",
+    "base": "https://lincolnshire-competitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Pawsome Comps",
+    "slug": "pawsome-comps",
+    "base": "https://pawsomecomps.com",
+    "method": "woo"
+  },
+  {
+    "name": "Planetofdreams",
+    "slug": "planetofdreams",
+    "base": "https://www.planetofdreams.co.uk",
+    "method": "render"
+  },
+  {
+    "name": "Podium Prize",
+    "slug": "podium-prize",
+    "base": "https://podiumprize.co.uk",
+    "method": "render"
+  },
+  {
+    "name": "Pristine Competitions Ltd",
+    "slug": "pristine-competitions-ltd",
+    "base": "https://www.pristinecompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Prize Paradise",
+    "slug": "prize-paradise",
+    "base": "https://prizeparadise.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Raffle Master",
+    "slug": "raffle-master",
+    "base": "https://rafflemaster.co.uk",
+    "method": "render"
+  },
+  {
+    "name": "Raffolux",
+    "slug": "raffolux",
+    "base": "https://raffolux.com",
+    "method": "render"
+  },
+  {
+    "name": "Redline Competitions",
+    "slug": "redline-competitions",
+    "base": "https://redline-competitions.com",
+    "method": "woo"
+  },
+  {
+    "name": "Rendalls Competitions",
+    "slug": "rendalls-competitions",
+    "base": "https://www.rendallscompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Rev Comps",
+    "slug": "rev-comps",
+    "base": "https://www.revcomps.com",
+    "method": "woo"
+  },
+  {
+    "name": "Scouse Competitions",
+    "slug": "scouse-competitions",
+    "base": "https://scousecompetitions.com",
+    "method": "woo"
+  },
+  {
+    "name": "Storm Competitions ",
+    "slug": "storm-competitions",
+    "base": "https://www.stormcompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Supreemlife",
+    "slug": "supreemlife",
+    "base": "https://supreemlife.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Tartan Competitions Ltd",
+    "slug": "tartan-competitions-ltd",
+    "base": "https://tartancompetitions.scot",
+    "method": "woo"
+  },
+  {
+    "name": "The Car Competition",
+    "slug": "the-car-competition",
+    "base": "https://www.thecarcompetition.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "The Giveaway Guys",
+    "slug": "the-giveaway-guys",
+    "base": "https://thegiveawayguys.co.uk",
+    "method": "shopify"
+  },
+  {
+    "name": "The Prize Lab Ltd",
+    "slug": "the-prize-lab-ltd",
+    "base": "https://theprizelab.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "TOO MUCH Competitions",
+    "slug": "too-much-competitions",
+    "base": "https://toomuchcompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "UKCC",
+    "slug": "ukcc",
+    "base": "https://ukcc.co.uk",
+    "method": "render"
+  },
+  {
+    "name": "Waffle Competitions",
+    "slug": "waffle-competitions",
+    "base": "https://wafflecompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Winner Winner Competitions",
+    "slug": "winner-winner-competitions",
+    "base": "https://www.winnerwinnercompetitions.co.uk",
+    "method": "render"
+  },
+  {
+    "name": "You Could Win",
+    "slug": "you-could-win",
+    "base": "https://youcouldwin.co.uk",
+    "method": "woo"
+  }
+]

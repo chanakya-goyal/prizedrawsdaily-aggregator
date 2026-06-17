@@ -120,9 +120,14 @@ export function pickDrawLinks(links, base, drawMatch, exclude, cap) {
   return out;
 }
 
+// Generic draw-link discovery for operators without a hand-tuned config.
+export const DRAW_RE = /\/(product|competition|competitions|draw|draws|raffle|raffles|win|prize|prizes|comp|comps|giveaway|giveaways|ticket|tickets)\/[a-z0-9][a-z0-9-]{3,}\/?$/i;
+export const BAD_LINK = /\/(category|categories|collections|product-category|draw-results|winners?|results|past|account|cart|checkout|basket|blog|faq|about|contact|terms|privacy|how-it-works|pages?|my-account|wishlist|login|register)(\/|$)/i;
+export const CATEGORY_TAIL = /\/(cars?|cash|tech|house|houses|luxury|electronics|jewellery|watch(es)?|instant-wins?|all|live|holidays?|gadgets?|home|bundles?)\/?$/i;
+
 export async function renderOperator(ctx, op, perOp = 6) {
-  const listing = await renderPage(ctx, op.listing, op.wait || 4000);
-  const drawUrls = pickDrawLinks(listing.links, op.base, op.drawMatch, op.exclude, perOp);
+  const listing = await renderPage(ctx, op.listing || op.base, op.wait || 4000);
+  const drawUrls = pickDrawLinks(listing.links, op.base, op.drawMatch || DRAW_RE, op.exclude || [BAD_LINK, CATEGORY_TAIL], perOp);
   console.log(`  found ${drawUrls.length} draw pages`);
   const draws = [];
   for (const url of drawUrls) {
@@ -163,7 +168,33 @@ export async function wooOperator(op, perOp = 6) {
       if (price != null && g.ticket_price == null) g.ticket_price = price;
       draws.push(g);
     }
-    await sleep(6000); // stay under Groq free-tier 8000 TPM
+    await sleep(6000); // pace LLM calls (GitHub Models ~15 req/min)
+  }
+  return draws;
+}
+
+export async function shopifyOperator(op, perOp = 6) {
+  const r = await fetch(`${op.base}/products.json?limit=${perOp + 4}`, { headers: { "User-Agent": UA } });
+  const products = ((await r.json()).products || []).slice(0, perOp);
+  const draws = [];
+  for (const p of products) {
+    const url = `${op.base}/products/${p.handle}`;
+    const pr = await fetch(url, { headers: { "User-Agent": UA } });
+    const html = (await pr.text())
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ");
+    const price = p.variants?.[0]?.price ? Number(p.variants[0].price) : null;
+    const img = p.images?.[0]?.src || null;
+    const got = await extract(op.name, `Known: ticket_price=£${price}; entry_url=${url}\n\n${html}`, url, img);
+    for (const g of got) {
+      g.entry_url = g.entry_url || url;
+      g.image_url = g.image_url || img;
+      if (price != null && g.ticket_price == null) g.ticket_price = price;
+      draws.push(g);
+    }
+    await sleep(6000); // pace LLM calls (GitHub Models ~15 req/min)
   }
   return draws;
 }
