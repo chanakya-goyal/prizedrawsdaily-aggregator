@@ -3,7 +3,9 @@
     "name": "7Days Performance",
     "slug": "seven-days-perf",
     "base": "https://7daysperformance.co.uk",
-    "method": "render"
+    "method": "render",
+    "listing": "https://7daysperformance.co.uk/current-competitions",
+    "drawMatch": "/product/[a-z0-9]"
   },
   {
     "name": "All Star Prizes",
@@ -69,7 +71,11 @@
     "name": "Dream Car Giveaways",
     "slug": "dream-car-giveaways",
     "base": "https://dreamcargiveaways.co.uk",
-    "method": "render"
+    "method": "render",
+    "drawMatch": "/competitions/[a-z0-9][a-z0-9-]+/?$",
+    "exclude": [
+      "/competitions/(cars|cash|tech|instant-wins|instant-cash)/?$"
+    ]
   },
   {
     "name": "DreamTech Competitions",
@@ -249,7 +255,10 @@
     "name": "UKCC",
     "slug": "ukcc",
     "base": "https://ukcc.co.uk",
-    "method": "render"
+    "method": "render",
+    "listing": "https://ukcc.co.uk/all-comps",
+    "drawMatch": "/competition/[a-z0-9]",
+    "wait": 6000
   },
   {
     "name": "Waffle Competitions",

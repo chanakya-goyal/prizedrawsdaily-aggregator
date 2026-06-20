@@ -1,0 +1,78 @@
+==============================================================================
+ PRIZEDRAWSDAILY — COWORK + OUR AGENTS (plain-English cheat sheet)
+==============================================================================
+
+WHAT IS COWORK (in brief)
+-------------------------
+"Cowork" = a scheduled Claude agent that runs in the cloud on a timer (like a
+cron job), on your Claude Pro/Max subscription — NOT a pay-per-token API key.
+Each run it clones your repo, runs commands you give it, and uses Claude to do
+the "thinking" parts. We use it as the brain that writes draw descriptions and
+decides what goes live. You set it up and own it.
+
+Good to know:
+ - Runs on your subscription (no separate bill). Min schedule interval = 1 hour.
+ - Fresh environment each run (nothing saved between runs) — all state lives in
+   Supabase, so that's fine.
+ - It CAN do plain web requests + run our scripts. It does NOT reliably run a
+   headless browser — that's why the browser sites stay on GitHub Actions.
+
+
+THE THREE "AGENTS" (what each one does)
+---------------------------------------
+1) THE SCRAPER  (deterministic code — no AI)
+   - Reads operator sites and fills in the facts: title, ticket price,
+     total entries, draw date, image, category, entry link.
+   - Skips any draw missing a required field (no half-empty draws).
+   - Two halves of the same code:
+       * Browser sites  -> run by GitHub Actions (METHODS=render)
+       * Woo/Shopify    -> run by the cowork routine (METHODS=woo,shopify)
+   - Inserts everything as status = 'draft'.
+
+2) THE DESCRIBER  (Claude, inside cowork)
+   - Rewrites each draft's description into original 2-3 sentence UK-English copy
+     (good for SEO). A plain template is written first as a safety net, so a draw
+     is never blank even before Claude runs.
+
+3) THE MANAGER  (Claude + rules, inside cowork)
+   - Re-checks every field on each draft (price sane? date in future & within
+     ~21 days? entries look like a real cap, not a "sold" count? image loads?
+     category matches the prize?).
+   - Publishes the clean ones (draft -> active), holds the doubtful ones as draft.
+   - Reports any operator that produced ZERO draws (likely a broken site/selector).
+
+
+HOW TO SET UP THE COWORK ROUTINE (one time)
+-------------------------------------------
+ 1. Create a scheduled cowork routine pointing at the pdd-aggregator repo.
+ 2. In its setup: run `bun install`.
+ 3. Give it environment variables:
+        SUPABASE_URL                = https://kkuuwksgyypicnblwubs.supabase.co
+        SUPABASE_SERVICE_ROLE_KEY   = <your Supabase service role key>
+ 4. Set its network access to FULL (so it can reach every operator site).
+ 5. Schedule: once daily, a bit AFTER the GitHub Action (e.g. 09:00 UK).
+ 6. As the routine's task, paste the contents of:  manager/PROMPT.md
+    (That prompt tells it to scrape woo/shopify, then describe + QA + publish.)
+
+
+THE COMMANDS THE ROUTINE USES (already in the repo)
+---------------------------------------------------
+   DRY_RUN=false METHODS=woo,shopify PUBLISH_STATUS=draft bun run.mjs
+       -> scrape the Woo/Shopify operators and insert drafts
+
+   bun manager/drafts-fetch.mjs
+       -> print all current draft draws (+ a category name->id map) as JSON
+
+   bun manager/draw-update.mjs <id> '{"prize_description":"...","status":"active"}'
+       -> update one draw (write the description, publish, or fix category)
+
+
+WHAT TO WATCH
+-------------
+ - The health report at the end of each scrape lists "silent operators"
+   (0 draws). That's your to-fix list — usually the site changed and needs a
+   selector added in operators.json (see README "Add an operator").
+ - Draws sit as 'draft' until the manager publishes them. If cowork doesn't run,
+   nothing bad goes live — drafts just wait.
+
+==============================================================================
