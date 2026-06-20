@@ -1,4 +1,8 @@
-name: Daily draw aggregator
+name: Daily draw aggregator (render feeder)
+
+# Browser-only feeder: scrapes the `render`-method operators (Playwright + try-harder),
+# gates them, and inserts `draft` rows into Supabase. No AI / no API key. The cowork
+# (Claude) routine scrapes the JSON-API operators and does all describe/QA/publish.
 
 on:
   schedule:
@@ -15,7 +19,6 @@ jobs:
     timeout-minutes: 50
     permissions:
       contents: read
-      models: read # lets the built-in GITHUB_TOKEN call GitHub Models (free)
     steps:
       - uses: actions/checkout@v4
 
@@ -26,17 +29,20 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Run parser/gate tests
+        run: bun test
+
       - name: Install Chromium for Playwright
         run: bunx playwright install --with-deps chromium
 
-      - name: Run aggregator (publish new draws)
+      - name: Run render feeder (scrape → gate → insert drafts)
         run: bun run.mjs
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DRY_RUN: "false"
-          PUBLISH_STATUS: "active" # clean draws go live automatically; supervisor still holds suspicious ones as draft
+          METHODS: "render" # browser sites only; cowork handles woo/shopify
+          PUBLISH_STATUS: "draft" # cowork publishes after describe + QA
           PER_OP: "5"
-          BATCHES: "2" # ~half the operators each day (free-tier safe); full coverage every 2 days
-          MAX_DRAWS: "130" # backstop cap on LLM calls per run
+          BATCHES: "1" # no LLM quota → full coverage every day
+          MAX_DRAWS: "500" # backstop on pages read

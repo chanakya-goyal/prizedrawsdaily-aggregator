@@ -1,6 +1,7 @@
 // One-off: re-read each already-stored draw's page and correct its draw_date with the fixed logic.
 import { chromium } from "playwright";
-import { renderPage, extract, makeContext, sleep } from "./extractor.mjs";
+import { renderPage, makeContext, sleep } from "./extractor.mjs";
+import { fieldsFromHtml } from "./lib/parse.mjs";
 
 const SB = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -18,8 +19,8 @@ let fixed = 0;
 for (const r of mine) {
   try {
     const d = await renderPage(ctx, r.entry_url, 4000);
-    const got = await extract(r.operator?.name || "operator", d.text, r.entry_url, d.ogImage);
-    const newDate = got[0]?.draw_date;
+    const f = fieldsFromHtml({ html: d.html, url: r.entry_url, op: {}, knownImage: d.ogImage });
+    const newDate = f.draw_date;
     if (newDate && newDate !== r.draw_date) {
       const res = await fetch(`${SB}/rest/v1/draws?id=eq.${r.id}`, {
         method: "PATCH",
