@@ -23,12 +23,13 @@ const get = async (url) => (await fetch(url, { headers: { "User-Agent": UA } }))
 let operators = (await Bun.file("operators.json").json()).filter((o) => o.aiAssist && o.enabled !== false);
 if (ONLY) operators = operators.filter((o) => ONLY.has(o.slug));
 
-// Optionally load existing entry_urls to avoid re-emitting known draws.
+// Load existing entry_urls. Skip only PUBLISHED/ended draws; re-emit drafts so the manager
+// can refresh them (self-heals earlier wrong/missing fields).
 let seen = new Set();
 if (KEY) {
   try {
-    const rows = await (await fetch(`${SB}/rest/v1/draws?select=entry_url`, { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } })).json();
-    if (Array.isArray(rows)) seen = new Set(rows.map((r) => r.entry_url).filter(Boolean));
+    const rows = await (await fetch(`${SB}/rest/v1/draws?select=entry_url,status`, { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } })).json();
+    if (Array.isArray(rows)) seen = new Set(rows.filter((r) => r.status !== "draft").map((r) => r.entry_url).filter(Boolean));
   } catch { /* dedup is best-effort */ }
 }
 
