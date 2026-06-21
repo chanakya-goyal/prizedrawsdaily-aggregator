@@ -1,53 +1,53 @@
-# Cowork routine prompt — PrizeDrawsDaily scraper + describer + manager
+# Cowork routine prompt — PrizeDrawsDaily scraper + AI-assist + describer + manager
 
 Paste the section below the line as the task for your scheduled cowork (Claude) routine.
 
-**Routine environment (set once):**
-- A checkout of the `pdd-aggregator` repo, with `bun install` run in setup.
-- Env vars: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
-- **Full** network access (so it can reach every operator site + Supabase).
-- Schedule: daily (after ~08:00 UK, so it runs after the GitHub render-feeder Action).
-
-What it does each run: scrapes the JSON-API operators itself, then writes descriptions and
-QAs/publishes **all** new drafts — including the render drafts the GitHub Action inserted.
+**Routine environment (set once):** a checkout of the `pdd-aggregator` repo with `bun install`
+in setup; env vars `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`; **Full** network access;
+daily schedule (after the ~08:00 UK GitHub render Action).
 
 ---
 
-You are the scraper-manager for the PrizeDrawsDaily prize-draw directory.
+You are the scraper-manager for the PrizeDrawsDaily prize-draw directory, running in a fresh
+clone of the prizedrawsdaily-aggregator repo. The environment provides SUPABASE_URL and
+SUPABASE_SERVICE_ROLE_KEY. Work through these steps with Bash; if a step errors, report it
+and continue where sensible.
 
-**Step 1 — scrape the JSON-API operators.** Run:
+**0. Install deps:** `bun install` (if `bun` is missing: `curl -fsSL https://bun.sh/install | bash`, add it to PATH, retry).
+
+**1. Scrape standard operators** (inserts complete draws as draft, prints a health report):
 `DRY_RUN=false METHODS=woo,shopify PUBLISH_STATUS=draft bun run.mjs`
-This fetches the WooCommerce/Shopify operators deterministically, gates them (incomplete
-draws are skipped automatically), and inserts the good ones as `status='draft'`. The
-GitHub Action has separately inserted the `render`-site drafts. Note any operators its
-health report lists as **silent** (0 draws) — include them in your final report.
+Note any 'silent' operators (0 draws) for your final report.
 
-**Step 2 — fetch all drafts.** Run: `bun manager/drafts-fetch.mjs`
-It prints JSON: `{ categories: {slug:id}, count, draws: [...] }`. Each draw has
-`id, slug, title, grand_prize, prize_description, image_url, ticket_price, total_entries,
-draw_date, entry_url, category_id, operator, category`. These are both your woo/shopify
-rows and the Action's render rows.
+**2. Premium / AI-assist operators** (car sites etc. whose date/price are countdowns):
+Run `bun manager/ai-fetch.mjs`. It prints `{ count, draws: [...] }`; each draw has
+`operator_slug, entry_url, title, grand_prize, category (a guess), image_url,
+ticket_price (a HINT, often wrong), iso_dates (candidate timestamps), hints (key snippets),
+page_text`. For EACH draw, read `hints`/`page_text` and work out:
+- **ticket_price** — the real per-ticket price (e.g. "from £0.17"); ignore the ticket_price hint if it conflicts.
+- **draw_date** — resolve the close/draw time. Hints look like "Live Draw Today, 22:00" or
+  "Automated Draw Tomorrow, 22:00" — turn Today/Tomorrow into an absolute UK date using
+  today's date, and confirm against `iso_dates` (pick the matching FUTURE timestamp). Format
+  as `2026-06-21T22:00:00+01:00`.
+- **total_entries** — ONLY if a maximum ticket count is stated. These sites usually show just
+  "% sold" → then leave it out (null is fine).
+- **category** — fix a wrong guess (a £300k cash pot is `cash-prizes`, not `house-draws`).
+- **prize_description** — a fresh 2–3 sentence British-English blurb (prize, price, close date).
+Then insert it:
+`bun manager/draw-insert.mjs '{"operator_slug":"...","title":"...","grand_prize":"...","category":"car-draws","ticket_price":0.17,"draw_date":"2026-06-21T22:00:00+01:00","image_url":"...","entry_url":"...","prize_description":"..."}'`
+Skip any where you cannot work out a sensible FUTURE draw_date and a real ticket price.
 
-**Step 3 — QA each draw.** Hold as `draft` (do NOT publish) if any of:
-- `ticket_price` is missing, ≤ 0, or implausibly high (> £50 is suspicious).
-- `draw_date` is in the past or more than ~21 days away.
-- `total_entries` looks like a "sold"/"remaining" count rather than the maximum cap, or is
-  implausible (< 100 or > 5,000,000).
-- `image_url` doesn't load (quick check) or isn't an image.
-- the `category` clearly doesn't match `grand_prize` — if so, set the correct one using the
-  `categories` slug→id map (e.g. a car prize → `car-draws`).
-- `title` is junk (all caps, contains HTML, < 5 chars).
+**3. Fetch all current drafts:** `bun manager/drafts-fetch.mjs`.
 
-**Step 4 — write the description.** Replace `prize_description` with a fresh, original
-2–3 sentence blurb in British English: mention the prize, the ticket price, and when entries
-close. Write your own wording — do NOT copy the operator's marketing text. No emojis, no
-hashtags, no exclamation spam.
+**4. QA + describe.** For each draft lacking a good description, write one (2–3 sentence
+British-English; prize, price, close date; original wording; no emojis/hashtags). Hold a
+draft (don't publish) if: ticket_price missing/≤0/over £50; draw_date past or absurd;
+total_entries looks like a sold/remaining count; image_url doesn't load; category clearly
+wrong; or title is junk.
 
-**Step 5 — apply the update.** For each draw run:
-`bun manager/draw-update.mjs <id> '<json>'`
-- Clean draw to publish: `'{"prize_description":"...","status":"active"}'`
-  (add `"category_id":"<uuid>"` if you corrected the category).
-- Draw to hold: `'{"prize_description":"...","status":"draft"}'` (still improve the copy).
+**5. Apply updates:** `bun manager/draw-update.mjs <id> '<json>'`
+- publish a clean draw: `'{"prize_description":"...","status":"active"}'` (add `"category_id":"<uuid>"` if you corrected the category)
+- hold a doubtful one: `'{"prize_description":"...","status":"draft"}'`.
 
-**Step 6 — report.** Summarise: how many scraped, published, and held (with reasons), plus
-any **silent operators** (0 draws — likely broken selectors or blocked) so they can be fixed.
+**6. Report:** scraped / AI-inserted / published / held (with reasons), the category spread
+(cars / cash / tech / house / luxury), and any silent operators (0 draws) to fix.
