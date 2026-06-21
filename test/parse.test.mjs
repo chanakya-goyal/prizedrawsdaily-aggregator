@@ -35,6 +35,8 @@ describe("extractEntries — review regressions (remaining-count must not be a c
     ["only 1,500 tickets remaining", null],
     ["just 300 entries to go", null],
     ["only 5000 tickets", 5000],          // a genuine cap (no sold/left nearby) still works
+    ["from a maximum number of 1,999,999 entries", 1999999], // "maximum number of N" phrasing
+    ["maximum of 25000 tickets", 25000],
     ["Visit Unit 4500 tickets sorting office", 4500], // tier-3 limitation, documented
   ];
   for (const [input, expected] of cases) test(`"${input}" → ${expected}`, () => expect(extractEntries(input)).toBe(expected));
