@@ -57,6 +57,15 @@ for (const op of operators) {
     if (!title) continue;
     const text = textOf(html);
     const iso = [...new Set([...html.matchAll(/20\d{2}-\d{2}-\d{2}[T ]\d{2}:\d{2}/g)].map((m) => m[0]))].slice(0, 6);
+    // Authoritative "Competition Details" data often sits in the page's data blob (stripped
+    // from visible text). Read it straight from the raw HTML — the structured field first
+    // (e.g. "numTickets":1999999), then the displayed "maximum number of N" as a fallback
+    // (tolerant of the data-blob's quote/escape punctuation between label and number).
+    const maxM = html.match(/"(?:numTickets|maxTickets|totalTickets|maximumEntries)"\s*:\s*(\d{3,})/i)
+      || html.match(/maximum\s+(?:number\s+)?of["\\,\s]{1,18}([\d][\d,]{2,})["\\,\s]{1,12}entr/i);
+    const detail_entries = maxM ? Number(maxM[1].replace(/[^\d]/g, "")) : null;
+    const drawM = html.match(/draw\s+date\s+for\s+this\s+competition\s+is["\\,\s]{1,12}(\d{1,2}\/\d{1,2}\/\d{4})(?:["\\,\s]{1,12}at["\\,\s]{1,12}(\d{1,2}:\d{2}\s*[ap]\.?m\.?))?/i);
+    const detail_draw = drawM ? `${drawM[1]}${drawM[2] ? " " + drawM[2].replace(/\s/g, "") : ""}` : null;
     // Surface the snippets Claude actually needs (close time / price / % sold) up front,
     // since the relevant text can sit deep in a long page.
     const grab = (re, before = 25, after = 80) => { const m = text.match(re); return m ? text.slice(Math.max(0, m.index - before), m.index + after).replace(/\s+/g, " ").trim() : null; };
@@ -72,6 +81,8 @@ for (const op of operators) {
       category: op.category || inferCategory({ title, url }),
       image_url: ti.image_url,
       ticket_price: extractPrice({ ld, text }),    // a hint only — Claude should confirm from hints/page_text
+      detail_entries,                              // authoritative MAX entries from Competition Details (use as total_entries)
+      detail_draw,                                 // authoritative draw date+time from Competition Details (e.g. "21/06/2026 10:00pm")
       iso_dates: iso,                              // candidate absolute datetimes from the HTML
       hints,                                       // key snippets: close time, price, % sold
       page_text: text.slice(0, 4000),
