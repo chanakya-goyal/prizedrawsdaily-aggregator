@@ -51,8 +51,23 @@ const [op] = await sbGet(`operators?slug=eq.${encodeURIComponent(d.operator_slug
 if (!op) { console.error(`unknown operator ${d.operator_slug}`); process.exit(1); }
 const cats = await sbGet(`categories?select=id,slug`);
 const category_id = cats.find((c) => c.slug === d.category)?.id || null;
-const dup = await sbGet(`draws?entry_url=eq.${encodeURIComponent(d.entry_url)}&select=id`);
-if (dup.length) { console.log(`⏭ already exists: ${d.title.slice(0, 40)}`); process.exit(0); }
+const entries = Number.isFinite(Number(d.total_entries)) && Number(d.total_entries) > 0 ? Math.round(Number(d.total_entries)) : null;
+const tpv = entries ? Math.min(round2(Number(d.ticket_price) * entries), 1_000_000_000) : null;
+
+// If this entry_url already exists: refresh the data on a DRAFT row (self-heals earlier
+// wrong/missing fields); never touch a published/ended row.
+const dup = await sbGet(`draws?entry_url=eq.${encodeURIComponent(d.entry_url)}&select=id,status`);
+if (dup.length) {
+  const ex = dup[0];
+  if (ex.status !== "draft") { console.log(`⏭ exists & ${ex.status}; left alone: ${d.title.slice(0, 40)}`); process.exit(0); }
+  const patch = { total_entries: entries, total_prize_value: tpv, draw_date: d.draw_date, ticket_price: round2(Number(d.ticket_price)), image_url: d.image_url, grand_prize: d.grand_prize || d.title };
+  if (category_id) patch.category_id = category_id;
+  if (d.prize_description) patch.prize_description = d.prize_description;
+  const ur = await fetch(`${SB}/rest/v1/draws?id=eq.${ex.id}`, { method: "PATCH", headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+  if (!ur.ok) { console.error(`UPDATE ${ur.status} ${await ur.text()}`); process.exit(1); }
+  console.log(`♻️ refreshed draft: ${d.title.slice(0, 46)} | entries=${entries ?? "—"} | ${d.draw_date.slice(0, 10)}`);
+  process.exit(0);
+}
 
 // Stable slug (title + operator slug), collision-suffixed against existing.
 const taken = new Set((await sbGet(`draws?select=slug`)).map((x) => x.slug));
@@ -60,14 +75,13 @@ const base = `${slugify(d.title).slice(0, 100)}-${d.operator_slug}`.slice(0, 120
 let slug = base, i = 2;
 while (taken.has(slug)) slug = `${base}-${i++}`.slice(0, 120);
 
-const entries = Number.isFinite(Number(d.total_entries)) && Number(d.total_entries) > 0 ? Math.round(Number(d.total_entries)) : null;
 const draw = {
   slug, operator_id: op.id, category_id,
   title: d.title, grand_prize: d.grand_prize || d.title,
   prize_description: d.prize_description || null,
   image_url: d.image_url, ticket_price: round2(Number(d.ticket_price)),
   total_entries: entries,
-  total_prize_value: entries ? Math.min(round2(Number(d.ticket_price) * entries), 1_000_000_000) : null,
+  total_prize_value: tpv,
   prize_value: null, draw_date: d.draw_date, entry_url: d.entry_url,
   affiliate_url: null, status: STATUS, featured: false,
 };
