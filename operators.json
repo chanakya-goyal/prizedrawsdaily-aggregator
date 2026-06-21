@@ -75,7 +75,8 @@
     "drawMatch": "/competitions/[a-z0-9][a-z0-9-]+/?$",
     "exclude": [
       "/competitions/(cars|cash|tech|instant-wins|instant-cash)/?$"
-    ]
+    ],
+    "aiAssist": true
   },
   {
     "name": "DreamTech Competitions",

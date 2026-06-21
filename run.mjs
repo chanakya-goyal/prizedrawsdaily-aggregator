@@ -47,7 +47,7 @@ async function sbInsert(rows) {
 
 // ---- pick operators for this run ----
 let operators = await Bun.file("operators.json").json();
-operators = operators.filter((o) => o.enabled !== false);          // exclude omaze / thebirthdaydraws etc.
+operators = operators.filter((o) => o.enabled !== false && !o.aiAssist); // exclude disabled + aiAssist (cowork handles those)
 if (METHODS) operators = operators.filter((o) => METHODS.has(o.method));
 if (ONLY) operators = operators.filter((o) => ONLY.has(o.slug));
 const expectedSlugs = operators.map((o) => o.slug);
