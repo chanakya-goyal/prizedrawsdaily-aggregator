@@ -93,6 +93,11 @@ describe("extractPrice", () => {
   test("ld fallback", () => expect(extractPrice({ ld: { price: 2.49 }, text: "" })).toBe(2.49));
   test("regex fallback", () => expect(extractPrice({ text: "Tickets are £4.99 each" })).toBe(4.99));
   test("none", () => expect(extractPrice({ text: "free" })).toBeNull());
+  test("labelled per-ticket beats the cash prize", () =>
+    expect(extractPrice({ text: "WIN A LAMBO + £2,000 CASH! Entries only £0.35 MAX ENTRIES 599,999" })).toBe(0.35));
+  test("cash alternative not mistaken for ticket price", () =>
+    expect(extractPrice({ text: "Cash Alternative: £10,000 Entries only £0.05" })).toBe(0.05));
+  test("£X per ticket", () => expect(extractPrice({ text: "just £3 per ticket" })).toBe(3));
 });
 
 describe("JSON-LD + title/image", () => {

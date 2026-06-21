@@ -44,6 +44,14 @@ async function sbInsert(rows) {
   if (!r.ok) throw new Error(`INSERT → ${r.status} ${await r.text()}`);
   return r.json();
 }
+async function sbUpdate(id, row) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/draws?id=eq.${id}`, {
+    method: "PATCH",
+    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(row),
+  });
+  if (!r.ok) throw new Error(`UPDATE ${id} → ${r.status} ${await r.text()}`);
+}
 
 // ---- pick operators for this run ----
 let operators = await Bun.file("operators.json").json();
@@ -62,8 +70,8 @@ const cats = await sbGet("categories?select=id,slug");
 const catMap = Object.fromEntries(cats.map((c) => [c.slug, c.id]));
 const dbOps = await sbGet("operators?select=id,slug");
 const opMap = Object.fromEntries(dbOps.map((o) => [o.slug, o.id]));
-const existing = await sbGet("draws?select=entry_url,slug");
-const seenUrls = new Set(existing.map((d) => d.entry_url).filter(Boolean));
+const existing = await sbGet("draws?select=id,entry_url,slug,status");
+const byUrl = new Map(existing.filter((d) => d.entry_url).map((d) => [d.entry_url, d]));
 const takenSlugs = new Set(existing.map((d) => d.slug));
 console.log(`loaded ${cats.length} cats, ${dbOps.length} operators, ${existing.length} existing draws\n`);
 
@@ -72,6 +80,7 @@ const browser = needsBrowser ? await chromium.launch({ headless: true, args: ["-
 const ctx = browser ? await makeContext(browser) : null;
 
 const toInsert = [];
+const toUpdate = [];
 const counts = [];
 let pages = 0, skipped = 0;
 for (const op of operators) {
@@ -92,8 +101,22 @@ for (const op of operators) {
   for (const raw of draws) {
     const { pass, stage, reasons, draw: d } = gate(raw, now);
     if (!pass) { skipped++; console.log(`  ⏭  ${(raw.title || "?").slice(0, 40)} — ${stage}: ${reasons.join(", ")}`); continue; }
-    if (seenUrls.has(d.entry_url)) { skipped++; continue; }
-    seenUrls.add(d.entry_url);
+    const tpv = Math.min(round2((d.ticket_price || 0) * (d.total_entries || 0)), 1_000_000_000);
+    const ex = byUrl.get(d.entry_url);
+    if (ex) {
+      // Existing draw: refresh data on a DRAFT row (self-heals earlier wrong fields like
+      // the ticket price); never touch a published/ended row.
+      if (ex.status !== "draft") { skipped++; continue; }
+      byUrl.delete(d.entry_url);
+      toUpdate.push({ id: ex.id, row: {
+        category_id: catMap[d.category] || null, title: d.title, grand_prize: d.grand_prize,
+        image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
+        total_prize_value: tpv, draw_date: d.draw_date,
+      } });
+      c.inserted++; c.heldDraft++;
+      console.log(`  ♻️ ${d.title.slice(0, 44)} | £${d.ticket_price}×${d.total_entries} (refreshed draft)`);
+      continue;
+    }
     if (!d.description) d.description = templateDescription(d);
     const slug = (() => { let s = makeSlug(d.title, op.slug), i = 2; const b = s; while (takenSlugs.has(s)) s = `${b}-${i++}`.slice(0, 120); takenSlugs.add(s); return s; })();
     const flags = fieldFlags(d);
@@ -105,7 +128,7 @@ for (const op of operators) {
         slug, operator_id: opMap[op.slug], category_id: catMap[d.category] || null,
         title: d.title, grand_prize: d.grand_prize, prize_description: d.description,
         image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
-        total_prize_value: Math.min(round2((d.ticket_price || 0) * (d.total_entries || 0)), 1_000_000_000), prize_value: null,
+        total_prize_value: tpv, prize_value: null,
         draw_date: d.draw_date, entry_url: d.entry_url, affiliate_url: null,
         status, featured: false,
       },
@@ -116,19 +139,19 @@ for (const op of operators) {
 }
 if (browser) await browser.close();
 
-console.log(`\n\n==== ${toInsert.length} new draws (${pages} pages read, ${skipped} skipped) ====`);
+console.log(`\n\n==== ${toInsert.length} new, ${toUpdate.length} refreshed (${pages} pages read, ${skipped} skipped) ====`);
 if (DRY_RUN) {
   console.log("(dry run — nothing written)");
-} else if (toInsert.length) {
+} else {
   let inserted = 0;
   for (let i = 0; i < toInsert.length; i += 50) {
     const res = await sbInsert(toInsert.slice(i, i + 50).map((x) => x.row));
     inserted += res.length;
   }
+  let updated = 0;
+  for (const u of toUpdate) { try { await sbUpdate(u.id, u.row); updated++; } catch (e) { console.log(`  ! update failed: ${(e.message || "").slice(0, 70)}`); } }
   const live = toInsert.filter((x) => x.row.status === "active").length;
-  console.log(`✅ inserted ${inserted} (${live} live, ${inserted - live} held as draft)`);
-} else {
-  console.log("nothing new to insert");
+  console.log(`✅ inserted ${inserted} (${live} live, ${inserted - live} draft) · refreshed ${updated} drafts`);
 }
 
 await writeStepSummary(buildHealthReport({ counts, expected: expectedSlugs }));
