@@ -3,6 +3,7 @@
 // headless render) and maps them to draw fields deterministically via lib/parse.mjs.
 import { chromium } from "playwright";
 import { fieldsFromHtml, compileOpRegex, CATEGORIES, UA, WINDOW_DAYS, normalizeUkDate } from "./lib/parse.mjs";
+import { fetchHtml, renderVia } from "./lib/fetcher.mjs";
 
 export { CATEGORIES, UA, WINDOW_DAYS, normalizeUkDate };
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -72,11 +73,11 @@ export async function renderOperator(ctx, op, perOp = 6) {
   const linksFrom = (l) => pickDrawLinks(l, op.base, drawMatch, excludeRx, perOp);
 
   const url0 = op.listing || op.base;
-  let listing = await renderPage(ctx, url0, op.wait || 4000);
+  let listing = await renderVia(renderPage, ctx, url0, op, { waitMs: op.wait || 4000 });
   // Retry patiently (network-idle) if blocked OR if links haven't lazy-loaded yet — many
   // listings render their competition links into a carousel after first paint.
   if (looksBlocked(listing.text) || linksFrom(listing.links).length === 0) {
-    listing = await renderPage(ctx, url0, Math.max(op.wait || 0, 6000), { hard: true });
+    listing = await renderVia(renderPage, ctx, url0, op, { waitMs: Math.max(op.wait || 0, 6000), hard: true });
   }
   if (looksBlocked(listing.text)) { console.log("  ⛔ blocked after retry — skipping operator"); return []; }
 
@@ -85,8 +86,8 @@ export async function renderOperator(ctx, op, perOp = 6) {
   const draws = [];
   for (const url of drawUrls) {
     try {
-      let d = await renderPage(ctx, url, op.wait ? 5000 : 2500);
-      if (looksBlocked(d.text)) d = await renderPage(ctx, url, 5000, { hard: true });
+      let d = await renderVia(renderPage, ctx, url, op, { waitMs: op.wait ? 5000 : 2500 });
+      if (looksBlocked(d.text)) d = await renderVia(renderPage, ctx, url, op, { waitMs: 5000, hard: true });
       if (looksBlocked(d.text)) { console.log(`  ⛔ ${url.slice(-42)} blocked — skip`); continue; }
       draws.push(fieldsFromHtml({ html: d.html, url, op, knownImage: d.ogImage }));
     } catch (e) {
@@ -97,9 +98,9 @@ export async function renderOperator(ctx, op, perOp = 6) {
 }
 
 export async function wooOperator(op, perOp = 6) {
-  const r = await fetch(`${op.base}/wp-json/wc/store/v1/products?per_page=${perOp + 2}&orderby=date`, { headers: { "User-Agent": UA } });
+  const r = await fetchHtml(`${op.base}/wp-json/wc/store/v1/products?per_page=${perOp + 2}&orderby=date`, op);
   if (!r.ok) { console.log(`  woo API ${r.status} for ${op.base}`); return []; }
-  const body = await r.json().catch(() => null);
+  let body = null; try { body = JSON.parse(r.text); } catch { /* non-JSON → no products */ }
   const products = (Array.isArray(body) ? body : []).slice(0, perOp);
   if (!products.length) { console.log(`  woo API returned no products`); return []; }
   const draws = [];
@@ -110,7 +111,7 @@ export async function wooOperator(op, perOp = 6) {
       const img = p.images?.[0]?.src || null;
       const apiDesc = `${p.name || ""}\n${p.short_description || ""}\n${p.description || ""}`;
       let html = "";
-      try { html = await (await fetch(p.permalink, { headers: { "User-Agent": UA } })).text(); } catch { /* API desc still usable */ }
+      try { html = (await fetchHtml(p.permalink, op)).text; } catch { /* API desc still usable */ }
       draws.push(fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc }));
     } catch (e) { console.log(`  ! ${(p.permalink || p.name || "?").slice(-42)} parse failed: ${(e.message || "").slice(0, 50)}`); }
   }
@@ -118,9 +119,9 @@ export async function wooOperator(op, perOp = 6) {
 }
 
 export async function shopifyOperator(op, perOp = 6) {
-  const r = await fetch(`${op.base}/products.json?limit=${perOp + 4}`, { headers: { "User-Agent": UA } });
+  const r = await fetchHtml(`${op.base}/products.json?limit=${perOp + 4}`, op);
   if (!r.ok) { console.log(`  shopify API ${r.status} for ${op.base}`); return []; }
-  const body = await r.json().catch(() => null);
+  let body = null; try { body = JSON.parse(r.text); } catch { /* non-JSON → no products */ }
   const products = (Array.isArray(body?.products) ? body.products : []).slice(0, perOp);
   if (!products.length) { console.log(`  shopify API returned no products`); return []; }
   const draws = [];
@@ -131,7 +132,7 @@ export async function shopifyOperator(op, perOp = 6) {
       const img = p.images?.[0]?.src || null;
       const apiDesc = `${p.title || ""}\n${p.body_html || ""}`;
       let html = "";
-      try { html = await (await fetch(url, { headers: { "User-Agent": UA } })).text(); } catch { /* body_html still usable */ }
+      try { html = (await fetchHtml(url, op)).text; } catch { /* body_html still usable */ }
       draws.push(fieldsFromHtml({ html, url, op, knownTitle: p.title, knownImage: img, knownPrice: price, descriptionText: apiDesc }));
     } catch (e) { console.log(`  ! ${(p.handle || p.title || "?")} parse failed: ${(e.message || "").slice(0, 50)}`); }
   }
@@ -150,13 +151,14 @@ export function dedupe(draws) {
   return [...best.values()];
 }
 
-export async function makeContext(browser) {
+export async function makeContext(browser, { insecureTLS = false } = {}) {
   const ctx = await browser.newContext({
     userAgent: UA,
     viewport: { width: 1280, height: 900 },
     locale: "en-GB",
     timezoneId: "Europe/London",
     extraHTTPHeaders: { "Accept-Language": "en-GB,en;q=0.9" },
+    ignoreHTTPSErrors: insecureTLS, // false (Playwright default) unless an insecureTLS op opts in
   });
   await ctx.addInitScript(() => {
     Object.defineProperty(navigator, "webdriver", { get: () => undefined });

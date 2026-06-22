@@ -20,6 +20,16 @@ const BAD = /\/(category|categories|instant-wins?|winners?|results|past|account|
 
 const get = async (url) => (await fetch(url, { headers: { "User-Agent": UA } })).text();
 
+// For server-rendered SPAs whose competition links live in the hydration blob (__NEXT_DATA__
+// / __NUXT__ / inline JSON) rather than <a> tags: mine product slugs/handles so we can
+// synthesize entry_urls via the operator's drawUrlTemplate. Only used when drawUrlTemplate
+// is set, so existing aiAssist operators are unaffected.
+function mineSlugs(html) {
+  const slugs = new Set();
+  for (const m of html.matchAll(/"(?:slug|handle)"\s*:\s*"([a-z0-9][a-z0-9-]{4,})"/gi)) slugs.add(m[1]);
+  return [...slugs];
+}
+
 let operators = (await Bun.file("operators.json").json()).filter((o) => o.aiAssist && o.enabled !== false);
 if (ONLY) operators = operators.filter((o) => ONLY.has(o.slug));
 
@@ -39,11 +49,22 @@ for (const op of operators) {
   let listing = "";
   try { listing = await get(op.listing || op.base); } catch (e) { console.error(`# ${op.slug} listing failed: ${e.message}`); continue; }
   const origin = new URL(op.base).origin;
-  const links = [...new Set([...listing.matchAll(/href="([^"]+)"|"(\/[a-z0-9][^"\s]*)"/gi)]
+  let links = [...new Set([...listing.matchAll(/href="([^"]+)"|"(\/[a-z0-9][^"\s]*)"/gi)]
     .map((m) => m[1] || m[2]).filter(Boolean)
     .map((h) => { try { return new URL(h, op.base).href.split("?")[0].split("#")[0]; } catch { return null; } })
     .filter(Boolean)
     .filter((h) => h.startsWith(origin) && drawRe.test(h) && !BAD.test(h)))];
+
+  // Additive: if <a>-scanning found few links and the operator declares a drawUrlTemplate,
+  // synthesize draw URLs from slugs mined out of the data blob (kept AFTER the real links so
+  // genuine anchors are tried first). Downstream title/LD checks discard any non-draw page.
+  if (op.drawUrlTemplate) {
+    const made = mineSlugs(listing)
+      .map((s) => { try { return new URL(op.drawUrlTemplate.replace("{slug}", s), op.base).href; } catch { return null; } })
+      .filter(Boolean)
+      .filter((h) => h.startsWith(origin) && drawRe.test(h) && !BAD.test(h));
+    links = [...new Set([...links, ...made])];
+  }
 
   let n = 0;
   for (const url of links) {

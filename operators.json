@@ -85,6 +85,13 @@
     "method": "woo"
   },
   {
+    "name": "East Anglia Competitions Ltd",
+    "slug": "east-anglia-competitions-ltd",
+    "base": "https://eacompetitions.co.uk",
+    "method": "render",
+    "drawMatch": "/prizes/[a-z0-9]"
+  },
+  {
     "name": "Eastcoastraffles",
     "slug": "eastcoastraffles",
     "base": "https://eastcoastraffles.co.uk",
@@ -278,5 +285,19 @@
     "slug": "you-could-win",
     "base": "https://youcouldwin.co.uk",
     "method": "woo"
-  }
+  },
+  { "name": "Anotheroneraffles", "slug": "anotheroneraffles", "base": "https://anotheroneraffles.co.uk", "method": "render", "fetcher": "flaresolverr" },
+  { "name": "Apex Competition", "slug": "apex-competition", "base": "https://apex-competition.co.uk", "method": "render", "fetcher": "flaresolverr" },
+  { "name": "Borders Competitions", "slug": "borders-competitions", "base": "https://borderscompetitions.co.uk", "method": "render", "fetcher": "flaresolverr" },
+  { "name": "Caledonia Competitions", "slug": "caledonia-competitions", "base": "https://caledoniacompetitions.co.uk", "method": "render", "fetcher": "flaresolverr" },
+  { "name": "Chaotic", "slug": "chaotic", "base": "https://chaotic.co.uk", "method": "render", "fetcher": "flaresolverr" },
+  { "name": "Collectible Competitions", "slug": "collectible-competitions", "base": "https://collectiblecompetitions.co.uk", "method": "render", "fetcher": "flaresolverr" },
+  { "name": "DD Competitions", "slug": "dd-competitions", "base": "https://www.ddcompetitions.com", "method": "render", "fetcher": "flaresolverr" },
+  { "name": "Gallowaygiveaways", "slug": "gallowaygiveaways", "base": "https://gallowaygiveaways.co.uk", "method": "render", "fetcher": "flaresolverr" },
+  { "name": "Optimised Odds", "slug": "optimised-odds", "base": "https://optimisedodds.com", "method": "render", "fetcher": "flaresolverr" },
+  { "name": "Phatstax", "slug": "phatstax", "base": "https://phatstax.co.uk", "method": "render", "fetcher": "flaresolverr" },
+  { "name": "Play Competitions", "slug": "play-competitions", "base": "https://play-competitions.co.uk", "method": "render", "fetcher": "flaresolverr" },
+  { "name": "Prize Hub UK", "slug": "prize-hub-uk", "base": "https://www.prizehubuk.co.uk", "method": "render", "fetcher": "flaresolverr" },
+  { "name": "Ruby Competitions Ltd", "slug": "ruby-competitions-ltd", "base": "https://rubycompetitions.co.uk", "method": "render", "fetcher": "flaresolverr" },
+  { "name": "Speedcompetitions", "slug": "speedcompetitions", "base": "https://speedcompetitions.co.uk", "method": "render", "fetcher": "flaresolverr" }
 ]
