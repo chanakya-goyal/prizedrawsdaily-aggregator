@@ -98,6 +98,11 @@ describe("extractPrice", () => {
   test("cash alternative not mistaken for ticket price", () =>
     expect(extractPrice({ text: "Cash Alternative: £10,000 Entries only £0.05" })).toBe(0.05));
   test("£X per ticket", () => expect(extractPrice({ text: "just £3 per ticket" })).toBe(3));
+  // Multi-ticket quantity selector default → divide the bundle total back to the unit price.
+  test("selected-quantity total (X 25 TICKETS £9.75) → unit", () => expect(extractPrice({ text: "X 25 TICKETS\n£9.75\nADD TO CART" })).toBe(0.39));
+  test("bundle default qty 100 (X 100 TICKETS £20.00) → unit", () => expect(extractPrice({ text: "X 100 TICKETS £20.00" })).toBe(0.2));
+  test("'£10 for 20 tickets' reverse form → unit", () => expect(extractPrice({ text: "£10 for 20 tickets" })).toBe(0.5));
+  test("single ticket default (X 1 TICKETS £0.39) unaffected", () => expect(extractPrice({ text: "X 1 TICKETS £0.39" })).toBe(0.39));
 });
 
 describe("JSON-LD + title/image", () => {
