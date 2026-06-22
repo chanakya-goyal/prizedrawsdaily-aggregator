@@ -83,6 +83,15 @@ export async function renderOperator(ctx, op, perOp = 6) {
 
   const drawUrls = linksFrom(listing.links);
   console.log(`  found ${drawUrls.length} draw pages`);
+  if (drawUrls.length === 0) {
+    // Diagnostic: when nothing matches, surface the same-origin links that WERE present so an
+    // operator's real draw-URL pattern can be tuned — essential for Cloudflare/flaresolverr
+    // sites we can't inspect locally (the cleared HTML only exists inside the Action).
+    const origin = new URL(op.base).origin;
+    const sample = [...new Set(listing.links.filter((h) => h.startsWith(origin)).map((h) => h.split("?")[0].split("#")[0]))]
+      .filter((h) => !/\.(css|js|png|jpe?g|svg|webp|ico|woff2?|gif|mp4)$/i.test(h)).slice(0, 14);
+    console.log(`  ⓘ 0 matched — same-origin links seen: ${sample.length ? "\n    " + sample.join("\n    ") : "(none — JS-rendered grid)"}`);
+  }
   const draws = [];
   for (const url of drawUrls) {
     try {
