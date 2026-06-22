@@ -35,7 +35,7 @@ Two feeders write `draft` rows into Supabase via the **same** code (`lib/parse.m
 ```sh
 bun install
 bunx playwright install chromium
-bun test                                  # 89 deterministic unit/fixture tests
+bun test                                  # 95 deterministic unit/fixture tests
 
 # Preview only — writes nothing:
 DRY_RUN=true bun run.mjs                                   # all operators
@@ -56,6 +56,8 @@ SUPABASE_SERVICE_ROLE_KEY=... DRY_RUN=false METHODS=render bun run.mjs
 | `PUBLISH_STATUS` | `"draft"` (default) or `"active"` — normally left as draft; cowork publishes |
 | `PER_OP` | Draws per operator per run (default 5) |
 | `ONLY` | Comma list of operator slugs (testing) |
+| `FLARESOLVERR_URL` | FlareSolverr endpoint for `fetcher:"flaresolverr"` operators (default `http://localhost:8191/v1`) |
+| `SCRAPER_API_URL` / `SCRAPER_API_KEY` | Managed scraper for `fetcher:"api"` operators (dormant unless both set) |
 
 ## Operators
 
@@ -63,10 +65,22 @@ SUPABASE_SERVICE_ROLE_KEY=... DRY_RUN=false METHODS=render bun run.mjs
 (`name`, `slug`, `base`, `method`, plus optional `listing`, `drawMatch`, `exclude`,
 `selectors`, `patterns`, `category`, `enabled`). To exclude one, set `"enabled": false`.
 
-**Add an operator:** add a JSON entry → `bun capture.mjs <slug>` (saves a fixture) →
-`ONLY=<slug> DRY_RUN=true bun run.mjs` to eyeball → add `selectors` if `draw_date`/
-`total_entries` don't resolve. The daily health report lists **silent operators**
-(0 draws) so you know which ones need tuning.
+Optional per-operator acquisition fields (default absent = plain keyless fetch):
+
+| Field | Purpose |
+|---|---|
+| `fetcher` | `"plain"` (default) · `"flaresolverr"` (route through a FlareSolverr proxy to clear Cloudflare) · `"api"` (managed scraper) · `"stealth"` |
+| `fetcherOpts` | Tool-specific knobs, e.g. `{ "render": true, "premium": true }` for the `api` fetcher |
+| `insecureTLS` | `true` to accept a misconfigured TLS cert (scoped to that operator only) |
+| `drawUrlTemplate` | For `aiAssist` SPAs whose links live in the data blob — e.g. `"/competitions/{slug}"`; `ai-fetch.mjs` mines slugs and synthesises draw URLs |
+
+**Add an operator:** `bun probe.mjs <url> --slug <slug> --name "<Name>"` classifies the
+site (woo / shopify / render / aiAssist / blocked) and prints a paste-ready JSON entry →
+paste it into `operators.json` and add the matching `operators` DB row → `bun capture.mjs
+<slug>` → `ONLY=<slug> DRY_RUN=true bun run.mjs` to eyeball → add `selectors` if
+`draw_date`/`total_entries` don't resolve. For a Cloudflare site, run a local FlareSolverr
+(`FLARESOLVERR_URL=http://localhost:8191/v1`) and `probe.mjs` retries through it. The daily
+health report lists **silent operators** (0 draws) so you know which ones need tuning.
 
 ## Schedule
 

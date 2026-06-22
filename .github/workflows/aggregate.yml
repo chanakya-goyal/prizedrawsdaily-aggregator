@@ -16,9 +16,19 @@ concurrency:
 jobs:
   aggregate:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 60 # FlareSolverr challenge solves are slow (10–40s each)
     permissions:
       contents: read
+    services:
+      # Self-hosted Cloudflare solver for operators with "fetcher": "flaresolverr".
+      # Keyless & free; reachable at http://localhost:8191 from the run step. No internal
+      # health-cmd (the image lacks curl) — a wait step below polls it from the runner.
+      flaresolverr:
+        image: ghcr.io/flaresolverr/flaresolverr:latest
+        ports:
+          - 8191:8191
+        env:
+          LOG_LEVEL: warning
     steps:
       - uses: actions/checkout@v4
 
@@ -35,13 +45,24 @@ jobs:
       - name: Install Chromium for Playwright
         run: bunx playwright install --with-deps chromium
 
+      - name: Wait for FlareSolverr to be ready
+        run: |
+          for i in $(seq 1 40); do
+            if curl -fsS http://localhost:8191/health >/dev/null 2>&1 || curl -fsS http://localhost:8191/ >/dev/null 2>&1; then
+              echo "FlareSolverr is up"; exit 0
+            fi
+            echo "waiting for FlareSolverr ($i/40)…"; sleep 3
+          done
+          echo "::warning::FlareSolverr did not become ready — flaresolverr operators will fail-safe to 0 draws"
+
       - name: Run render feeder (scrape → gate → insert drafts)
         run: bun run.mjs
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FLARESOLVERR_URL: http://localhost:8191/v1 # Cloudflare solver for flaresolverr operators
           DRY_RUN: "false"
-          METHODS: "render" # browser sites only; cowork handles woo/shopify
+          METHODS: "render" # browser + flaresolverr sites; cowork handles woo/shopify
           PUBLISH_STATUS: "draft" # cowork publishes after describe + QA
           PER_OP: "5"
           BATCHES: "1" # no LLM quota → full coverage every day
