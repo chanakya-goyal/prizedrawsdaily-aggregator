@@ -42,6 +42,18 @@ describe("extractEntries — review regressions (remaining-count must not be a c
   for (const [input, expected] of cases) test(`"${input}" → ${expected}`, () => expect(extractEntries(input)).toBe(expected));
 });
 
+describe("extractEntries — WooCommerce Lottery 'label: N' counter", () => {
+  const cases = [
+    ["Total Entries: 5000", 5000],
+    ["Total Entries: 100", 100],            // small instant-win cap parses (businessGate floors it later)
+    ["Max Tickets - 12,499", 12499],
+    ["Total Tickets: 799", 799],
+    ["Max Entries per person: 5000", null], // per-user limit, NOT the cap — must not be picked up
+    ["total tickets sold: 6200", null],     // a sold counter, not the cap
+  ];
+  for (const [input, expected] of cases) test(`"${input}" → ${expected}`, () => expect(extractEntries(input)).toBe(expected));
+});
+
 describe("extractDate — review regressions (draw vs close, time placement)", () => {
   test("prefers DRAW date over CLOSE date", () =>
     expect(extractDate("Entry closes on 1st July 2026. The draw will take place 8th July 2026.")).toStartWith("2026-07-08"));
@@ -134,6 +146,23 @@ describe("fieldsFromHtml end-to-end (synthetic woo-style page)", () => {
   test("category inferred", () => expect(d.category).toBe("car-draws"));
   test("image", () => expect(d.image_url).toBe("https://cdn.test/rr.jpg"));
   test("entry_url stamped", () => expect(d.entry_url).toBe("https://op.test/product/range-rover"));
+});
+
+describe("fieldsFromHtml — WooCommerce Lottery plugin (data-enddate + 'Total Entries' label)", () => {
+  // Mirrors the live markup on hotcomps / theprizelab / tartan / collie / easy-living:
+  // date lives only in a data-enddate attribute, entries in a labelled <p class="total-entries">.
+  const html = `<html><head>
+    <script type="application/ld+json">{"@type":"Product","name":"£100 Midday Cash","image":"https://cdn.test/c.jpg","offers":{"price":"3"}}</script>
+    </head><body>
+      <h1>£100 Midday Cash</h1>
+      <div class="lottery-countdown" data-enddate="2026-06-26 12:00"></div>
+      <div class="draw_date_single_prod_container"><div class="date-predictor-loop">Draw Fri at 12pm</div></div>
+      <p class="total-entries">Total Entries: <span>5000</span></p>
+      <p>Max Entries per person: <span>20</span></p>
+    </body></html>`;
+  const d = fieldsFromHtml({ html, url: "https://op.test/product/100-midday-cash", op: { base: "https://op.test" } });
+  test("entries from 'Total Entries: N' (not the per-person 20)", () => expect(d.total_entries).toBe(5000));
+  test("date read from data-enddate attribute", () => expect(d.draw_date).toBe("2026-06-26T12:00:00+01:00"));
 });
 
 describe("normalizeUkDate", () => {
