@@ -9,6 +9,7 @@
 // Env: SUPABASE_SERVICE_ROLE_KEY (required).
 import { schemaGate } from "../gate.mjs";
 import { templateDescription } from "../lib/describe.mjs";
+import { rehostImage } from "../lib/rehost.mjs";
 
 const SB = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -53,6 +54,17 @@ const cats = await sbGet(`categories?select=id,slug`);
 const category_id = cats.find((c) => c.slug === d.category)?.id || null;
 const entries = Number.isFinite(Number(d.total_entries)) && Number(d.total_entries) > 0 ? Math.round(Number(d.total_entries)) : null;
 const tpv = entries ? Math.min(round2(Number(d.ticket_price) * entries), 1_000_000_000) : null;
+
+// Re-host the image onto our OWN Storage before writing, so the live site (which proxies
+// every image through images.weserv.nl) never hotlinks a third-party host that blocks
+// weserv's servers. Mirrors run.mjs; a fetch miss keeps the origin URL (never blocks).
+const sb = { supabaseUrl: SB, serviceKey: KEY };
+const imgPath = `${slugify(d.title).slice(0, 100)}-${d.operator_slug}`.slice(0, 120);
+try {
+  const res = await rehostImage(d.image_url, d.operator_slug, imgPath, sb);
+  if (res.changed) { console.log(`🖼  re-hosted image [${res.via}]`); d.image_url = res.url; }
+  else if (res.via === "miss") console.log(`⚠️ image unreachable, kept origin`);
+} catch (e) { console.log(`! re-host failed: ${(e.message || "").slice(0, 60)}`); }
 
 // If this entry_url already exists: refresh the data on a DRAFT row (self-heals earlier
 // wrong/missing fields); never touch a published/ended row.
