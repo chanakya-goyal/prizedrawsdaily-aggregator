@@ -3,6 +3,8 @@
 //   <json> = columns to set, e.g. '{"prize_description":"...","status":"active"}'
 //   To change category, pass {"category_id":"<uuid>"} (ids come from drafts-fetch output).
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (required — write).
+import { rehostImage } from "../lib/rehost.mjs";
+
 const SB = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const [, , id, json] = process.argv;
@@ -15,6 +17,18 @@ try { body = JSON.parse(json); } catch (e) { console.error("invalid JSON:", e.me
 const ALLOWED = new Set(["prize_description", "status", "category_id", "title", "grand_prize", "image_url", "draw_date", "ticket_price", "total_entries", "total_prize_value", "featured"]);
 const bad = Object.keys(body).filter((k) => !ALLOWED.has(k));
 if (bad.length) { console.error("disallowed fields:", bad.join(", ")); process.exit(1); }
+
+// If a fresh image_url is being set, re-host it onto our own Storage first (same reason as
+// draw-insert: the live site proxies every image through weserv, which some hosts block).
+if (body.image_url && /^https?:\/\//i.test(body.image_url) && !body.image_url.startsWith(SB)) {
+  try {
+    const [row] = await (await fetch(`${SB}/rest/v1/draws?id=eq.${id}&select=slug,operators(slug)`, { headers: { apikey: KEY, Authorization: `Bearer ${KEY}` } })).json();
+    if (row?.slug) {
+      const res = await rehostImage(body.image_url, row.operators?.slug || "misc", row.slug, { supabaseUrl: SB, serviceKey: KEY });
+      if (res.changed) { console.log(`🖼  re-hosted image [${res.via}]`); body.image_url = res.url; }
+    }
+  } catch (e) { console.log(`! re-host failed: ${(e.message || "").slice(0, 60)}`); }
+}
 
 const r = await fetch(`${SB}/rest/v1/draws?id=eq.${id}`, {
   method: "PATCH",

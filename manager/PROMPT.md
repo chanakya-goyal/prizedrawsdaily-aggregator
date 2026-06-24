@@ -36,6 +36,9 @@ page_text`. For EACH draw, read `hints`/`page_text` and work out:
 Then insert it:
 `bun manager/draw-insert.mjs '{"operator_slug":"...","title":"...","grand_prize":"...","category":"car-draws","ticket_price":0.17,"draw_date":"2026-06-21T22:00:00+01:00","image_url":"...","entry_url":"...","prize_description":"..."}'`
 Skip any where you cannot work out a sensible FUTURE draw_date and a real ticket price.
+(draw-insert + draw-update auto-re-host the image onto our own Supabase Storage before
+writing, so operators whose images break under the site's weserv proxy are handled
+automatically — no manual image work needed.)
 
 **3. Fetch all current drafts:** `bun manager/drafts-fetch.mjs`.
 
