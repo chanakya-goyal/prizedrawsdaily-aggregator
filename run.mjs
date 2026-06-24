@@ -11,6 +11,7 @@ import { renderOperator, wooOperator, shopifyOperator, dedupe, makeContext } fro
 import { gate } from "./gate.mjs";
 import { templateDescription } from "./lib/describe.mjs";
 import { fieldFlags, buildHealthReport, writeStepSummary } from "./lib/manager.mjs";
+import { rehostImage } from "./lib/rehost.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -108,7 +109,7 @@ for (const op of operators) {
       // the ticket price); never touch a published/ended row.
       if (ex.status !== "draft") { skipped++; continue; }
       byUrl.delete(d.entry_url);
-      toUpdate.push({ id: ex.id, row: {
+      toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, row: {
         category_id: catMap[d.category] || null, title: d.title, grand_prize: d.grand_prize,
         image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
         total_prize_value: tpv, draw_date: d.draw_date,
@@ -124,6 +125,7 @@ for (const op of operators) {
     if (status === "active") c.published++; else c.heldDraft++;
     c.inserted++;
     toInsert.push({
+      opSlug: op.slug,
       row: {
         slug, operator_id: opMap[op.slug], category_id: catMap[d.category] || null,
         title: d.title, grand_prize: d.grand_prize, prize_description: d.description,
@@ -143,6 +145,22 @@ console.log(`\n\n==== ${toInsert.length} new, ${toUpdate.length} refreshed (${pa
 if (DRY_RUN) {
   console.log("(dry run — nothing written)");
 } else {
+  // Re-host every image onto our own Storage BEFORE writing, so the site never hotlinks a
+  // third-party host (which breaks under Cloudflare bot protection — the root cause of
+  // operator images silently breaking). A fetch miss keeps the original URL, never blocks.
+  const sb = { supabaseUrl: SUPABASE_URL, serviceKey: SERVICE_KEY };
+  let rehosted = 0, missed = 0;
+  for (const item of [...toInsert, ...toUpdate]) {
+    const drawSlug = item.row.slug || item.slug;
+    if (!item.row.image_url || !drawSlug) continue;
+    try {
+      const res = await rehostImage(item.row.image_url, item.opSlug, drawSlug, sb);
+      if (res.changed) { item.row.image_url = res.url; rehosted++; }
+      else if (res.via === "miss") { missed++; console.log(`  ⚠️ image unreachable, kept origin: ${drawSlug.slice(0, 44)}`); }
+    } catch (e) { missed++; console.log(`  ! re-host failed ${drawSlug.slice(0, 40)}: ${(e.message || "").slice(0, 60)}`); }
+  }
+  console.log(`🖼  re-hosted ${rehosted} image(s) to Storage${missed ? `, ${missed} kept origin (unreachable)` : ""}`);
+
   let inserted = 0;
   for (let i = 0; i < toInsert.length; i += 50) {
     const res = await sbInsert(toInsert.slice(i, i + 50).map((x) => x.row));
