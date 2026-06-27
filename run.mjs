@@ -18,9 +18,14 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const ANON_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
 const DRY_RUN = process.env.DRY_RUN !== "false";
 const PUBLISH_STATUS = process.env.PUBLISH_STATUS || "draft"; // cowork owns publish; keep draft by default
-const PER_OP = Number(process.env.PER_OP || 5);
+const PER_OP = Number(process.env.PER_OP || 5);             // render: per-op cap (browser cost — keep modest)
+// woo/shopify hit a single cheap JSON endpoint, so there's no per-product cost to capturing the
+// whole live catalogue. With orderby=date a low cap only ever sees the newest few products and
+// silently drops every older-but-still-live competition (the 213-vs-600+ capture gap). The gate
+// still rejects anything missing price/entries/date, so a high cap can only ADD valid draws.
+const PER_OP_API = Number(process.env.PER_OP_API || 60);
 const BATCHES = Number(process.env.BATCHES || 1);            // no LLM quota → full coverage daily
-const MAX_PAGES = Number(process.env.MAX_DRAWS || 500);      // backstop on pages read per run
+const MAX_PAGES = Number(process.env.MAX_DRAWS || 2000);    // backstop on pages read per run (raised with PER_OP_API)
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
 const METHODS = process.env.METHODS ? new Set(process.env.METHODS.split(",").map((s) => s.trim())) : null;
 const READ_KEY = SERVICE_KEY || ANON_KEY;
@@ -92,8 +97,8 @@ for (const op of operators) {
   counts.push(c);
   let draws = [];
   try {
-    if (op.method === "woo") draws = await wooOperator(op, PER_OP);
-    else if (op.method === "shopify") draws = await shopifyOperator(op, PER_OP);
+    if (op.method === "woo") draws = await wooOperator(op, PER_OP_API);
+    else if (op.method === "shopify") draws = await shopifyOperator(op, PER_OP_API);
     else draws = await renderOperator(ctx, op, PER_OP);
   } catch (e) { console.log(`  FAILED: ${(e.message || "").slice(0, 80)}`); continue; }
   pages += draws.length;

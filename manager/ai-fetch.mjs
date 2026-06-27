@@ -79,12 +79,23 @@ for (const op of operators) {
     if (!title) continue;
     const text = textOf(html);
     const iso = [...new Set([...html.matchAll(/20\d{2}-\d{2}-\d{2}[T ]\d{2}:\d{2}/g)].map((m) => m[0]))].slice(0, 6);
+    // WooCommerce-Lottery & similar plugins carry the authoritative close/draw datetime in a
+    // data-* attribute (the visible date is JS-rendered, so it's missing from the text above).
+    // Surface it as a date candidate (epoch values normalised to ISO).
+    for (const am of html.matchAll(/data-(?:enddate|end-date|draw-date|close-date)\s*=\s*"([^"]+)"/gi)) {
+      let v = am[1].trim();
+      if (/^\d{10,13}$/.test(v)) { try { v = new Date(v.length === 13 ? Number(v) : Number(v) * 1000).toISOString(); } catch { /* keep raw */ } }
+      const dm = v.match(/20\d{2}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2})?/);
+      if (dm && !iso.includes(dm[0])) iso.push(dm[0]);
+    }
     // Authoritative "Competition Details" data often sits in the page's data blob (stripped
     // from visible text). Read it straight from the raw HTML — the structured field first
     // (e.g. "numTickets":1999999), then the displayed "maximum number of N" as a fallback
     // (tolerant of the data-blob's quote/escape punctuation between label and number).
     const maxM = html.match(/"(?:numTickets|maxTickets|totalTickets|maximumEntries)"\s*:\s*(\d{3,})/i)
-      || html.match(/maximum\s+(?:number\s+)?of["\\,\s]{1,18}([\d][\d,]{2,})["\\,\s]{1,12}entr/i);
+      || html.match(/maximum\s+(?:number\s+)?of["\\,\s]{1,18}([\d][\d,]{2,})["\\,\s]{1,12}entr/i)
+      // WooCommerce-Lottery labelled form: "Total Entries: 5000" / "Max Tickets - 1000"
+      || html.match(/(?:total|max(?:imum)?)\s+(?:number\s+of\s+)?(?:tickets?|entries?)["\\,\s>]{0,12}[:\-]["\\,\s>]{0,12}([\d][\d,]{2,})/i);
     const detail_entries = maxM ? Number(maxM[1].replace(/[^\d]/g, "")) : null;
     const drawM = html.match(/draw\s+date\s+for\s+this\s+competition\s+is["\\,\s]{1,12}(\d{1,2}\/\d{1,2}\/\d{4})(?:["\\,\s]{1,12}at["\\,\s]{1,12}(\d{1,2}:\d{2}\s*[ap]\.?m\.?))?/i);
     const detail_draw = drawM ? `${drawM[1]}${drawM[2] ? " " + drawM[2].replace(/\s/g, "") : ""}` : null;
