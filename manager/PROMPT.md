@@ -21,10 +21,14 @@ Note any 'silent' operators (0 draws) for your final report.
 
 **2. Premium / AI-assist operators** (car sites etc. whose date/price are countdowns):
 Run `bun manager/ai-fetch.mjs`. It prints `{ count, draws: [...] }`; each draw has
-`operator_slug, entry_url, title, grand_prize, category (a guess), image_url,
-ticket_price (a HINT, often wrong), iso_dates (candidate timestamps), hints (key snippets),
-page_text`. For EACH draw, read `hints`/`page_text` and work out:
+`operator_slug, entry_url, title, grand_prize, grand_prize_source, category (a guess),
+image_url, ticket_price (a HINT, often wrong), iso_dates (candidate timestamps), hints (key
+snippets), page_text`. For EACH draw, read `hints`/`page_text` and work out:
 - **ticket_price** — the real per-ticket price (e.g. "from £0.17"); ignore the ticket_price hint if it conflicts.
+- **grand_prize** — the ACTUAL prize, not a slogan. If `grand_prize_source` is `title` AND the
+  title names no prize (e.g. "DAILY DRAW – PRIZE EVERYTIME", "Site Credit Madness", "Mystery
+  Prize"), read `page_text`/the image and replace it with the real headline prize (e.g.
+  "£50 Site Credit + Instant Wins"). Keep it short (≤ ~12 words) and factual.
 - **draw_date** — resolve the close/draw time. Hints look like "Live Draw Today, 22:00" or
   "Automated Draw Tomorrow, 22:00" — turn Today/Tomorrow into an absolute UK date using
   today's date, and confirm against `iso_dates` (pick the matching FUTURE timestamp). Format
@@ -43,10 +47,12 @@ automatically — no manual image work needed.)
 **3. Fetch all current drafts:** `bun manager/drafts-fetch.mjs`.
 
 **4. QA + describe.** For each draft lacking a good description, write one (2–3 sentence
-British-English; prize, price, close date; original wording; no emojis/hashtags). Hold a
+British-English; prize, price, close date; original wording; no emojis/hashtags). Also check
+**grand_prize**: if it equals a generic/slogan title and the real prize is clear from the
+description/page, correct it (PATCH `grand_prize`) to the actual prize headline. Hold a
 draft (don't publish) if: ticket_price missing/≤0/over £50; draw_date past or absurd;
 total_entries looks like a sold/remaining count; image_url doesn't load; category clearly
-wrong; or title is junk.
+wrong; title is junk; or grand_prize is still just a slogan you can't resolve.
 
 **5. Apply updates:** `bun manager/draw-update.mjs <id> '<json>'`
 - publish a clean draw: `'{"prize_description":"...","status":"active"}'` (add `"category_id":"<uuid>"` if you corrected the category)
