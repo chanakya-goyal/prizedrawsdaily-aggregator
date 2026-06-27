@@ -8,6 +8,20 @@ import { fetchHtml, renderVia } from "./lib/fetcher.mjs";
 export { CATEGORIES, UA, WINDOW_DAYS, normalizeUkDate };
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Bounded-concurrency map — runs the per-product page fetches in parallel (with a ceiling so
+// we never hammer one operator). At PER_OP_API=60 this turns ~60 sequential fetches per operator
+// into ~60/limit waves, the difference between a 90s/op crawl and a ~12s/op one.
+const FETCH_CONCURRENCY = Number(process.env.FETCH_CONCURRENCY || 8);
+async function pMap(items, limit, fn) {
+  const out = new Array(items.length);
+  let i = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (i < items.length) { const idx = i++; out[idx] = await fn(items[idx], idx); }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 // ---- block detection (Cloudflare / JS challenge / empty SPA) ----
 const BLOCK_RE = /just a moment|attention required|cf-browser-verification|enable javascript and cookies|verifying you are human|checking your browser|access denied|request blocked/i;
 // Blocked = a known challenge phrase OR a near-empty body. The length floor is deliberately
@@ -112,8 +126,7 @@ export async function wooOperator(op, perOp = 6) {
   let body = null; try { body = JSON.parse(r.text); } catch { /* non-JSON → no products */ }
   const products = (Array.isArray(body) ? body : []).slice(0, perOp);
   if (!products.length) { console.log(`  woo API returned no products`); return []; }
-  const draws = [];
-  for (const p of products) {
+  const draws = await pMap(products, FETCH_CONCURRENCY, async (p) => {
     try {
       const minor = p.prices?.currency_minor_unit ?? 2;
       const price = p.prices?.price != null ? Number((Number(p.prices.price) / 10 ** minor).toFixed(2)) : null;
@@ -122,9 +135,9 @@ export async function wooOperator(op, perOp = 6) {
       const prizeText = p.short_description || p.description || null; // cleanest grand_prize source
       let html = "";
       try { html = (await fetchHtml(p.permalink, op)).text; } catch { /* API desc still usable */ }
-      draws.push(fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText }));
-    } catch (e) { console.log(`  ! ${(p.permalink || p.name || "?").slice(-42)} parse failed: ${(e.message || "").slice(0, 50)}`); }
-  }
+      return fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText });
+    } catch (e) { console.log(`  ! ${(p.permalink || p.name || "?").slice(-42)} parse failed: ${(e.message || "").slice(0, 50)}`); return null; }
+  });
   return draws.filter(Boolean);
 }
 
@@ -134,8 +147,7 @@ export async function shopifyOperator(op, perOp = 6) {
   let body = null; try { body = JSON.parse(r.text); } catch { /* non-JSON → no products */ }
   const products = (Array.isArray(body?.products) ? body.products : []).slice(0, perOp);
   if (!products.length) { console.log(`  shopify API returned no products`); return []; }
-  const draws = [];
-  for (const p of products) {
+  const draws = await pMap(products, FETCH_CONCURRENCY, async (p) => {
     try {
       const url = `${op.base}/products/${p.handle}`;
       const price = p.variants?.[0]?.price ? Number(p.variants[0].price) : null;
@@ -144,9 +156,9 @@ export async function shopifyOperator(op, perOp = 6) {
       const prizeText = p.body_html || null; // cleanest grand_prize source
       let html = "";
       try { html = (await fetchHtml(url, op)).text; } catch { /* body_html still usable */ }
-      draws.push(fieldsFromHtml({ html, url, op, knownTitle: p.title, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText }));
-    } catch (e) { console.log(`  ! ${(p.handle || p.title || "?")} parse failed: ${(e.message || "").slice(0, 50)}`); }
-  }
+      return fieldsFromHtml({ html, url, op, knownTitle: p.title, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText });
+    } catch (e) { console.log(`  ! ${(p.handle || p.title || "?")} parse failed: ${(e.message || "").slice(0, 50)}`); return null; }
+  });
   return draws.filter(Boolean);
 }
 

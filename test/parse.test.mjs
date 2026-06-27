@@ -12,6 +12,10 @@ describe("extractEntries — veto-first, conservative", () => {
     ["3200 / 15000 sold", 15000],
     ["82% sold", null],
     ["max 5000 entries", 5000],
+    ["Total Entries: 5000", 5000],        // WooCommerce-Lottery labelled form (keyword:count)
+    ["Total Tickets: 2,500", 2500],
+    ["Max Tickets - 1000", 1000],
+    ["Total number of tickets: 7500", 7500],
     ["only 250 remaining", null],
     ["win £15,000 cash", null],
     ["Total of 25,000 tickets in this draw", 25000],
@@ -87,6 +91,16 @@ describe("inferCategory", () => {
   test("house", () => expect(inferCategory({ title: "Win this 3-bed house" })).toBe("house-draws"));
   test("tech", () => expect(inferCategory({ title: "iPhone 16 Pro giveaway" })).toBe("tech-giveaways"));
   test("fallback cash", () => expect(inferCategory({ title: "Mystery prize" })).toBe("cash-prizes"));
+  // expanded merchandise coverage — previously these all fell to the cash-prizes fallback and
+  // were then draft-held by fieldFlags for "category may not match prize".
+  test("appliance → tech", () => expect(inferCategory({ title: "Eufy Robot Vacuum Cleaner And Mop" })).toBe("tech-giveaways"));
+  test("dyson → tech", () => expect(inferCategory({ title: "Win a Dyson V15 Detect" })).toBe("tech-giveaways"));
+  test("air fryer → tech", () => expect(inferCategory({ title: "Ninja Air Fryer Bundle" })).toBe("tech-giveaways"));
+  test("hot tub → luxury", () => expect(inferCategory({ title: "Lay-Z-Spa Miami Hot Tub" })).toBe("luxury"));
+  test("apple watch → tech not luxury", () => expect(inferCategory({ title: "Apple Watch Series 10" })).toBe("tech-giveaways"));
+  test("rolex still luxury", () => expect(inferCategory({ title: "Win a Rolex Submariner" })).toBe("luxury"));
+  test("gift card → cash", () => expect(inferCategory({ title: "£200 Food Gift Card" })).toBe("cash-prizes"));
+  test("lego stays collectibles (before car)", () => expect(inferCategory({ title: "LEGO Technic Ferrari Daytona" })).toBe("collectibles"));
 });
 
 describe("extractPrice", () => {
@@ -135,6 +149,26 @@ describe("fieldsFromHtml end-to-end (synthetic woo-style page)", () => {
   test("category inferred", () => expect(d.category).toBe("car-draws"));
   test("image", () => expect(d.image_url).toBe("https://cdn.test/rr.jpg"));
   test("entry_url stamped", () => expect(d.entry_url).toBe("https://op.test/product/range-rover"));
+});
+
+describe("fieldsFromHtml — WooCommerce-Lottery plugin (labelled entries + data-enddate)", () => {
+  // These operators (Collie, Easy Living, Hot Comps, Tartan, The Prize Lab) render the count
+  // as "Total Entries: N" and put the close date in a data-* attr — previously both scraped null.
+  const html = `<html><head>
+    <script type="application/ld+json">{"@type":"Product","name":"Win £10,000 Cash","image":"https://cdn.test/cash.jpg","offers":{"price":"2.49"}}</script>
+    </head><body>
+      <h1>Win £10,000 Cash</h1>
+      <div class="lottery-progress total-entries">Total Entries: 5000</div>
+      <span class="draw-countdown" data-enddate="2026-07-15T20:00:00"></span>
+    </body></html>`;
+  const d = fieldsFromHtml({ html, url: "https://op.test/product/win-10k", op: { base: "https://op.test" } });
+  test("entries from labelled 'Total Entries: N'", () => expect(d.total_entries).toBe(5000));
+  test("date from data-enddate attribute", () => expect(d.draw_date).toStartWith("2026-07-15"));
+  test("epoch-millis data-enddate also parses", () => {
+    const h = `<html><body><h1>Win a Watch</h1><i data-end-date="1784145600000"></i></body></html>`;
+    const r = fieldsFromHtml({ html: h, url: "https://op.test/p/watch", op: { base: "https://op.test" } });
+    expect(r.draw_date).toStartWith("2026-07-15");
+  });
 });
 
 describe("isGenericTitle — only slogans that name no prize are generic", () => {
@@ -227,6 +261,16 @@ describe("extractGrandPrize — never returns section-label junk", () => {
     const $ = load(`<div class="product-tabs"><ul><li><a>Prize Description</a></li><li><a>Rules</a></li></ul></div>`);
     const r = extractGrandPrize({ title: "3 x Main Winners + Instant Wins", $, opName: "Big Beastie Competitions" });
     expect(r).toEqual({ value: "3 x Main Winners + Instant Wins", source: "title" });
+  });
+  test("T&C / eligibility prose in a prize panel is NOT the prize (gaming-giveaways bug)", () => {
+    const $ = load(`<div class="prize-description"><h3>Prize Description</h3><div>This competition is open to UK residents aged 18 or over.You can enter this competition up to 112,000 times.This competition will close at 11:59 pm on July 10th.</div></div>`);
+    const r = extractGrandPrize({ title: "1p Gaming Comp + Instant Wins #6", $, opName: "Gaming Giveaways" });
+    expect(r.source).toBe("title");
+    expect(r.value).toBe("1p Gaming Comp + Instant Wins #6");
+  });
+  test("jsonld T&C prose is rejected, falls through", () => {
+    const r = extractGrandPrize({ title: "Mega Daily Draw", ld: { description: "Open to UK residents aged 18 or over. Drawn live on Facebook." }, opName: "X Comps" });
+    expect(r.value).not.toMatch(/residents|aged 18/i);
   });
 });
 
