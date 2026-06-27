@@ -286,18 +286,198 @@
     "base": "https://youcouldwin.co.uk",
     "method": "woo"
   },
-  { "name": "Anotheroneraffles", "slug": "anotheroneraffles", "base": "https://anotheroneraffles.co.uk", "method": "render", "fetcher": "flaresolverr" },
-  { "name": "Apex Competition", "slug": "apex-competition", "base": "https://apex-competition.co.uk", "method": "render", "fetcher": "flaresolverr" },
-  { "name": "Borders Competitions", "slug": "borders-competitions", "base": "https://borderscompetitions.co.uk", "method": "render", "fetcher": "flaresolverr" },
-  { "name": "Caledonia Competitions", "slug": "caledonia-competitions", "base": "https://caledoniacompetitions.co.uk", "method": "render", "fetcher": "flaresolverr" },
-  { "name": "Chaotic", "slug": "chaotic", "base": "https://chaotic.co.uk", "method": "render", "fetcher": "flaresolverr" },
-  { "name": "Collectible Competitions", "slug": "collectible-competitions", "base": "https://collectiblecompetitions.co.uk", "method": "render", "fetcher": "flaresolverr" },
-  { "name": "DD Competitions", "slug": "dd-competitions", "base": "https://www.ddcompetitions.com", "method": "render", "fetcher": "flaresolverr" },
-  { "name": "Gallowaygiveaways", "slug": "gallowaygiveaways", "base": "https://gallowaygiveaways.co.uk", "method": "render", "fetcher": "flaresolverr" },
-  { "name": "Optimised Odds", "slug": "optimised-odds", "base": "https://optimisedodds.com", "method": "render", "fetcher": "flaresolverr" },
-  { "name": "Phatstax", "slug": "phatstax", "base": "https://phatstax.co.uk", "method": "render", "fetcher": "flaresolverr" },
-  { "name": "Play Competitions", "slug": "play-competitions", "base": "https://play-competitions.co.uk", "method": "render", "fetcher": "flaresolverr" },
-  { "name": "Prize Hub UK", "slug": "prize-hub-uk", "base": "https://www.prizehubuk.co.uk", "method": "render", "fetcher": "flaresolverr" },
-  { "name": "Ruby Competitions Ltd", "slug": "ruby-competitions-ltd", "base": "https://rubycompetitions.co.uk", "method": "render", "fetcher": "flaresolverr" },
-  { "name": "Speedcompetitions", "slug": "speedcompetitions", "base": "https://speedcompetitions.co.uk", "method": "render", "fetcher": "flaresolverr" }
+  {
+    "name": "Anotheroneraffles",
+    "slug": "anotheroneraffles",
+    "base": "https://anotheroneraffles.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Apex Competition",
+    "slug": "apex-competition",
+    "base": "https://apex-competition.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Borders Competitions",
+    "slug": "borders-competitions",
+    "base": "https://borderscompetitions.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Caledonia Competitions",
+    "slug": "caledonia-competitions",
+    "base": "https://caledoniacompetitions.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Chaotic",
+    "slug": "chaotic",
+    "base": "https://chaotic.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Collectible Competitions",
+    "slug": "collectible-competitions",
+    "base": "https://collectiblecompetitions.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "DD Competitions",
+    "slug": "dd-competitions",
+    "base": "https://www.ddcompetitions.com",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Gallowaygiveaways",
+    "slug": "gallowaygiveaways",
+    "base": "https://gallowaygiveaways.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Optimised Odds",
+    "slug": "optimised-odds",
+    "base": "https://optimisedodds.com",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Phatstax",
+    "slug": "phatstax",
+    "base": "https://phatstax.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Play Competitions",
+    "slug": "play-competitions",
+    "base": "https://play-competitions.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Prize Hub UK",
+    "slug": "prize-hub-uk",
+    "base": "https://www.prizehubuk.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Ruby Competitions Ltd",
+    "slug": "ruby-competitions-ltd",
+    "base": "https://rubycompetitions.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Speedcompetitions",
+    "slug": "speedcompetitions",
+    "base": "https://speedcompetitions.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Albo Competitions",
+    "slug": "albo-competitions",
+    "base": "https://albocompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Bee The Winner",
+    "slug": "bee-the-winner",
+    "base": "https://beethewinner.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Croc Comps",
+    "slug": "croc-comps",
+    "base": "https://croccomps.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Drift Competitions",
+    "slug": "drift-competitions",
+    "base": "https://driftcompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Galaxy Comps",
+    "slug": "galaxy-comps",
+    "base": "https://galaxycomps.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Golf Star Competitions",
+    "slug": "golf-star-competitions",
+    "base": "https://golfstarcompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Infinity Draws",
+    "slug": "infinity-draws",
+    "base": "https://infinitydraws.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Max Competitions",
+    "slug": "max-competitions",
+    "base": "https://maxcompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "MLS Fishing Competitions",
+    "slug": "mls-fishing-competitions",
+    "base": "https://mlsfishingcompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Plum Competitions",
+    "slug": "plum-competitions",
+    "base": "https://plumcompetitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Prize Pot Pigs",
+    "slug": "prizepot-pigs",
+    "base": "https://prizepotpigs.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Property Comps",
+    "slug": "property-comps",
+    "base": "https://propertycomps.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Star Draws",
+    "slug": "star-draws",
+    "base": "https://stardraws.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Trade Tool Giveaways",
+    "slug": "trade-tool-giveaways",
+    "base": "https://tradetoolgiveaways.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Universal Competitions",
+    "slug": "universal-competitions",
+    "base": "https://universal-competitions.co.uk",
+    "method": "woo"
+  },
+  {
+    "name": "Win A Bundle",
+    "slug": "win-a-bundle",
+    "base": "https://winabundle.co.uk",
+    "method": "woo"
+  }
 ]
