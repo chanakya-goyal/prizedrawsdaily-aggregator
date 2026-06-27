@@ -39,6 +39,9 @@ describe("extractEntries — review regressions (remaining-count must not be a c
     ["Hurry, only 800 entries left!", null],
     ["only 1,500 tickets remaining", null],
     ["just 300 entries to go", null],
+    ["57200 Max Tickets. 1500 Tickets Max Per Person", 57200], // total beats per-person cap
+    ["1500 tickets max per person", null], // a per-person cap is NOT the competition total
+    ["Maximum 1295 tickets per person. 12495 tickets available", 12495],
     ["only 5000 tickets", 5000],          // a genuine cap (no sold/left nearby) still works
     ["from a maximum number of 1,999,999 entries", 1999999], // "maximum number of N" phrasing
     ["maximum of 25000 tickets", 25000],
@@ -101,6 +104,7 @@ describe("inferCategory", () => {
   test("rolex still luxury", () => expect(inferCategory({ title: "Win a Rolex Submariner" })).toBe("luxury"));
   test("gift card → cash", () => expect(inferCategory({ title: "£200 Food Gift Card" })).toBe("cash-prizes"));
   test("lego stays collectibles (before car)", () => expect(inferCategory({ title: "LEGO Technic Ferrari Daytona" })).toBe("collectibles"));
+  test("Pikachu Van Gogh → collectibles, not car (the 'van' bug)", () => expect(inferCategory({ title: "ACE 10 PIKACHU VAN GOGH!" })).toBe("collectibles"));
 });
 
 describe("extractPrice", () => {

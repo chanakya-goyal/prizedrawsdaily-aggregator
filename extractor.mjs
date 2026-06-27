@@ -124,8 +124,10 @@ export async function wooOperator(op, perOp = 6) {
   const r = await fetchHtml(`${op.base}/wp-json/wc/store/v1/products?per_page=${perOp + 2}&orderby=date`, op);
   if (!r.ok) { console.log(`  woo API ${r.status} for ${op.base}`); return []; }
   let body = null; try { body = JSON.parse(r.text); } catch { /* non-JSON → no products */ }
-  const products = (Array.isArray(body) ? body : []).slice(0, perOp);
-  if (!products.length) { console.log(`  woo API returned no products`); return []; }
+  // is_purchasable===false = a FINISHED competition (you can't buy tickets) — never ingest it as a
+  // live draw. (is_in_stock stays true after a draw closes, so is_purchasable is the right flag.)
+  const products = (Array.isArray(body) ? body : []).filter((p) => p.is_purchasable !== false).slice(0, perOp);
+  if (!products.length) { console.log(`  woo API returned no purchasable products`); return []; }
   const draws = await pMap(products, FETCH_CONCURRENCY, async (p) => {
     try {
       const minor = p.prices?.currency_minor_unit ?? 2;
