@@ -214,6 +214,20 @@ describe("extractPrizeSection — 'Prize Description' panel (incl. accordion)", 
     const $ = load(`<div><h3>What you could win</h3><p>A 7-night luxury Maldives holiday for two.</p></div>`);
     expect(extractPrizeSection($)).toBe("A 7-night luxury Maldives holiday for two");
   });
+  test("tab-nav label sibling ('Rules') is rejected, not returned as the prize (bigbeastie regression)", () => {
+    const $ = load(`<div class="product-tabs"><ul>
+      <li><a>Prize Description</a></li><li><a>Rules</a></li><li><a>FAQs</a></li>
+    </ul></div>`);
+    expect(extractPrizeSection($)).toBeNull();
+  });
+});
+
+describe("extractGrandPrize — never returns section-label junk", () => {
+  test("generic title + only a 'Rules' tab label available → keep the title", () => {
+    const $ = load(`<div class="product-tabs"><ul><li><a>Prize Description</a></li><li><a>Rules</a></li></ul></div>`);
+    const r = extractGrandPrize({ title: "3 x Main Winners + Instant Wins", $, opName: "Big Beastie Competitions" });
+    expect(r).toEqual({ value: "3 x Main Winners + Instant Wins", source: "title" });
+  });
 });
 
 describe("fieldsFromHtml — grand_prize end-to-end (the reported Daydream bug)", () => {
