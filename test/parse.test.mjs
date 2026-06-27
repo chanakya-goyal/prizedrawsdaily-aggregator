@@ -262,6 +262,16 @@ describe("extractGrandPrize — never returns section-label junk", () => {
     const r = extractGrandPrize({ title: "3 x Main Winners + Instant Wins", $, opName: "Big Beastie Competitions" });
     expect(r).toEqual({ value: "3 x Main Winners + Instant Wins", source: "title" });
   });
+  test("T&C / eligibility prose in a prize panel is NOT the prize (gaming-giveaways bug)", () => {
+    const $ = load(`<div class="prize-description"><h3>Prize Description</h3><div>This competition is open to UK residents aged 18 or over.You can enter this competition up to 112,000 times.This competition will close at 11:59 pm on July 10th.</div></div>`);
+    const r = extractGrandPrize({ title: "1p Gaming Comp + Instant Wins #6", $, opName: "Gaming Giveaways" });
+    expect(r.source).toBe("title");
+    expect(r.value).toBe("1p Gaming Comp + Instant Wins #6");
+  });
+  test("jsonld T&C prose is rejected, falls through", () => {
+    const r = extractGrandPrize({ title: "Mega Daily Draw", ld: { description: "Open to UK residents aged 18 or over. Drawn live on Facebook." }, opName: "X Comps" });
+    expect(r.value).not.toMatch(/residents|aged 18/i);
+  });
 });
 
 describe("fieldsFromHtml — grand_prize end-to-end (the reported Daydream bug)", () => {
