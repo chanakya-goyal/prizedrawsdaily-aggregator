@@ -119,9 +119,10 @@ export async function wooOperator(op, perOp = 6) {
       const price = p.prices?.price != null ? Number((Number(p.prices.price) / 10 ** minor).toFixed(2)) : null;
       const img = p.images?.[0]?.src || null;
       const apiDesc = `${p.name || ""}\n${p.short_description || ""}\n${p.description || ""}`;
+      const prizeText = p.short_description || p.description || null; // cleanest grand_prize source
       let html = "";
       try { html = (await fetchHtml(p.permalink, op)).text; } catch { /* API desc still usable */ }
-      draws.push(fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc }));
+      draws.push(fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText }));
     } catch (e) { console.log(`  ! ${(p.permalink || p.name || "?").slice(-42)} parse failed: ${(e.message || "").slice(0, 50)}`); }
   }
   return draws.filter(Boolean);
@@ -140,9 +141,10 @@ export async function shopifyOperator(op, perOp = 6) {
       const price = p.variants?.[0]?.price ? Number(p.variants[0].price) : null;
       const img = p.images?.[0]?.src || null;
       const apiDesc = `${p.title || ""}\n${p.body_html || ""}`;
+      const prizeText = p.body_html || null; // cleanest grand_prize source
       let html = "";
       try { html = (await fetchHtml(url, op)).text; } catch { /* body_html still usable */ }
-      draws.push(fieldsFromHtml({ html, url, op, knownTitle: p.title, knownImage: img, knownPrice: price, descriptionText: apiDesc }));
+      draws.push(fieldsFromHtml({ html, url, op, knownTitle: p.title, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText }));
     } catch (e) { console.log(`  ! ${(p.handle || p.title || "?")} parse failed: ${(e.message || "").slice(0, 50)}`); }
   }
   return draws.filter(Boolean);

@@ -2,6 +2,7 @@ import { test, expect, describe } from "bun:test";
 import {
   extractEntries, extractDate, inferCategory, extractPrice,
   parseJsonLd, findProductLd, pickTitleImage, load, textOf, fieldsFromHtml, normalizeUkDate,
+  isGenericTitle, cleanPrizeLine, extractGrandPrize, extractPrizeSection,
 } from "../lib/parse.mjs";
 
 describe("extractEntries — veto-first, conservative", () => {
@@ -134,6 +135,113 @@ describe("fieldsFromHtml end-to-end (synthetic woo-style page)", () => {
   test("category inferred", () => expect(d.category).toBe("car-draws"));
   test("image", () => expect(d.image_url).toBe("https://cdn.test/rr.jpg"));
   test("entry_url stamped", () => expect(d.entry_url).toBe("https://op.test/product/range-rover"));
+});
+
+describe("isGenericTitle — only slogans that name no prize are generic", () => {
+  const op = "Daydream Draws";
+  const generic = [
+    ["DAYDREAM DAILY DRAW – PRIZE EVERYTIME", op],
+    ["Site Credit Madness", "Some Comps"],
+    ["Mystery Prize", "Some Comps"],
+    ["Daily Instant Win", "Some Comps"],
+    ["Spin the Wheel", "Some Comps"],
+    ["Daydream Draws", op],          // title is just the operator name
+    ["Weekly Prize Draw", "Lucky Co"],
+  ];
+  const specific = [
+    ["Win a BMW M4", "Cars Co"],
+    ["£200 Tax Free Cash", op],                                   // a £ amount is a real prize
+    ["RATTAN DINING SET", "UKCC"],                                // ordinary product, no slogan
+    ["ONLY FANS SHARK FLEX BREEZE INSTANT WIN", op],             // names a prize despite "instant win"
+    ["£50 RANDOM TICKET BUNDLE + INSTANT WINS #7", op],
+    ["WIN A £125 MUDDYNESS CHILDREN'S OUTDOOR KITCHEN", op],
+    ["Rolex DateJust 41", "Lux Co"],
+  ];
+  for (const [t, n] of generic) test(`generic: "${t}"`, () => expect(isGenericTitle(t, n)).toBe(true));
+  for (const [t, n] of specific) test(`specific: "${t}"`, () => expect(isGenericTitle(t, n)).toBe(false));
+});
+
+describe("cleanPrizeLine — first headline, boilerplate trimmed", () => {
+  test("daydream short_description → prize headline only", () =>
+    expect(cleanPrizeLine("£50 Credit End Prize + Every Entry With A Prize Instantly Guaranteed draw regardless of sales – we never rollover here! Auto Draw Competition at the time of the competition end"))
+      .toBe("£50 Credit End Prize + Every Entry With A Prize Instantly"));
+  test("trims trailing full stop", () => expect(cleanPrizeLine("A brand new iPhone 16 Pro Max.")).toBe("A brand new iPhone 16 Pro Max"));
+  test("null in → null out", () => expect(cleanPrizeLine(null)).toBeNull());
+  test("too short → null", () => expect(cleanPrizeLine("£")).toBeNull());
+  test("caps very long copy", () => expect(cleanPrizeLine("x".repeat(300)).length).toBeLessThanOrEqual(160));
+});
+
+describe("extractGrandPrize — generic title upgraded, specific title kept", () => {
+  test("generic title + API short_description → real prize (source api)", () => {
+    const r = extractGrandPrize({
+      title: "DAYDREAM DAILY DRAW – PRIZE EVERYTIME",
+      prizeText: "£50 Credit End Prize + Every Entry With A Prize Instantly Guaranteed draw regardless.",
+      opName: "Daydream Draws",
+    });
+    expect(r.value).toBe("£50 Credit End Prize + Every Entry With A Prize Instantly");
+    expect(r.source).toBe("api");
+  });
+  test("specific title is kept even when a long description exists", () => {
+    const r = extractGrandPrize({
+      title: "Win a BMW M4",
+      prizeText: "The lucky winner drives away in a brand new BMW M4 Competition worth over £85,000.",
+      opName: "Cars Co",
+    });
+    expect(r).toEqual({ value: "Win a BMW M4", source: "title" });
+  });
+  test("generic title falls back to JSON-LD description when no API text", () => {
+    const r = extractGrandPrize({ title: "Mystery Prize", ld: { description: "A brand new iPhone 16 Pro Max." }, opName: "X Comps" });
+    expect(r.value).toBe("A brand new iPhone 16 Pro Max");
+    expect(r.source).toBe("jsonld");
+  });
+  test("nothing better than a generic title → keep the title", () =>
+    expect(extractGrandPrize({ title: "Mystery Prize", opName: "X Comps" })).toEqual({ value: "Mystery Prize", source: "title" }));
+  test("a candidate that is itself a pure slogan is rejected", () => {
+    const r = extractGrandPrize({ title: "Daily Draw", prizeText: "Win every time in this prize draw!", opName: "X" });
+    expect(r).toEqual({ value: "Daily Draw", source: "title" });
+  });
+});
+
+describe("extractPrizeSection — 'Prize Description' panel (incl. accordion)", () => {
+  test("Bootstrap accordion: heading targets a collapse panel by id", () => {
+    const $ = load(`<div>
+      <h2 class="mb-0"><button data-bs-target="#p1" aria-controls="p1">Prize Description</button></h2>
+      <div id="p1"><p>£50 Credit End Prize + Every Entry With A Prize Instantly</p><p>Guaranteed draw regardless.</p></div>
+    </div>`);
+    expect(extractPrizeSection($)).toBe("£50 Credit End Prize + Every Entry With A Prize Instantly");
+  });
+  test("plain heading followed by a paragraph", () => {
+    const $ = load(`<div><h3>What you could win</h3><p>A 7-night luxury Maldives holiday for two.</p></div>`);
+    expect(extractPrizeSection($)).toBe("A 7-night luxury Maldives holiday for two");
+  });
+});
+
+describe("fieldsFromHtml — grand_prize end-to-end (the reported Daydream bug)", () => {
+  const base = "https://daydreamdraws.co.uk";
+  const html = `<html><head><meta property="og:title" content="DAYDREAM DAILY DRAW – PRIZE EVERYTIME"></head>
+    <body><h1>DAYDREAM DAILY DRAW – PRIZE EVERYTIME</h1>
+    <p>Only 500 tickets available.</p><p>Draw will take place on 28th July 2026 at 8pm.</p></body></html>`;
+  test("generic slogan title → real prize from API short_description", () => {
+    const d = fieldsFromHtml({
+      html, url: `${base}/competition/daydream-daily-draw-prize-everytime`,
+      op: { base, name: "Daydream Draws" },
+      knownTitle: "DAYDREAM DAILY DRAW – PRIZE EVERYTIME", knownImage: `${base}/x.jpg`, knownPrice: 1.99,
+      prizeText: "£50 Credit End Prize + Every Entry With A Prize Instantly Guaranteed draw regardless. Auto Draw Competition",
+    });
+    expect(d.title).toBe("DAYDREAM DAILY DRAW – PRIZE EVERYTIME"); // title unchanged
+    expect(d.grand_prize).toBe("£50 Credit End Prize + Every Entry With A Prize Instantly");
+    expect(d.grand_prize_source).toBe("api");
+  });
+  test("specific title is NOT overwritten by its rambling short_description", () => {
+    const d = fieldsFromHtml({
+      html, url: `${base}/competition/muddyness-kitchen`,
+      op: { base, name: "Daydream Draws" },
+      knownTitle: "WIN A £125 MUDDYNESS CHILDREN'S OUTDOOR KITCHEN", knownImage: `${base}/m.jpg`, knownPrice: 0.99,
+      prizeText: "DAYDREAM DRAWS LOVES LOCAL. This time we shine the spotlight on Muddyness, a fantastic local business...",
+    });
+    expect(d.grand_prize).toBe("WIN A £125 MUDDYNESS CHILDREN'S OUTDOOR KITCHEN");
+    expect(d.grand_prize_source).toBe("title");
+  });
 });
 
 describe("normalizeUkDate", () => {

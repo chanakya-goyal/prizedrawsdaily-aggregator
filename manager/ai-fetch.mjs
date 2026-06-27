@@ -7,7 +7,7 @@
 // Usage: bun manager/ai-fetch.mjs            # all aiAssist operators
 //        ONLY=dream-car-giveaways bun manager/ai-fetch.mjs
 // Env (optional): SUPABASE_SERVICE_ROLE_KEY / SUPABASE_PUBLISHABLE_KEY to skip already-known draws.
-import { load, parseJsonLd, findProductLd, pickTitleImage, extractPrice, inferCategory, textOf, compileOpRegex, decodeEntities } from "../lib/parse.mjs";
+import { load, parseJsonLd, findProductLd, pickTitleImage, extractPrice, inferCategory, textOf, compileOpRegex, decodeEntities, extractGrandPrize } from "../lib/parse.mjs";
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
 const PER_OP = Number(process.env.PER_OP || 6);
@@ -95,12 +95,15 @@ for (const op of operators) {
       grab(/closes?\b[^.]{0,45}/i), grab(/draws?\b[^.]{0,45}\d/i), grab(/\b(today|tomorrow|tonight)\b[^.]{0,30}/i),
       grab(/per ticket/i, 30), grab(/£\s?[\d.,]+/i, 5), grab(/%\s*sold[^.]{0,20}/i), grab(/tickets?\b[^.]{0,40}/i),
     ].filter(Boolean);
+    // Resolve the real prize (slogan titles → the page's prize copy); Claude QA confirms below.
+    const gp = extractGrandPrize({ $, title, ld, opName: op.name });
     out.push({
       operator_slug: op.slug,
       entry_url: url,
       title,
-      grand_prize: title,
-      category: op.category || inferCategory({ title, url }),
+      grand_prize: gp.value || title,
+      grand_prize_source: gp.source,
+      category: op.category || inferCategory({ title, grand_prize: gp.value || title, url }),
       image_url: ti.image_url,
       ticket_price: extractPrice({ ld, text }),    // a hint only — Claude should confirm from hints/page_text
       detail_entries,                              // authoritative MAX entries from Competition Details (use as total_entries)
