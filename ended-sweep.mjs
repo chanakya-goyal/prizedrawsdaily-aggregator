@@ -10,6 +10,9 @@ import { UA } from "./lib/parse.mjs";
 const URL = "https://kkuuwksgyypicnblwubs.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
+// Which statuses to scan. Default 'draft' (queue cleanup); the daily cron passes 'active,draft'
+// so a LIVE draw whose competition has since finished is auto-expired off the public site.
+const STATUS = (process.env.STATUS || "draft").split(",").map((s) => s.trim()).filter(Boolean);
 if (!DRY && !KEY) { console.error("DRY_RUN=false needs SUPABASE_SERVICE_ROLE_KEY"); process.exit(1); }
 const READ = KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
 const H = { apikey: READ, Authorization: `Bearer ${READ}` };
@@ -17,10 +20,26 @@ const FINISHED_RE = /this competition has (?:now )?finished|competition (?:has )
 
 const ops = await Bun.file("operators.json").json();
 const opBy = Object.fromEntries(ops.map((o) => [o.slug, o]));
-const draws = await (await fetch(`${URL}/rest/v1/draws?status=eq.draft&select=id,title,entry_url,draw_date,operators(slug,name)`, { headers: H })).json();
-console.log(`${DRY ? "DRY RUN" : "LIVE"} — checking ${draws.length} draft draws for ended comps\n`);
+const draws = await (await fetch(`${URL}/rest/v1/draws?status=in.(${STATUS.join(",")})&select=id,title,entry_url,draw_date,operators(slug,name)`, { headers: H })).json();
+console.log(`${DRY ? "DRY RUN" : "LIVE"} — checking ${draws.length} ${STATUS.join("+")} draws for ended comps\n`);
 
 const slugFromUrl = (u) => (u || "").replace(/[#?].*$/, "").replace(/\/+$/, "").split("/").pop() || "";
+
+// Shopify: the single-product /products/<handle>.json endpoint OMITS variant `available`, so it
+// always read as "no variant available" (false ended). The LIST endpoint /products.json DOES
+// carry `available` — load it once per operator and map handle → available.
+const shopCache = new Map();
+async function shopAvail(op) {
+  if (shopCache.has(op.slug)) return shopCache.get(op.slug);
+  const map = new Map();
+  try {
+    const j = await fetch(`${op.base}/products.json?limit=250`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) }).then((r) => r.json());
+    for (const p of (j?.products || [])) map.set(String(p.handle).toLowerCase(), (p.variants || []).some((v) => v.available));
+  } catch { /* empty map → all unknown */ }
+  shopCache.set(op.slug, map);
+  return map;
+}
+
 async function isEnded(d) {
   const op = opBy[d.operators?.slug];
   if (!op) return { ended: null, why: "operator not in config" };
@@ -35,12 +54,11 @@ async function isEnded(d) {
       return { ended: false, why: "purchasable" };
     }
     if (op.method === "shopify") {
-      const r = await fetch(`${op.base}/products/${slug}.json`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) });
-      const j = await r.json().catch(() => null);
-      const p = j?.product;
-      if (!p) return { ended: null, why: "product not found" };
-      const avail = (p.variants || []).some((v) => v.available);
-      return { ended: !avail, why: avail ? "available" : "no available variant" };
+      const map = await shopAvail(op);
+      if (!map.size) return { ended: null, why: "feed unavailable" };
+      if (!map.has(slug.toLowerCase())) return { ended: null, why: "not in product feed (unverified)" }; // conservative: never expire on absence
+      const avail = map.get(slug.toLowerCase());
+      return { ended: !avail, why: avail ? "available" : "sold out / no available variant" };
     }
     // render / other: text probe
     const html = await (await fetch(d.entry_url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) })).text();

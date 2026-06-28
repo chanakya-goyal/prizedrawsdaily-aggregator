@@ -1,8 +1,13 @@
-name: Daily draw aggregator (render feeder)
+name: Daily draw aggregator (full sweep + auto-expire)
 
-# Browser-only feeder: scrapes the `render`-method operators (Playwright + try-harder),
-# gates them, and inserts `draft` rows into Supabase. No AI / no API key. The cowork
-# (Claude) routine scrapes the JSON-API operators and does all describe/QA/publish.
+# Daily, keyless, no-AI. Two steps:
+#   1. SCRAPE every operator — render/flaresolverr (browser) AND woo/shopify (JSON API, full
+#      catalogue) — gate them, and insert NEW live comps as `draft` rows in Supabase. Dedup by
+#      entry_url means existing draws are refreshed/skipped, so this only ADDS genuinely-new comps.
+#   2. AUTO-EXPIRE — mark any ACTIVE or draft draw whose competition has finished (is_purchasable
+#      === false) as `status='ended'`, so the live site never shows a closed comp.
+# Drafts still publish via review (the cowork QA / vision routine) — this keeps the inventory
+# fresh and self-cleaning without auto-publishing unverified prizes.
 
 on:
   schedule:
@@ -16,7 +21,7 @@ concurrency:
 jobs:
   aggregate:
     runs-on: ubuntu-latest
-    timeout-minutes: 60 # FlareSolverr challenge solves are slow (10–40s each)
+    timeout-minutes: 90 # render + full woo/shopify catalogue sweep
     permissions:
       contents: read
     services:
@@ -55,15 +60,25 @@ jobs:
           done
           echo "::warning::FlareSolverr did not become ready — flaresolverr operators will fail-safe to 0 draws"
 
-      - name: Run render feeder (scrape → gate → insert drafts)
+      - name: Scrape all operators (render + woo/shopify) → gate → insert drafts
         run: bun run.mjs
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           FLARESOLVERR_URL: http://localhost:8191/v1 # Cloudflare solver for flaresolverr operators
           DRY_RUN: "false"
-          METHODS: "render" # browser + flaresolverr sites; cowork handles woo/shopify
-          PUBLISH_STATUS: "draft" # cowork publishes after describe + QA
-          PER_OP: "5"
-          BATCHES: "1" # no LLM quota → full coverage every day
-          MAX_DRAWS: "500" # backstop on pages read
+          METHODS: "render,woo,shopify" # full daily sweep across every operator
+          PUBLISH_STATUS: "draft" # land as draft; review/vision QA publishes (no unverified auto-publish)
+          PER_OP: "5" # render per-op cap (browser cost)
+          PER_OP_API: "60" # woo/shopify per-op cap (cheap JSON → whole live catalogue)
+          BATCHES: "1"
+          MAX_DRAWS: "3500" # backstop on pages read — covers all operators in one run
+
+      - name: Auto-expire finished comps (active + draft) → status='ended'
+        if: always() # run even if the scrape step partially failed, so the site stays clean
+        run: bun ended-sweep.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: "false"
+          STATUS: "active,draft" # expire LIVE comps that have finished, plus stale drafts
