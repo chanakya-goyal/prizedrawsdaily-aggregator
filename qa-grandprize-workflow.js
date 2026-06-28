@@ -6,7 +6,9 @@ export const meta = {
 
 // args = array of flagged draws: {id, op, base, method, entry_url, title, cur_grand_prize, cur_category, image_url, ticket_price}
 const draws = Array.isArray(args) ? args : []
-const SCRATCH = '/private/tmp/claude-501/-Users-chanakyagoyal/eb37f4e6-c421-4724-b469-2c194218f39a/scratchpad'
+// Session-agnostic scratch dir (the old hardcoded path was a stale session id). Each agent
+// `mkdir -p`s it before writing, so it works in any cowork/local run.
+const SCRATCH = '/tmp/pdd-vision'
 
 const SCHEMA = {
   type: 'object',
@@ -39,7 +41,7 @@ STEPS — gather ground truth from the operator's own per-competition data:
       ? `Run: curl -s "${d.base}/products/${slug}.json" — read product.body_html (the prize copy) and whether a variant is available.`
       : `Run: curl -s "${d.base}/wp-json/wc/store/v1/products?slug=${slug}" — read the product .description (the "About this competition" copy) and .is_purchasable.`}
 2. Download and LOOK AT the draw image (the headline prize is usually printed on it):
-   curl -sL "${d.image_url}" -o ${SCRATCH}/img-${d.id}.jpg   then Read that file.
+   mkdir -p ${SCRATCH} && curl -sL "${d.image_url}" -o ${SCRATCH}/img-${d.id}.jpg   then Read that file.
 3. If still unclear, WebFetch ${d.entry_url} for the on-page prize text.
 
 DECIDE the grand_prize = the single real MAIN/headline prize a winner receives:

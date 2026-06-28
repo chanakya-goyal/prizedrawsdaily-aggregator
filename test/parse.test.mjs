@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import {
-  extractEntries, extractDate, inferCategory, extractPrice,
+  extractEntries, extractDate, inferCategory, extractPrice, mapOperatorCategory,
   parseJsonLd, findProductLd, pickTitleImage, load, textOf, fieldsFromHtml, normalizeUkDate,
   isGenericTitle, cleanPrizeLine, extractGrandPrize, extractPrizeSection,
 } from "../lib/parse.mjs";
@@ -313,4 +313,130 @@ describe("normalizeUkDate", () => {
 
 describe("textOf strips markup", () => {
   test("removes scripts/tags", () => expect(textOf("<script>x</script><p>Hello&nbsp;world</p>")).toBe("Hello world"));
+});
+
+// ---- reported-bug regressions (2026-06-28): entries, category, grand_prize on real draws ----
+
+describe("extractEntries — strict mode returns ONLY a labelled cap", () => {
+  test("labelled max survives strict", () => expect(extractEntries("max 5000 entries", null, { strict: true })).toBe(5000));
+  test("WooLottery 'Total Entries: N' survives strict", () => expect(extractEntries("Total Entries: 5000", null, { strict: true })).toBe(5000));
+  test("progress bar is dropped in strict (no neighbour-comp leak)", () => expect(extractEntries("3200 / 15000 sold", null, { strict: true })).toBeNull());
+  test("bare 'N tickets' is dropped in strict", () => expect(extractEntries("14,993 Tickets", null, { strict: true })).toBeNull());
+  test("operator override still wins in strict", () => expect(extractEntries("there are 4321 spots", { entries: "(\\d+) spots" }, { strict: true })).toBe(4321));
+});
+
+describe("extractEntries — Podium 'MAX N ENTRIES' trap (real total is the progress-bar TOTAL)", () => {
+  // The banner says "MAX 15000 ENTRIES" but the live bar says "SOLD: 536 TOTAL: 66000" — 66000 is
+  // the real cap. The operator pattern must beat the misleading tier-1 "MAX N ENTRIES".
+  const podiumPat = { entries: "TOTAL:\\s*([\\d,]{3,})" };
+  test("op pattern reads the bar TOTAL, not MAX", () =>
+    expect(extractEntries("MAX 15000 ENTRIES SOLD: 536 TOTAL: 66000", podiumPat)).toBe(66000));
+  test("second Podium draw (30000)", () =>
+    expect(extractEntries("MAX 7500 ENTRIES SOLD: 284 TOTAL: 30000", podiumPat)).toBe(30000));
+});
+
+describe("mapOperatorCategory — operator's own taxonomy wins", () => {
+  test("Warhammer woo category → collectibles", () => expect(mapOperatorCategory(["Auto Draw", "Warhammer"])).toBe("collectibles"));
+  test("Trading Cards → collectibles", () => expect(mapOperatorCategory(["Trading Cards"])).toBe("collectibles"));
+  test("Lego → collectibles", () => expect(mapOperatorCategory(["Lego"])).toBe("collectibles"));
+  test("Tech → tech-giveaways", () => expect(mapOperatorCategory(["Tech"])).toBe("tech-giveaways"));
+  test("generic labels map to nothing (fall back to keyword guess)", () => {
+    expect(mapOperatorCategory(["Auto Draw"])).toBeNull();
+    expect(mapOperatorCategory(["Live Draws", "Competitions"])).toBeNull();
+    expect(mapOperatorCategory([])).toBeNull();
+    expect(mapOperatorCategory(undefined)).toBeNull();
+  });
+});
+
+describe("inferCategory — Warhammer factions (no literal 'warhammer' in the title)", () => {
+  test("Astra Militarum → collectibles", () => expect(inferCategory({ title: "Astra Militarum: Bundle #6" })).toBe("collectibles"));
+  test("Tyranids battleforce → collectibles", () => expect(inferCategory({ title: "Tyranids: Battleforce" })).toBe("collectibles"));
+  test("Horus Heresy → collectibles", () => expect(inferCategory({ title: "The Horus Heresy: Bundle #9" })).toBe("collectibles"));
+  test("Disney Lorcana → collectibles", () => expect(inferCategory({ title: "Disney Lorcana: Wilds Bundle #2" })).toBe("collectibles"));
+  // "40k" must NOT be a collectibles keyword — it collides with "£40k" cash prizes.
+  test("£40k cash is cash, not collectibles", () => expect(inferCategory({ title: "Win £40k Tax Free Cash" })).toBe("cash-prizes"));
+  test("£40,000 cash stays cash", () => expect(inferCategory({ title: "£40,000", grand_prize: "£40,000 cash" })).toBe("cash-prizes"));
+});
+
+describe("fieldsFromHtml — operator category only overrides a title signal when specific", () => {
+  const mk = (title, apiCategories) => fieldsFromHtml({
+    html: `<html><body><h1>${title}</h1></body></html>`, url: "https://op.test/competition/x",
+    op: { base: "https://op.test", name: "Op" }, knownTitle: title, knownImage: "https://cdn.test/x.jpg",
+    descriptionText: title, apiCategories, apiStock: 5000,
+  });
+  test("a car draw tagged only the generic 'Instant Wins' bucket stays a car draw", () =>
+    expect(mk("Win a BMW M4 Competition", ["Instant Wins"]).category).toBe("car-draws"));
+  test("a specific operator category (Warhammer) still wins over a non-matching title", () =>
+    expect(mk("Bundle #6", ["Auto Draw", "Warhammer"]).category).toBe("collectibles"));
+  test("generic cash title + generic cash bucket → cash", () =>
+    expect(mk("Mystery Instant Win", ["Instant Wins"]).category).toBe("cash-prizes"));
+});
+
+describe("extractGrandPrize — reject operator lifetime/marketing stats", () => {
+  test("'given away over £500,000 in prizes' is NOT this draw's prize", () => {
+    const r = extractGrandPrize({
+      title: "Every Ticket Wins!",
+      prizeText: "Become our next big winner - we have given away over £500,000 in prizes!",
+      opName: "Podium Prize",
+    });
+    expect(r.source).toBe("title");
+    expect(r.value).toBe("Every Ticket Wins!");
+  });
+  test("og 'over £250,000 paid out' rejected too", () => {
+    const $ = load(`<html><head><meta property="og:description" content="We have paid out over £250,000 to lucky winners!"></head><body></body></html>`);
+    const r = extractGrandPrize({ title: "Mega Draw", $, opName: "X Comps" });
+    expect(r.value).not.toMatch(/£250,000|paid out/i);
+  });
+});
+
+describe("fieldsFromHtml — woo with API stock + categories (BigBeastie / You Could Win bugs)", () => {
+  const op = { base: "https://youcouldwin.co.uk", name: "You Could Win" };
+  test("no labelled cap on page → API stock count is the entries; Woo category sets collectibles", () => {
+    const html = `<html><body><h1>Astra Militarum: Bundle #6</h1>
+      <p>Bundle Includes: Battleforce Astra Militarum Platoon, Ciaphas Cain, Centaur RSV, Hippogriff AFV.</p></body></html>`;
+    const d = fieldsFromHtml({
+      html, url: "https://youcouldwin.co.uk/competition/astra-militarum-bundle-6",
+      op, knownTitle: "Astra Militarum: Bundle #6", knownImage: "https://cdn.test/a.jpg", knownPrice: 5.6,
+      descriptionText: "Astra Militarum: Bundle #6\nBundle Includes: Battleforce Astra Militarum Platoon, Ciaphas Cain, Centaur RSV, Hippogriff AFV.",
+      apiCategories: ["Auto Draw", "Warhammer"], apiStock: 99,
+    });
+    expect(d.total_entries).toBe(99);
+    expect(d.category).toBe("collectibles");
+  });
+  test("a clean labelled cap in the API description beats the API stock count", () => {
+    const html = `<html><body><h1>Win £10,000 Cash</h1></body></html>`;
+    const d = fieldsFromHtml({
+      html, url: "https://bigbeastiecompetitions.co.uk/competition/win-10k",
+      op: { base: "https://bigbeastiecompetitions.co.uk", name: "Bigbeastie Competitions" },
+      knownTitle: "Win £10,000 Cash", knownImage: "https://cdn.test/c.jpg", knownPrice: 0.01,
+      descriptionText: "Win £10,000 Cash. Total Entries: 5000.",
+      apiCategories: ["Cash"], apiStock: 4000,
+    });
+    expect(d.total_entries).toBe(5000); // labelled cap, not the 4000 remaining-stock
+  });
+  test("the neighbour-comp leak is gone: a bare page count never overrides the API stock", () => {
+    // page text carries OTHER comps' bare counts ("14,993 Tickets", "199,952 in stock") but THIS
+    // comp's cap is the API stock — the noisy whole-page grab must not win.
+    const html = `<html><body><h1>£222 End Prize + Instant Wins</h1>
+      <aside>Another £10k End Prize 199,952 Tickets · £40,000 14,993 Tickets · Only 70 Tickets</aside></body></html>`;
+    const d = fieldsFromHtml({
+      html, url: "https://bigbeastiecompetitions.co.uk/competition/222-end-prize",
+      op: { base: "https://bigbeastiecompetitions.co.uk", name: "Bigbeastie Competitions" },
+      knownTitle: "£222 End Prize + Instant Wins", knownImage: "https://cdn.test/d.jpg", knownPrice: 0.01,
+      descriptionText: "£222 End Prize + Instant Wins. Instant wins throughout!",
+      apiCategories: ["Live Draws"], apiStock: 2385,
+    });
+    expect(d.total_entries).toBe(2385); // its own stock, not a neighbour's 199,952 / 14,993
+  });
+});
+
+describe("fieldsFromHtml — Podium render path uses the operator entries pattern", () => {
+  test("reads TOTAL: 66000 from the bar, not MAX 15000 ENTRIES", () => {
+    const op = { base: "https://podiumprize.co.uk", name: "Podium Prize", patterns: { entries: "TOTAL:\\s*([\\d,]{3,})" } };
+    const html = `<html><body><h1>Wild West Bingo!</h1>
+      <p>MAX 15000 ENTRIES · VERIFIED DRAW</p><p>SOLD: 536 TOTAL: 66000</p>
+      <p>Draw will take place on 19th July 2026 at 8pm.</p></body></html>`;
+    const d = fieldsFromHtml({ html, url: "https://podiumprize.co.uk/competitions/wild-west-bingo", op, knownImage: "https://cdn.test/w.jpg" });
+    expect(d.total_entries).toBe(66000);
+  });
 });

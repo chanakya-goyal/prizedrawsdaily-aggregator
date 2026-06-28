@@ -27,7 +27,7 @@ const clean = (h) => (h || "").replace(/<[^>]+>/g, " ").replace(/&#8211;|&#8217;
 const CAT = [
   // collectibles: only UNAMBIGUOUS tokens — "booster" alone matches "odds booster", "ace 10"
   // alone matches non-card titles, so require the card-specific forms.
-  ["collectibles", /\b(lego|warhammer|pok[eé]mon|pikachu|charizard|tcg|trading cards?|graded card|psa ?10|gem ?mint|booster box|booster pack|elite trainer box|funko|first edition|sealed (?:box|case|booster))\b/i],
+  ["collectibles", /\b(lego|warhammer|age of sigmar|sigmar|astra militarum|space marines?|necrons?|tyranids?|horus heresy|kill team|games workshop|citadel|lorcana|magic the gathering|\bmtg\b|yu-?gi-?oh|pok[eé]mon|pikachu|charizard|tcg|trading cards?|graded card|psa ?10|gem ?mint|booster box|booster pack|elite trainer box|funko|first edition|sealed (?:box|case|booster))\b/i],
   ["house-draws", /\b(house|home(?! ?bargains)|flat|apartment|bungalow|property|villa|mortgage|lodge|cabin|caravan)\b/i],
   ["car-draws", /\b(car|bmw|audi|mercedes|merc|amg|porsche|ford|focus|fiesta|fiat|volkswagen|vw|golf gti|polo|gtr|tesla|ferrari|lamborghini|lambo|range ?rover|land ?rover|defender|nissan|toyota|supra|honda civic|jaguar|bentley|aston ?martin|mclaren|maserati|vauxhall|corsa|astra|peugeot|renault|kia|hyundai|mazda|seat|skoda|suzuki|volvo|citroen|dacia|mini cooper|supercar|hypercar|motorbike|motorcycle|campervan|transit van)\b/i],
   ["tech-giveaways", /\b(iphone|ipad|macbook|imac|apple ?watch|laptop|ps5|ps4|playstation|xbox|nintendo|console|oled|qled|gpu|rtx|gaming pc|airpods|samsung galaxy|pixel|smartphone|tablet|drone|dyson|vacuum|air ?fryer|ninja|shark|nespresso|fridge|freezer|washing machine|dishwasher|soundbar|headphones|earbuds|monitor|smartwatch|garmin|gopro|projector|robot vacuum|alexa|echo|meta quest|vr headset|tool|drill|toolkit)\b/i],
@@ -49,7 +49,9 @@ function realEntries(pageText, apiRemaining) {
   // labelled total, explicitly NOT per-person
   const lab = pageText.match(/([\d,]{3,})\s*(?:max(?:imum)?\.?\s*(?:tickets?|entries?)|total\s*(?:tickets?|entries?|shots?))(?!\s*per)/i);
   if (lab) { const n = +lab[1].replace(/,/g, ""); const near = pageText.slice(Math.max(0, lab.index - 12), lab.index + lab[0].length + 14); if (!/per\s*person|per\s*entry/i.test(near)) return { value: n, how: `labelled ${lab[0].trim()}` }; }
-  if (apiRemaining != null && bars.length === 0) return { value: null, how: "no bar" };
+  // No bar / labelled cap on the static page (the live total is JS-rendered) → the WooCommerce
+  // stock count is tickets REMAINING, which ≈ the cap on a freshly-listed comp. Best static signal.
+  if (apiRemaining != null && apiRemaining >= 10) return { value: apiRemaining, how: `api stock ${apiRemaining} remaining (≈ cap)` };
   return { value: null, how: "unresolved" };
 }
 
@@ -105,7 +107,11 @@ for (const d of draws) {
 
   // grand_prize: too much judgment for regex (instant "up to £X" vs fixed "£Y main prize",
   // prize printed only on the image) — hand EVERY name-as-prize draw to the LLM/vision routine.
-  const curIsName = (d.grand_prize || "").trim() === (d.title || "").trim() || !/£\d|\bcash\b/i.test(d.grand_prize || "");
+  // Also flag operator marketing boasts ("given away over £500,000 in prizes") that carry a £
+  // figure but aren't this draw's prize, so they don't escape the curIsName filter.
+  const gpStr = (d.grand_prize || "");
+  const marketingStat = /given\s+away|in\s+prizes\s+won|over\s+£[\d,]+\s+in\s+prizes|next\s+big\s+winner/i.test(gpStr);
+  const curIsName = gpStr.trim() === (d.title || "").trim() || !/£\d|\bcash\b/i.test(gpStr) || marketingStat;
   if (curIsName) flags.push({ id: d.id, op: d.operators?.slug, base: op.base, method: op.method, entry_url: d.entry_url, title: d.title, cur_grand_prize: d.grand_prize, cur_category: d.categories?.slug, image_url: d.image_url });
 
   // category — conservative: only assign a SPECIFIC category (never auto-downgrade to the

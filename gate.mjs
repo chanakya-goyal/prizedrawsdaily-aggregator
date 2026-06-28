@@ -57,7 +57,12 @@ export function schemaGate(draw) {
 export function businessGate(draw, now = new Date()) {
   const reasons = [];
   const windowEnd = new Date(now.getTime() + WINDOW_DAYS * 864e5);
-  const collectible = /pok[eé]mon|\bpsa\b|\bcard\b|holo|gem ?mint|ace ?10|\btcg\b|graded|\bslab\b|funko/i.test(`${draw.title} ${draw.grand_prize}`);
+  // Honour an already-assigned 'collectibles' category (e.g. set from the operator's own Woo
+  // "Warhammer" category) — its keyword list can't name every faction ("Chaos Battleforce",
+  // "Hedonites of Slaanesh"), so the taxonomy is the stronger signal. Fall back to keywords for
+  // render/keyword-categorised draws.
+  const collectible = draw.category === "collectibles"
+    || /pok[eé]mon|\bpsa\b|\bcard\b|holo|gem ?mint|ace ?10|\btcg\b|graded|\bslab\b|funko|lego|warhammer|age of sigmar|sigmar|astra militarum|space marines?|necrons?|tyranids?|horus heresy|kill team|games workshop|citadel|lorcana|magic the gathering|\bmtg\b|yu-?gi-?oh|model kit/i.test(`${draw.title} ${draw.grand_prize}`);
   const minEntries = collectible ? 50 : 500;
   if (!(draw.ticket_price > 0)) reasons.push("no/zero ticket price");
   if (!(draw.total_entries > 0)) reasons.push("no total entries");

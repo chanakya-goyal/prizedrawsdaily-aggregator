@@ -167,7 +167,8 @@
     "name": "Podium Prize",
     "slug": "podium-prize",
     "base": "https://podiumprize.co.uk",
-    "method": "render"
+    "method": "render",
+    "patterns": { "entries": "TOTAL:\\s*([\\d,]{3,})" }
   },
   {
     "name": "Pristine Competitions Ltd",

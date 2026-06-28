@@ -135,9 +135,15 @@ export async function wooOperator(op, perOp = 6) {
       const img = p.images?.[0]?.src || null;
       const apiDesc = `${p.name || ""}\n${p.short_description || ""}\n${p.description || ""}`;
       const prizeText = p.short_description || p.description || null; // cleanest grand_prize source
+      // The operator's own product categories (e.g. ["Auto Draw","Warhammer"]) and stock count
+      // ("97 in stock" = tickets remaining ≈ the cap on a freshly-listed comp) are the reliable
+      // per-product signals the JS-rendered page hides. Pass them straight to the parser.
+      const apiCategories = Array.isArray(p.categories) ? p.categories.map((c) => c.name).filter(Boolean) : [];
+      const sm = String(p.stock_availability?.text || "").match(/([\d,]+)\s*in\s*stock/i);
+      const apiStock = sm ? Number(sm[1].replace(/,/g, "")) : null;
       let html = "";
       try { html = (await fetchHtml(p.permalink, op)).text; } catch { /* API desc still usable */ }
-      return fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText });
+      return fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText, apiCategories, apiStock });
     } catch (e) { console.log(`  ! ${(p.permalink || p.name || "?").slice(-42)} parse failed: ${(e.message || "").slice(0, 50)}`); return null; }
   });
   return draws.filter(Boolean);
@@ -156,9 +162,11 @@ export async function shopifyOperator(op, perOp = 6) {
       const img = p.images?.[0]?.src || null;
       const apiDesc = `${p.title || ""}\n${p.body_html || ""}`;
       const prizeText = p.body_html || null; // cleanest grand_prize source
+      // Shopify product_type + tags are the operator's taxonomy (no reliable inventory count here).
+      const apiCategories = [p.product_type, ...(Array.isArray(p.tags) ? p.tags : [])].filter(Boolean);
       let html = "";
       try { html = (await fetchHtml(url, op)).text; } catch { /* body_html still usable */ }
-      return fieldsFromHtml({ html, url, op, knownTitle: p.title, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText });
+      return fieldsFromHtml({ html, url, op, knownTitle: p.title, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText, apiCategories });
     } catch (e) { console.log(`  ! ${(p.handle || p.title || "?")} parse failed: ${(e.message || "").slice(0, 50)}`); return null; }
   });
   return draws.filter(Boolean);
