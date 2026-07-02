@@ -509,6 +509,7 @@
     "slug": "make-me-a-winner",
     "base": "https://makemeawinner.co.uk",
     "method": "render",
+    "drawMatch": "/(campaign|bundle)/[a-z0-9]{3,}",
     "wait": 6000
   },
   {
@@ -554,7 +555,7 @@
     "slug": "the-birthday-draw",
     "base": "https://thebirthdaydraw.com",
     "method": "render",
-    "wait": 6000
+    "enabled": false
   },
   {
     "name": "Carp Fishing Draws & Giveaways",
@@ -595,6 +596,7 @@
     "base": "https://omaze.co.uk",
     "method": "render",
     "drawMatch": "/products/[a-z0-9][a-z0-9-]+/?$",
-    "aiAssist": true
+    "aiAssist": true,
+    "enabled": false
   }
 ]
