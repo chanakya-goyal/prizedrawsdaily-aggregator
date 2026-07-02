@@ -24,9 +24,11 @@ export async function fetchEndingSoon(days = 7, minDays = 0) {
 
 // Score each category: needs enough draws to fill the carousel, weighted by visual fit,
 // tiebroken by total prize value. Requires >=3 draws unless nothing else qualifies.
-export function pickBestCategory(draws, n = 5, onlySlug = null) {
+export function pickBestCategory(draws, n = 5, onlySlug = null, opts = {}) {
+  const { excludeSlugs = new Set(), avoidCategory = null } = opts;
   const by = {};
   for (const d of draws) {
+    if (excludeSlugs.has(d.slug)) continue;
     const s = d.categories?.slug || "other";
     if (onlySlug && s !== onlySlug) continue;
     (by[s] ||= []).push(d);
@@ -36,7 +38,8 @@ export function pickBestCategory(draws, n = 5, onlySlug = null) {
     const w = catCfg(slug).visualWeight;
     const value = list.reduce((a, d) => a + (Number(d.total_prize_value) || 0), 0);
     const enough = list.length >= Math.min(3, n) ? 1 : 0;
-    const score = enough * 1e12 + w * Math.min(list.length, n) * 1e9 + value;
+    let score = enough * 1e12 + w * Math.min(list.length, n) * 1e9 + value;
+    if (slug === avoidCategory) score *= 0.5; // soft penalty: rotate categories, don't ban
     if (!best || score > best.score) best = { slug, score, list };
   }
   if (!best) return null;

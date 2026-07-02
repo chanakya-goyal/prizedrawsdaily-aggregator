@@ -3,8 +3,9 @@
 // Run: bun run carousel/plan.mjs   (optional: ONLY_CATEGORY=luxury)
 import { fetchEndingSoon, pickBestCategory } from "./select.mjs";
 import { priceLabel, closesLabel, catLabel } from "./format.mjs";
-import { mkdir, writeFile, rm } from "node:fs/promises";
-import { workDir } from "./config.mjs";
+import { mkdir, writeFile, rm, readdir, rename } from "node:fs/promises";
+import { workDir, GLOBAL, catCfg } from "./config.mjs";
+import { recentDrawSlugs, lastCategory, todayLondon } from "./state.mjs";
 
 const N = Number(process.env.SLIDES || 5);
 const onlySlug = process.env.ONLY_CATEGORY || null;
@@ -13,12 +14,31 @@ const MIN_DAYS = Number(process.env.MIN_DAYS || 1); // runway floor — skip dra
 const DIR = workDir();
 const proxied = (u, w = 900) => `https://images.weserv.nl/?url=${encodeURIComponent(u)}&w=${w}&output=jpg&we`;
 
-const draws = await fetchEndingSoon(DAYS, MIN_DAYS);
-const pick = pickBestCategory(draws, N, onlySlug);
-if (!pick) { console.log("No draws closing within 7 days" + (onlySlug ? ` in ${onlySlug}` : "")); process.exit(0); }
+// Archive the previous run instead of destroying it (spec §4.2); prune >archiveDays.
+const ARCHIVE = `${DIR}/archive`;
+await mkdir(ARCHIVE, { recursive: true });
+try {
+  const prev = (await readdir(DIR)).filter((f) => f !== "archive");
+  if (prev.length) {
+    const stamp = `${ARCHIVE}/${todayLondon()}-${Date.now() % 86400000}`;
+    await mkdir(stamp, { recursive: true });
+    for (const f of prev) await rename(`${DIR}/${f}`, `${stamp}/${f}`);
+  }
+  const cutoff = Date.now() - (GLOBAL.archiveDays || 14) * 86400000;
+  for (const dir of await readdir(ARCHIVE)) {
+    const iso = dir.slice(0, 10);
+    if (new Date(iso + "T00:00:00Z").getTime() < cutoff) await rm(`${ARCHIVE}/${dir}`, { recursive: true, force: true });
+  }
+} catch (e) { console.error("archive step:", e.message); }
 
-await rm(DIR, { recursive: true, force: true });
-await mkdir(DIR, { recursive: true });
+// History-aware selection (state may be unreachable → degrade gracefully, loudly).
+let excludeSlugs = new Set(), avoid = null;
+try { excludeSlugs = new Set(await recentDrawSlugs(7)); avoid = await lastCategory(); }
+catch (e) { console.error("⚠ history unavailable (selection not history-aware):", e.message); }
+
+const draws = await fetchEndingSoon(DAYS, MIN_DAYS);
+const pick = pickBestCategory(draws, N, onlySlug, { excludeSlugs, avoidCategory: avoid });
+if (!pick) { console.log("No draws closing within 7 days" + (onlySlug ? ` in ${onlySlug}` : "")); process.exit(0); }
 
 const lines = [
   `PrizeDrawsDaily — carousel shot list (${new Date().toLocaleDateString("en-GB", { timeZone: "Europe/London" })})`,
@@ -47,7 +67,13 @@ for (let i = 0; i < pick.draws.length; i++) {
 await writeFile(`${DIR}/SHOTLIST.txt`, lines.join("\n"));
 // backups = next few draws in the same category, so a draw with blocked/branded images can be swapped
 const backups = (pick.pool || []).slice(pick.draws.length, pick.draws.length + 3);
-await writeFile(`${DIR}/selection.json`, JSON.stringify({ slug: pick.slug, name: pick.name, date: new Date().toISOString(), draws: pick.draws, backups }, null, 2));
+const dayOfYear = Math.floor((Date.now() - Date.parse(new Date().getFullYear() + "-01-01")) / 86400000);
+const archetype = GLOBAL.archetypes[dayOfYear % GLOBAL.archetypes.length];
+await writeFile(`${DIR}/selection.json`, JSON.stringify({
+  slug: pick.slug, name: pick.name, date: new Date().toISOString(),
+  seoKeyword: catCfg(pick.slug).seoKeyword, archetype,
+  draws: pick.draws, backups,
+}, null, 2));
 
 console.log(lines.join("\n"));
 console.log(`Folder ready → ${DIR}  (reference thumbnails REF-*.jpg written; selection.json saved)`);
