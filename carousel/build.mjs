@@ -8,6 +8,7 @@ import { buildCaption } from "./caption.mjs";
 import { toDrawSlide, catLabel, hookLabel, priceLabel } from "./format.mjs";
 import { readdir, mkdir } from "node:fs/promises";
 import { workDir, themeOf, catCfg } from "./config.mjs";
+import { valueLine, altTexts } from "./honesty.mjs";
 
 const DIR = workDir();
 const sel = JSON.parse(await Bun.file(`${DIR}/selection.json`).text());
@@ -126,9 +127,7 @@ const from = prices.length ? `FROM JUST ${priceLabel(Math.min(...prices))} A TIC
 const fromAmount = prices.length ? priceLabel(Math.min(...prices)) : "";
 // total prize value → supporting hook, rounded DOWN to nearest £1,000 so we never overstate
 const totalValue = sel.draws.reduce((a, d) => a + (Number(d.total_prize_value) || 0), 0);
-const value = totalValue >= 1000
-  ? `£${(Math.floor(totalValue / 1000) * 1000).toLocaleString("en-GB")}+`
-  : "";
+const value = valueLine(totalValue, sel.slug);
 const introImgs = sel.draws.map((d) => heroOf(d.slug) || null);
 const intro = {
   type: "intro",
@@ -154,6 +153,7 @@ const outDir = `${DIR}/out`;
 await mkdir(outDir, { recursive: true });
 const slideName = (i) => i === 0 ? "intro" : i === slides.length - 1 ? "cta" : sel.draws[i - 1].slug.slice(0, 40);
 for (let i = 0; i < pngs.length; i++) await Bun.write(`${outDir}/${String(i + 1).padStart(2, "0")}-${slideName(i)}.png`, pngs[i]);
+await Bun.write(`${outDir}/alt.json`, JSON.stringify(altTexts(sel, drawSlides), null, 2));
 
 const caption = buildCaption(sel.name, sel.slug, drawSlides.map((s) => ({ title: s.title, price: s.price })));
 await Bun.write(`${outDir}/CAPTION.txt`, caption);
