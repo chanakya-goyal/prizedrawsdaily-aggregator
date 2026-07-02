@@ -41,7 +41,8 @@
     "name": "Carpatic Giveaways",
     "slug": "carpatic-giveaways",
     "base": "https://carpaticgiveaways.com",
-    "method": "woo"
+    "method": "render",
+    "fetcher": "flaresolverr"
   },
   {
     "name": "Collie Competitions",

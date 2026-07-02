@@ -41,6 +41,17 @@ async function sbGet(path) {
   if (!r.ok) throw new Error(`GET ${path} → ${r.status} ${await r.text()}`);
   return r.json();
 }
+// PostgREST silently caps any select at 1000 rows — page through or the dedupe maps go blind
+// past 1000 draws (slug collisions → 409 → the whole insert stage dies).
+async function sbGetAll(path, pageSize = 1000) {
+  const sep = path.includes("?") ? "&" : "?";
+  const rows = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await sbGet(`${path}${sep}limit=${pageSize}&offset=${offset}`);
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+}
 async function sbInsert(rows) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/draws`, {
     method: "POST",
@@ -76,7 +87,7 @@ const cats = await sbGet("categories?select=id,slug");
 const catMap = Object.fromEntries(cats.map((c) => [c.slug, c.id]));
 const dbOps = await sbGet("operators?select=id,slug");
 const opMap = Object.fromEntries(dbOps.map((o) => [o.slug, o.id]));
-const existing = await sbGet("draws?select=id,entry_url,slug,status");
+const existing = await sbGetAll("draws?select=id,entry_url,slug,status");
 const byUrl = new Map(existing.filter((d) => d.entry_url).map((d) => [d.entry_url, d]));
 const takenSlugs = new Set(existing.map((d) => d.slug));
 console.log(`loaded ${cats.length} cats, ${dbOps.length} operators, ${existing.length} existing draws\n`);
@@ -166,15 +177,24 @@ if (DRY_RUN) {
   }
   console.log(`🖼  re-hosted ${rehosted} image(s) to Storage${missed ? `, ${missed} kept origin (unreachable)` : ""}`);
 
-  let inserted = 0;
+  let inserted = 0, insertSkipped = 0;
   for (let i = 0; i < toInsert.length; i += 50) {
-    const res = await sbInsert(toInsert.slice(i, i + 50).map((x) => x.row));
-    inserted += res.length;
+    const batch = toInsert.slice(i, i + 50).map((x) => x.row);
+    try {
+      inserted += (await sbInsert(batch)).length;
+    } catch (e) {
+      // A single bad row (e.g. a duplicate slug/entry_url race with another run) must not
+      // sink the whole batch — retry row by row and skip only the offender.
+      for (const row of batch) {
+        try { inserted += (await sbInsert([row])).length; }
+        catch (e2) { insertSkipped++; console.log(`  ⏭ insert skipped ${row.slug}: ${(e2.message || "").slice(0, 70)}`); }
+      }
+    }
   }
   let updated = 0;
   for (const u of toUpdate) { try { await sbUpdate(u.id, u.row); updated++; } catch (e) { console.log(`  ! update failed: ${(e.message || "").slice(0, 70)}`); } }
   const live = toInsert.filter((x) => x.row.status === "active").length;
-  console.log(`✅ inserted ${inserted} (${live} live, ${inserted - live} draft) · refreshed ${updated} drafts`);
+  console.log(`✅ inserted ${inserted} (${live} live, ${inserted - live} draft) · refreshed ${updated} drafts${insertSkipped ? ` · ⏭ ${insertSkipped} skipped (duplicate/conflict)` : ""}`);
 }
 
 await writeStepSummary(buildHealthReport({ counts, expected: expectedSlugs }));
