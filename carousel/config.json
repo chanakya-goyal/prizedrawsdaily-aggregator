@@ -18,37 +18,37 @@
       "name": "Car Draws", "visualWeight": 1.0, "theme": "default",
       "seoKeyword": "UK car competitions", "hashtags": ["#ukraffle", "#cargiveaway"],
       "hook": "WIN A DREAM CAR", "particles": { "type": "embers", "count": 46 },
-      "valueLineMin": 20000
+      "valueLineMin": 20000, "audioMood": "driving"
     },
     "cash-prizes": {
       "name": "Cash Prizes", "visualWeight": 0.4, "theme": "cash",
       "seoKeyword": "UK cash competitions", "hashtags": ["#cashgiveaway", "#ukcomps"],
       "hook": "WIN TAX-FREE CASH", "particles": { "type": "embers", "count": 30 },
-      "valueLineMin": 5000
+      "valueLineMin": 5000, "audioMood": "win"
     },
     "house-draws": {
       "name": "House Draws", "visualWeight": 0.8, "theme": "house",
       "seoKeyword": "UK house competitions", "hashtags": ["#dreamhome", "#housedraw"],
       "hook": "WIN A DREAM HOME", "particles": { "type": "fireflies", "count": 34 },
-      "valueLineMin": 50000
+      "valueLineMin": 50000, "audioMood": "warm"
     },
     "tech-giveaways": {
       "name": "Tech Giveaways", "visualWeight": 0.92, "theme": "tech",
       "seoKeyword": "UK tech giveaways", "hashtags": ["#techgiveaway", "#ukcomps"],
       "hook": "WIN THE LATEST TECH", "particles": { "type": "embers", "count": 40 },
-      "valueLineMin": 3000
+      "valueLineMin": 3000, "audioMood": "synth"
     },
     "luxury": {
       "name": "Luxury", "visualWeight": 1.0, "theme": "luxury",
       "seoKeyword": "UK luxury watch competitions", "hashtags": ["#luxury", "#ukraffle"],
       "hook": "WIN LUXURY", "particles": { "type": "golddust", "count": 26 },
-      "valueLineMin": 10000
+      "valueLineMin": 10000, "audioMood": "elegant"
     },
     "collectibles": {
       "name": "Collectibles", "visualWeight": 0.85, "theme": "collect",
       "seoKeyword": "UK Pokemon and LEGO competitions", "hashtags": ["#collectibles", "#ukraffle"],
       "hook": "WIN RARE FINDS", "particles": { "type": "holo", "count": 30 },
-      "valueLineMin": 8000
+      "valueLineMin": 8000, "audioMood": "pop"
     }
   }
 }

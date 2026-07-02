@@ -11,6 +11,7 @@ test("all six categories present with full identity", () => {
     expect(c.hook).toMatch(/^WIN /);
     expect(["embers", "golddust", "fireflies", "holo", "none"]).toContain(c.particles.type);
     expect(c.valueLineMin).toBeGreaterThan(0);
+    expect(["driving", "synth", "elegant", "win", "warm", "pop"]).toContain(c.audioMood);
   }
 });
 
