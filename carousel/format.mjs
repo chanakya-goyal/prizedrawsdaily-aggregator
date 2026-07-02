@@ -38,9 +38,10 @@ export function cashAlt(...texts) {
   return null;
 }
 
-export function closesLabel(iso) {
-  const d = new Date(iso), now = new Date();
-  const day = (x) => x.toLocaleDateString("en-GB", { timeZone: LDN, year: "numeric", month: "2-digit", day: "2-digit" });
+export function closesLabel(iso, now = new Date()) {
+  const d = new Date(iso);
+  // en-CA gives YYYY-MM-DD — the only toLocaleDateString format new Date() parses reliably.
+  const day = (x) => x.toLocaleDateString("en-CA", { timeZone: LDN });
   const diff = Math.round((new Date(day(d)) - new Date(day(now))) / 86400000);
   const dn = d.toLocaleDateString("en-GB", { timeZone: LDN, weekday: "short" }).toUpperCase();
   const dm = d.toLocaleDateString("en-GB", { timeZone: LDN, day: "numeric", month: "short" }).toUpperCase();
