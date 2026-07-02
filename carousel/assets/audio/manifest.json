@@ -2,55 +2,55 @@
   {
     "file": "driving.mp3",
     "mood": "driving",
-    "bpm": 128,
-    "firstBeatOffsetMs": 265,
+    "bpm": 112,
+    "firstBeatOffsetMs": 202,
     "dropMs": null,
-    "source": "Pixabay Music — https://pixabay.com/music/rock-rhythm-upbeat-drive-rock-178420/",
+    "source": "Pixabay Music — https://pixabay.com/music/beats-drift-phonk-383124/",
     "licence": "Pixabay Content License (free for commercial use, no attribution required)"
   },
   {
     "file": "synth.mp3",
     "mood": "synth",
     "bpm": 112,
-    "firstBeatOffsetMs": 754,
+    "firstBeatOffsetMs": 376,
     "dropMs": null,
-    "source": "Pixabay Music — https://pixabay.com/music/synthwave-80s-314259/",
+    "source": "Pixabay Music — https://pixabay.com/music/chase-scene-techno-cyberpunk-powerful-action-workout-gaming-sport-music-347602/",
     "licence": "Pixabay Content License (free for commercial use, no attribution required)"
   },
   {
     "file": "elegant.mp3",
     "mood": "elegant",
-    "bpm": 86,
-    "firstBeatOffsetMs": 561,
+    "bpm": 81,
+    "firstBeatOffsetMs": 0,
     "dropMs": null,
-    "source": "Pixabay Music — https://pixabay.com/music/modern-classical-atmospheric-piano-cinematic-touching-magical-233695/",
+    "source": "Pixabay Music — https://pixabay.com/music/beats-fashion-fashion-show-vogue-524106/",
     "licence": "Pixabay Content License (free for commercial use, no attribution required)"
   },
   {
     "file": "win.mp3",
     "mood": "win",
-    "bpm": 112,
-    "firstBeatOffsetMs": 250,
+    "bpm": 99,
+    "firstBeatOffsetMs": 66,
     "dropMs": null,
-    "source": "Pixabay Music — https://pixabay.com/music/beats-upbeat-funky-vlog-background-music-313080/",
+    "source": "Pixabay Music — https://pixabay.com/music/rock-energetic-sports-rock-music-1-min-37-sec-378022/",
     "licence": "Pixabay Content License (free for commercial use, no attribution required)"
   },
   {
     "file": "warm.mp3",
     "mood": "warm",
-    "bpm": 95,
-    "firstBeatOffsetMs": 650,
+    "bpm": 103,
+    "firstBeatOffsetMs": 0,
     "dropMs": null,
-    "source": "Pixabay Music — https://pixabay.com/music/acoustic-group-acoustic-folk-acoustic-guitar-138361/",
+    "source": "Pixabay Music — https://pixabay.com/music/upbeat-fashion-tropical-house-323529/",
     "licence": "Pixabay Content License (free for commercial use, no attribution required)"
   },
   {
     "file": "pop.mp3",
     "mood": "pop",
-    "bpm": 128,
+    "bpm": 152,
     "firstBeatOffsetMs": 0,
     "dropMs": null,
-    "source": "Pixabay Music — https://pixabay.com/music/upbeat-upbeat-pop-fun-happy-commercial-music-401980/",
+    "source": "Pixabay Music — https://pixabay.com/music/funk-fun-upbeat-pop-funk-pop-groove-party-215688/",
     "licence": "Pixabay Content License (free for commercial use, no attribution required)"
   },
   {

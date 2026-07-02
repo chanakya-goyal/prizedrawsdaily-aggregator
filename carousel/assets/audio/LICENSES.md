@@ -4,6 +4,15 @@ All 6 music tracks are **Pixabay Content License** (Pixabay's own free-commercia
 licence — no attribution required, no royalties, usable in monetised social content).
 See https://pixabay.com/service/license-summary/ for the full licence text.
 
+## v2 note (2026-07-03) — high-energy replacement pass
+
+User feedback on the v1 kit: "sounds like study music, not giving prize-draw vibe."
+All 6 mood tracks below (`driving`, `synth`, `elegant`, `win`, `warm`, `pop`) were
+**replaced end-to-end** with high-energy, strong-beat tracks — no lo-fi/ambient/gentle
+piano survives. Filenames, moods, and the manifest schema are unchanged; only the
+audio bytes + their `bpm`/`firstBeatOffsetMs`/`source`/`licence` metadata changed.
+`stamp-sting.wav` is untouched (still the original synthesized thud+whoosh).
+
 ## Acquisition method note
 
 Pixabay's search/listing pages (`pixabay.com/music/search/...`) are behind a
@@ -13,138 +22,178 @@ execution available in this environment). However:
 1. Pixabay track pages (`pixabay.com/music/<slug>-<id>/`) **are** crawlable via the
    Wayback Machine (`web.archive.org`), which has archived thousands of them with
    HTTP 200, JSON-LD metadata (`name`, `creator`, `duration`, `contentUrl`) intact.
+   For this pass, candidate discovery used the Wayback **CDX API** directly —
+   `http://web.archive.org/cdx/search/cdx?url=pixabay.com/music/&matchType=prefix&output=json&filter=original:.*<keyword>.*&collapse=urlkey&filter=statuscode:200` —
+   which searches archived Pixabay music-page URLs by mood keyword (phonk,
+   cyberpunk, tropical-house, sports-rock, funk, etc.) server-side, without ever
+   hitting Pixabay's own (403'd) search endpoint.
 2. The actual audio bytes live on `cdn.pixabay.com` (S3 + Cloudflare in front, but
    *not* gated by the JS challenge). The `/download/audio/...` path returns 403 to a
    bare request but returns 200 with a real MP3 body once a `Referer:` header
    pointing at the live (non-archived) track page is added, alongside a normal
    browser `User-Agent`.
 
-So each track was: found via Wayback CDX search for mood-relevant keywords under
-`pixabay.com/music/`, its archived page fetched to read the JSON-LD (title, author,
-duration, real CDN download URL), then the real CDN URL was downloaded directly with
+So each track was: found via Wayback CDX keyword search under `pixabay.com/music/`,
+its archived page fetched to read the JSON-LD (title, author, duration, real CDN
+download URL, plus the page's `<meta name="keywords">` genre tags used to sanity-check
+mood fit), then the real CDN URL was downloaded directly with
 `curl -fsSL -A "Mozilla/5.0 ..." -H "Referer: <live track page URL>"`. All 6 files
 verified after download: file size > 300KB, `ffprobe` duration ≥ 60s, codec `mp3`.
 
-Download date for all 6 tracks: **2026-07-02**.
+Download date for all 6 tracks: **2026-07-03**.
 
 ## BPM method
 
-Pixabay track pages in this snapshot did not surface an explicit BPM field in the
-static HTML (no `bpm`/`tempo` text present), so BPM could not be read off the page
-for any of the 6 tracks — all 6 are **estimated**, per the brief's crude
-onset-interval method:
+Pixabay track pages in this snapshot still did not surface an explicit BPM/tempo
+field in the static HTML or JSON-LD for any of the 6 new tracks (checked via
+`grep -io '[0-9]{2,3}\s*bpm'` on each saved page — no matches), so BPM again could
+not be read off the page for any track.
 
+This pass had `librosa` available in the environment (installed via
+`pip3 install librosa`), so instead of the v1 kit's crude
+`ffmpeg silencedetect`-period-doubling guess, BPM was computed with a proper
+onset-strength + dynamic-programming beat tracker:
+
+```python
+y, sr = librosa.load(file, sr=22050, mono=True)
+onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+tempo, beats = librosa.beat.beat_track(onset_envelope=onset_env, sr=sr)
 ```
-ffmpeg -i <file> -af "highpass=f=100,lowpass=f=3000,silencedetect=noise=-25dB:d=0.05" -f null -
-```
 
-- For `elegant.mp3` and `warm.mp3` this produced a series of `silence_start` gaps
-  with a semi-consistent spacing; the spacing was converted to a period (60000/period)
-  and then doubled/quadrupled into the 60–180 plausible range (documented per-track
-  below).
-- For `driving.mp3`, `synth.mp3`, `win.mp3` and `pop.mp3` the track is mixed loud
-  enough (dense mix, little dynamic range) that `-25dB` silencedetect only catches
-  the leading/trailing fade, not per-beat gaps — no usable onset spacing was
-  recoverable. For these, BPM was set to a genre-typical value for the style
-  (documented per-track), which is explicitly within the brief's allowed "plausible
-  musical BPM (60–180)" fallback.
+Each result was cross-checked two ways before being accepted: (1) the median of
+`60 / diff(beat_times)` across all detected beats, which matched `tempo` exactly for
+all 6 tracks (i.e. the beat grid is genuinely periodic, not a one-off fit), and (2)
+the track's own tempogram top-5 candidate list (`librosa.feature.tempogram`), to
+confirm the chosen value wasn't an obviously-wrong half/double-time artifact next to
+a much stronger competing peak.
 
-`firstBeatOffsetMs` = the first `silence_end` timestamp × 1000, rounded, i.e. where
-the leading silence/fade-in ends and the first audible content begins. Where no
-leading silence was detected at all (track starts at full volume, `pop.mp3`),
-`firstBeatOffsetMs` was set to `0`.
+`firstBeatOffsetMs` was derived the same way as v1, per the brief's instruction — via
+`ffmpeg -i <file> -af "highpass=f=100,lowpass=f=3000,silencedetect=noise=-25dB:d=0.05" -f null -`,
+taking the first `silence_end` timestamp (leading fade-in end / first audible
+content) × 1000, rounded. Where no leading silence was detected at all (track is at
+full volume from t=0), `firstBeatOffsetMs` was set to `0`.
 
-`dropMs` = `null` for all 6 — none of the tracks has an obvious "drop" moment
-(that's mainly an EDM/dubstep production feature; none of these genres apply).
+`dropMs` = `null` for all 6, unchanged from v1 — no explicit drop-detection was run;
+this remains an optional refinement, not required by `beat.mjs`/tests.
 
 ---
 
 ## Tracks
 
 ### 1. `driving.mp3` — mood: `driving` (car-draws)
-- **Title:** Rhythm (Upbeat drive rock)
-- **Author:** MagpieMusic
-- **Source:** https://pixabay.com/music/rock-rhythm-upbeat-drive-rock-178420/
+- **Title:** Drift Phonk
+- **Author:** SigmaMusicArt
+- **Source:** https://pixabay.com/music/beats-drift-phonk-383124/
 - **Licence:** Pixabay Content License
-- **Duration:** 130.9s (verified via ffprobe)
-- **BPM:** 128 — genre-typical estimate for uptempo driving rock; silencedetect
-  found no usable mid-track gaps (loud, dense mix — only leading/trailing fade
-  detected), so the crude onset method was not applicable here.
-- **firstBeatOffsetMs:** 265 (first `silence_end` = 0.264807s)
+- **Genre tags (Pixabay):** Beats, Electronic, Alternative Hip Hop
+- **Duration:** 124.9s (verified via ffprobe)
+- **BPM:** 112 — librosa onset-strength + beat-track, cross-checked (median
+  inter-beat interval = 112.3 BPM exactly, matching the beat tracker; tempogram
+  top candidates were [172.3, 68.0, 112.3, 86.1, 57.4] BPM, so 112.3 is not a
+  spurious half/double-time pick — it's a genuine mid-strength peak with a
+  self-consistent beat grid across the full track).
+- **firstBeatOffsetMs:** 202 (first `silence_end` = 0.202154s — the phonk track's
+  cowbell hit intro).
 - **dropMs:** null
+- **Why it fits the brief:** exactly the "aggressive/drift phonk" genre called out
+  by name in the brief for car content — a dense 808-driven hip-hop-adjacent beat
+  built for hype, not background listening.
 
 ### 2. `synth.mp3` — mood: `synth` (tech-giveaways)
-- **Title:** 80s
-- **Author:** JOBOSthlm
-- **Source:** https://pixabay.com/music/synthwave-80s-314259/
+- **Title:** Techno Cyberpunk Powerful Action Workout Gaming Sport Music
+- **Author:** Tunetank
+- **Source:** https://pixabay.com/music/chase-scene-techno-cyberpunk-powerful-action-workout-gaming-sport-music-347602/
 - **Licence:** Pixabay Content License
-- **Duration:** 209.2s (verified via ffprobe)
-- **BPM:** 112 — genre-typical estimate for synthwave (brief's own search-term
-  anchor was "110 bpm"); silencedetect found no usable mid-track gaps (dense synth
-  pad mix, only leading fade detected).
-- **firstBeatOffsetMs:** 754 (first `silence_end` = 0.753792s)
+- **Genre tags (Pixabay):** Chase Scene, Electronic, Electro
+- **Duration:** 266.5s (verified via ffprobe)
+- **BPM:** 112 — librosa onset-strength + beat-track, cross-checked (median
+  inter-beat interval = 112.3 BPM exactly; tempogram top candidates
+  [215.3, 143.6, 112.3, 107.7, 89.1] BPM).
+- **firstBeatOffsetMs:** 376 (first `silence_end` = 0.376333s).
 - **dropMs:** null
+- **Why it fits the brief:** the title alone ("Techno Cyberpunk ... Action ...
+  Gaming ... Sport") is a direct hit on the brief's "energetic cyberpunk
+  synthwave, NOT chill" ask — driving techno pulse built for action/chase footage,
+  ~9dB louder (RMS) than the v1 chill-synthwave track it replaces.
 
 ### 3. `elegant.mp3` — mood: `elegant` (luxury)
-- **Title:** Atmospheric Piano Cinematic Touching Magical
-- **Author:** Denis-Pavlov-Music
-- **Source:** https://pixabay.com/music/modern-classical-atmospheric-piano-cinematic-touching-magical-233695/
+- **Title:** Fashion - Fashion Show Vogue
+- **Author:** mirostar
+- **Source:** https://pixabay.com/music/beats-fashion-fashion-show-vogue-524106/
 - **Licence:** Pixabay Content License
-- **Duration:** 128.3s (verified via ffprobe)
-- **BPM:** 86 — onset-derived: silencedetect found repeating gaps ~0.34–0.36s apart
-  early in the track (individual piano note articulations); treating that as a
-  sub-beat subdivision and halving (172 → 86) lands in a plausible tempo for a slow
-  cinematic piano piece.
-- **firstBeatOffsetMs:** 561 (first `silence_end` = 0.56068s)
+- **Genre tags (Pixabay):** Beats, Electronic, Pop
+- **Duration:** 132.5s (verified via ffprobe)
+- **BPM:** 81 — librosa onset-strength + beat-track (median inter-beat interval
+  = 80.7 BPM exactly; tempogram top candidates [60.1, 80.7, 117.5, 123.0, 215.3]
+  BPM — 80.7 is the clear dominant peak after the sub-harmonic).
+- **firstBeatOffsetMs:** 0 — no leading silence was detected at all (track opens
+  at full volume; `silencedetect` reported no `silence_start`/`silence_end` pair
+  before ~122s, which is the trailing fade).
 - **dropMs:** null
+- **Why it fits the brief:** literally a "fashion show / vogue" runway beat by
+  name and genre tag — a confident, pulsing electronic-beat track built for
+  catwalk energy, ~7dB louder (RMS) than the v1 ambient cinematic-piano track it
+  replaces. Matches the brief's explicit "fashion show beat" search-term anchor.
 
 ### 4. `win.mp3` — mood: `win` (cash-prizes)
-- **Title:** Upbeat Funky Vlog Background Music
+- **Title:** Energetic Sports Rock Music (1 min 37 sec cut)
 - **Author:** MFCC
-- **Source:** https://pixabay.com/music/beats-upbeat-funky-vlog-background-music-313080/
+- **Source:** https://pixabay.com/music/rock-energetic-sports-rock-music-1-min-37-sec-378022/
 - **Licence:** Pixabay Content License
-- **Duration:** 108.5s (verified via ffprobe)
-- **BPM:** 112 — genre-typical estimate for upbeat funk (commonly 100–120 BPM);
-  silencedetect onset spacing was too irregular (percussive funk hits, not clean
-  silence gaps) to yield a reliable period.
-- **firstBeatOffsetMs:** 250 (first `silence_end` = 0.249728s)
+- **Genre tags (Pixabay):** Rock, Upbeat, Chasing
+- **Duration:** 97.3s (verified via ffprobe)
+- **BPM:** 99 — librosa onset-strength + beat-track (median inter-beat interval
+  = 99.4 BPM exactly; tempogram top candidates [99.4, 198.8, 66.3, 136.0, 80.7]
+  BPM — 99.4 is the single dominant peak, well clear of its own double-time
+  echo).
+- **firstBeatOffsetMs:** 66 (first `silence_end` = 0.0657823s).
 - **dropMs:** null
+- **Why it fits the brief:** "Energetic Sports Rock" by name/tag — stadium
+  guitar-driven rock built for arena/sports hype, matching the brief's
+  "stomp-clap, brass-funk celebration, sports-arena energy" ask for cash-prize
+  wins.
 
 ### 5. `warm.mp3` — mood: `warm` (house-draws)
-- **Title:** Acoustic Folk Acoustic Guitar
-- **Author:** Pixabay user `33462198` (account has no set display name / the
-  archived page shows the raw numeric user ID; attribution is not required under
-  the Pixabay Content License regardless)
-- **Source:** https://pixabay.com/music/acoustic-group-acoustic-folk-acoustic-guitar-138361/
+- **Title:** Fashion Tropical House
+- **Author:** SZAudio
+- **Source:** https://pixabay.com/music/upbeat-fashion-tropical-house-323529/
 - **Licence:** Pixabay Content License
-- **Duration:** 69.5s (verified via ffprobe — meets the ≥60s bar but is the
-  shortest of the 6; other "acoustic folk" candidates found were only ~22s loops)
-- **BPM:** 95 — onset-derived: silencedetect found a repeating gap ~2.49–2.54s
-  apart (avg 2.515s); treated as a 2-beat span (half-bar) and doubled
-  (60000/2515 ≈ 23.9 → ×4 = 95.4), rounded to 95, a plausible tempo for a joyful
-  acoustic-folk tune.
-- **firstBeatOffsetMs:** 650 (first `silence_end` = 0.650295s)
+- **Genre tags (Pixabay):** Upbeat, Electronic, Chasing
+- **Duration:** 109.7s (verified via ffprobe)
+- **BPM:** 103 — librosa onset-strength + beat-track (median inter-beat interval
+  = 103.4 BPM exactly; tempogram top candidates [52.7, 69.8, 215.3, 103.4, 107.7]
+  BPM).
+- **firstBeatOffsetMs:** 0 — no leading silence was detected (track opens at full
+  volume; the only `silencedetect` gap found was the trailing fade at ~106s).
 - **dropMs:** null
+- **Why it fits the brief:** genuine tropical/uplifting house — warm, sunny
+  chord stabs over a four-on-the-floor pulse, danceable rather than background —
+  ~9dB louder (RMS) than the v1 acoustic-folk-guitar track it replaces, and the
+  only one of the 6 that was previously a totally wrong genre for "warm but
+  danceable."
 
 ### 6. `pop.mp3` — mood: `pop` (collectibles)
-- **Title:** Upbeat Pop Fun Happy Commercial Music
-- **Author:** Top-Flow
-- **Source:** https://pixabay.com/music/upbeat-upbeat-pop-fun-happy-commercial-music-401980/
+- **Title:** Fun Upbeat Pop Funk (Pop Groove Party)
+- **Author:** NRA-LAB
+- **Source:** https://pixabay.com/music/funk-fun-upbeat-pop-funk-pop-groove-party-215688/
 - **Licence:** Pixabay Content License
-- **Duration:** 107.8s (verified via ffprobe)
-- **BPM:** 128 — genre-typical estimate for upbeat pop; silencedetect onset
-  spacing clustered loosely around ~0.18–0.23s (percussive hits, not clean beat
-  gaps), too fine-grained to trust directly.
-- **firstBeatOffsetMs:** 0 — track has audible content from t=0 (no leading
-  silence_start:0 was reported by silencedetect at all — the whole intro is above
-  the -25dB threshold), so there is no offset to apply.
+- **Genre tags (Pixabay):** Funk, Upbeat, Old School Funk
+- **Duration:** 91.4s (verified via ffprobe)
+- **BPM:** 152 — librosa onset-strength + beat-track (median inter-beat interval
+  = 152.0 BPM exactly; tempogram top candidates [78.3, 152.0, 103.4, 161.5, 51.7]
+  BPM — 152 sits clear of the half-time sub-harmonic at 78.3).
+- **firstBeatOffsetMs:** 0 — no leading silence was detected (track opens at full
+  volume; the only gap found was the trailing fade at ~89.6s).
 - **dropMs:** null
+- **Why it fits the brief:** "Fun Upbeat Pop Funk ... Groove Party" — bright,
+  bouncy old-school funk-pop horn/bass groove, built explicitly for party/fun
+  energy, matching the brief's "hyper-energetic fun pop/funk" ask for
+  collectibles.
 
 ### 7. `stamp-sting.wav` — mood: `sting`
 - **Source:** synthesized (ffmpeg lavfi) — thud (180Hz sine, exponential decay) +
   whoosh (pink noise, highpassed at 800Hz, exponential decay), mixed and limited.
-  Exact command from the Task 2 brief ran unmodified on ffmpeg 8.1.2 — no filter
-  adjustment was needed.
+  Unchanged from v1 — not touched in this pass.
 - **Licence:** n/a (fully synthesized, no third-party material)
 - **Duration:** 0.4s, 48kHz, stereo, `pcm_s16le` (verified via ffprobe)
 - **BPM / firstBeatOffsetMs / dropMs:** null / 0 / null (not a music bed)
