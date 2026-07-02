@@ -48,6 +48,59 @@ test("stampHtml carries the text", () => {
   expect(SEEK_RUNTIME).toContain("getAnimations");
 });
 
+// ---- motion v2 (hype edit pass) ----
+for (const arm of ["A", "B", "C"]) {
+  test(`arm ${arm} v2: cut impact kit present (flash + streaks + shake + punch-in per cut)`, () => {
+    const t = buildReelTimeline({ sel, slides, heroes, arm, audioMeta: audio });
+    const bursts = (t.html.match(/class="burst"/g) || []).length;
+    const flashes = (t.html.match(/class="cutflash"/g) || []).length;
+    expect(bursts).toBeGreaterThanOrEqual(t.cutTimesMs.length);   // ≥1 streak burst per cut
+    expect(flashes).toBeGreaterThanOrEqual(t.cutTimesMs.length);  // ≥1 accent flash per cut
+    expect(t.html).toContain("rl-punchin");                        // scene-wrapper punch-in
+    expect(t.html).toContain("rl-shakes");                         // merged camera-shake track
+    expect(t.html).toContain('class="pbar"');                      // top progress bar
+    expect(t.html).toContain("rl-beatpulse");                      // beat pulse keyframes
+    expect(t.html).toContain('class="lsweep"');                    // looping light sweep
+    expect(t.html).toContain('class="hookdark"');                  // darkened hook open
+    expect(t.html).toContain('class="simp"');                      // stamp-landing spark burst
+  });
+}
+
+test("v2: hook interrupt derives the CHEAPEST real price", () => {
+  const t = buildReelTimeline({ sel, slides, heroes, arm: "B", audioMeta: audio });
+  expect(t.html).toContain("5P?!"); // 5p beats £8.97
+});
+
+test("v2: urgency chip only when closes label says tonight/tomorrow", () => {
+  const yes = buildReelTimeline({ sel, slides, heroes, arm: "A", audioMeta: audio });
+  expect(yes.html).toContain('class="urgechip"'); // slides close TONIGHT
+  const no = buildReelTimeline({
+    sel,
+    slides: [{ title: "Land Rover Discovery", price: "5p", closes: "CLOSES FRI 10 JUL", slug: "lr" }],
+    heroes, arm: "A", audioMeta: audio,
+  });
+  expect(no.html).not.toContain('class="urgechip"');
+});
+
+test("v2: arm A scene holds are ≤3s and still beat-quantized", () => {
+  const t = buildReelTimeline({ sel, slides, heroes, arm: "A", audioMeta: audio });
+  const bounds = [0, ...t.cutTimesMs, t.durationMs];
+  for (let i = 1; i < bounds.length; i++) {
+    expect(bounds[i]).toBeGreaterThan(bounds[i - 1]);
+    expect(bounds[i] - bounds[i - 1]).toBeLessThanOrEqual(3000);
+  }
+});
+
+test("v2: photo layers still carry no scale animation (blur fill only)", () => {
+  for (const arm of ["A", "B", "C"]) {
+    const t = buildReelTimeline({ sel, slides, heroes, arm, audioMeta: audio });
+    // the sharp photo wrapper never gets an inline animation style at all
+    expect(t.html).not.toMatch(/class="photo[^"]*"\s+style=/);
+    // blur-fill zoom lives on .hf-bg/.cbg wrappers, not the photo
+    expect(t.html).not.toMatch(/class="photo[^"]*"[^>]*rl-(bgzoom|cbgzoom)/);
+  }
+});
+
 test("arm B: ampersand titles are escaped exactly once", () => {
   const t = buildReelTimeline({
     sel: { slug: "car-draws", name: "Car Draws", seoKeyword: "UK car competitions" },
