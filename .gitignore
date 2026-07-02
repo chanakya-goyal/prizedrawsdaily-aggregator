@@ -33,3 +33,8 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 qa-grandprize-run.js
+.superpowers/
+
+# carousel local/generated state
+carousel/tests/tmp/
+carousel/*.local.*
