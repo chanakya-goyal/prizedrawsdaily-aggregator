@@ -121,7 +121,12 @@ export async function renderOperator(ctx, op, perOp = 6) {
 }
 
 export async function wooOperator(op, perOp = 6) {
-  const r = await fetchHtml(`${op.base}/wp-json/wc/store/v1/products?per_page=${perOp + 2}&orderby=date`, op);
+  // Some hosts 500/404 the pretty /wp-json/ route but still serve the Store API via the
+  // ?rest_route= query form (flex-competitions, thewatchdraws, redhotraffles).
+  const apiUrl = op.apiStyle === "rest_route"
+    ? `${op.base}/?rest_route=/wc/store/v1/products&per_page=${perOp + 2}&orderby=date`
+    : `${op.base}/wp-json/wc/store/v1/products?per_page=${perOp + 2}&orderby=date`;
+  const r = await fetchHtml(apiUrl, op);
   if (!r.ok) { console.log(`  woo API ${r.status} for ${op.base}`); return []; }
   let body = null; try { body = JSON.parse(r.text); } catch { /* non-JSON → no products */ }
   // is_purchasable===false = a FINISHED competition (you can't buy tickets) — never ingest it as a
