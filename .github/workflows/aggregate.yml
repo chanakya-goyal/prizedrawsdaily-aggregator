@@ -82,3 +82,10 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DRY_RUN: "false"
           STATUS: "active,draft" # expire LIVE comps that have finished, plus stale drafts
+
+      - name: Coverage report (DB operators × config × live counts)
+        if: always() # the gap report is most valuable exactly when a step above broke
+        run: bun manager/coverage-report.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
