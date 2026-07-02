@@ -1,5 +1,5 @@
 import { test, expect, beforeEach } from "bun:test";
-import { upsertPost, markStatus, recentDrawSlugs, insertMetrics, todayLondon, _setFetch } from "../state.mjs";
+import { upsertPost, markStatus, recentDrawSlugs, insertMetrics, recentMetrics, todayLondon, _setFetch } from "../state.mjs";
 
 let calls;
 beforeEach(() => {
@@ -39,6 +39,15 @@ test("insertMetrics upserts on day,media_id,metric", async () => {
   await insertMetrics([{ day: "2026-07-01", media_id: "account", metric: "reach", value: 5 }]);
   expect(calls[0].url).toContain("carousel_metrics");
   expect(calls[0].url).toContain("on_conflict=day%2Cmedia_id%2Cmetric");
+});
+
+test("recentMetrics filters by day since N days and orders desc", async () => {
+  await recentMetrics(7);
+  const c = calls[0];
+  expect(c.method).toBe("GET");
+  expect(c.url).toContain("/rest/v1/carousel_metrics");
+  expect(c.url).toContain("day=gte.");
+  expect(c.url).toContain("order=day.desc");
 });
 
 test("todayLondon shape", () => {

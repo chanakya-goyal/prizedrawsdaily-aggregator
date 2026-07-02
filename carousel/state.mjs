@@ -50,6 +50,11 @@ export async function recentPosts(days) {
   return (await rest(`carousel_posts?date=gte.${since}&order=date.desc`, { headers: hdrs() }, "recentPosts")) || [];
 }
 
+export async function recentMetrics(days) {
+  const since = new Date(Date.now() - days * 86400000).toLocaleDateString("en-CA", { timeZone: "Europe/London" });
+  return (await rest(`carousel_metrics?day=gte.${since}&order=day.desc`, { headers: hdrs() }, "recentMetrics")) || [];
+}
+
 export async function recentDrawSlugs(days = 7) {
   const rows = await recentPosts(days);
   return [...new Set(rows.flatMap((r) => r.draw_slugs || []))];

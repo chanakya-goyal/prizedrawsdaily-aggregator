@@ -1,0 +1,40 @@
+{
+  "data": [
+    {
+      "id": "17895695668004551",
+      "like_count": 42,
+      "comments_count": 5,
+      "media_type": "CAROUSEL_ALBUM",
+      "media_product_type": "CAROUSEL_CONTAINER",
+      "timestamp": "2026-07-01T12:10:37+0000",
+      "permalink": "https://www.instagram.com/p/C1aBcDeFgHi/"
+    },
+    {
+      "id": "17895695668004552",
+      "like_count": 31,
+      "comments_count": 2,
+      "media_type": "IMAGE",
+      "media_product_type": "FEED",
+      "timestamp": "2026-06-30T18:45:02+0000",
+      "permalink": "https://www.instagram.com/p/C1XyZaBcDeF/"
+    },
+    {
+      "id": "17895695668004553",
+      "like_count": 58,
+      "comments_count": 9,
+      "media_type": "VIDEO",
+      "media_product_type": "REELS",
+      "timestamp": "2026-06-29T20:03:11+0000",
+      "permalink": "https://www.instagram.com/reel/C1MnOpQrStU/"
+    },
+    {
+      "id": "17895695668004554",
+      "like_count": 17,
+      "comments_count": 1,
+      "media_type": "CAROUSEL_ALBUM",
+      "media_product_type": "CAROUSEL_CONTAINER",
+      "timestamp": "2026-06-28T07:55:49+0000",
+      "permalink": "https://www.instagram.com/p/C1LmNoPqRsT/"
+    }
+  ]
+}
