@@ -16,6 +16,7 @@
 //   pick.txt holds the chosen candidate filename (default = best guess); Claude edits it after a visual QA.
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
+import { workDir } from "./config.mjs";
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 // drop obvious non-product chrome (theme assets, icons, badges, social, UI graphics)
@@ -156,7 +157,7 @@ export async function downloadImage(url) {
 
 // ---- CLI ----
 if (import.meta.main) {
-  const DIR = "/Users/chanakyagoyal/Desktop/pdd-today";
+  const DIR = workDir();
   const arg = process.argv[2];
   let outDir, items, perDraw = 5;
   if (arg) { ({ outDir, items, perDraw = 5 } = JSON.parse(await Bun.file(arg).text())); }

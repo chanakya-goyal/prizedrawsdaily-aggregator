@@ -2,9 +2,10 @@
 // Run: bun carousel/contact.mjs
 import { chromium } from "playwright";
 import { readdir } from "node:fs/promises";
+import { workDir } from "./config.mjs";
 
-const DIR = "/Users/chanakyagoyal/Desktop/pdd-today/.fetched";
-const OUT = "/Users/chanakyagoyal/Desktop/pdd-today/contact.png";
+const DIR = `${workDir()}/.fetched`;
+const OUT = `${workDir()}/contact.png`;
 const dirs = (await readdir(DIR)).filter((d) => !d.startsWith("."));
 
 async function dataUrl(path) {

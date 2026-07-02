@@ -7,8 +7,9 @@ import { renderSlides } from "./render.mjs";
 import { buildCaption } from "./caption.mjs";
 import { toDrawSlide, catLabel, hookLabel, priceLabel } from "./format.mjs";
 import { readdir, mkdir } from "node:fs/promises";
+import { workDir, themeOf } from "./config.mjs";
 
-const DIR = "/Users/chanakyagoyal/Desktop/pdd-today";
+const DIR = workDir();
 const sel = JSON.parse(await Bun.file(`${DIR}/selection.json`).text());
 const files = await readdir(DIR);
 
@@ -146,8 +147,7 @@ const slides = [intro, ...drawSlides, { type: "cta" }];
 
 // per-category visual identity (CSS theme tokens live in styles.css [data-theme=…]).
 // default/unmapped → the fiery orange look.
-const THEME = { "tech-giveaways": "tech" };
-const theme = THEME[sel.slug] || "default";
+const theme = themeOf(sel.slug);
 console.log(`Theme: ${theme}`);
 const pngs = await renderSlides(slides, theme);
 const outDir = `${DIR}/out`;

@@ -1,13 +1,6 @@
 // Minimalist caption + exactly 5 hashtags (3 fixed + 2 category-varying).
-const FIXED = ["#prizedrawsdaily", "#ukcompetition", "#winbig"];
-const VARY = {
-  "car-draws": ["#ukraffle", "#cargiveaway"],
-  "cash-prizes": ["#cashgiveaway", "#ukcomps"],
-  "house-draws": ["#dreamhome", "#housedraw"],
-  "tech-giveaways": ["#techgiveaway", "#ukcomps"],
-  "luxury": ["#luxury", "#ukraffle"],
-  "collectibles": ["#collectibles", "#ukraffle"],
-};
+import { GLOBAL, catCfg } from "./config.mjs";
+const FIXED = GLOBAL.fixedHashtags;
 
 const nounOf = (catName) => String(catName).replace(/\s+(draws|prizes|giveaways)$/i, "").toLowerCase();
 const prizeList = (items = []) => items
@@ -19,7 +12,7 @@ export function buildCaption(catName, slug, items = []) {
   // Instagram caption — minimalist (link in bio), exactly 5 hashtags.
   const head = `UK ${nounOf(catName)} draws closing this week 👇`;
   const list = prizeList(items);
-  const tags = [...FIXED, ...(VARY[slug] || ["#ukraffle", "#livedraws"])].join(" ");
+  const tags = [...FIXED, ...catCfg(slug).hashtags].join(" ");
   return list
     ? `${head}\n\n${list}\n\nlink in bio · 18+\n\n${tags}`
     : `${head}\nlink in bio · 18+\n\n${tags}`;
@@ -36,6 +29,6 @@ export function buildFbCaption(catName, slug, items = []) {
   const body = list
     ? `${head}\n\nClosing soon 👇\n${list}\n\n👉 See every live UK draw: https://prizedrawsdaily.co.uk`
     : `${head}\n\n👉 See every live UK draw: https://prizedrawsdaily.co.uk`;
-  const tags = [...FIXED, ...(VARY[slug] || ["#ukraffle", "#livedraws"])].join(" ");
+  const tags = [...FIXED, ...catCfg(slug).hashtags].join(" ");
   return `${body}\n\n18+ · UK only · Play responsibly\n\n${tags}`;
 }

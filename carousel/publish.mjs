@@ -10,8 +10,9 @@ import { chromium } from "playwright";
 import { readdir } from "node:fs/promises";
 import { buildFbCaption } from "./caption.mjs";
 import { toDrawSlide } from "./format.mjs";
+import { workDir } from "./config.mjs";
 
-const DIR = "/Users/chanakyagoyal/Desktop/pdd-today";
+const DIR = workDir();
 const OUT = `${DIR}/out`;
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;

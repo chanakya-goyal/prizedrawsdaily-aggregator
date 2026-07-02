@@ -4,12 +4,13 @@
 import { fetchEndingSoon, pickBestCategory } from "./select.mjs";
 import { priceLabel, closesLabel, catLabel } from "./format.mjs";
 import { mkdir, writeFile, rm } from "node:fs/promises";
+import { workDir } from "./config.mjs";
 
 const N = Number(process.env.SLIDES || 5);
 const onlySlug = process.env.ONLY_CATEGORY || null;
 const DAYS = Number(process.env.DAYS || 7);       // upper bound (days out)
 const MIN_DAYS = Number(process.env.MIN_DAYS || 1); // runway floor — skip draws closing sooner
-const DIR = "/Users/chanakyagoyal/Desktop/pdd-today";
+const DIR = workDir();
 const proxied = (u, w = 900) => `https://images.weserv.nl/?url=${encodeURIComponent(u)}&w=${w}&output=jpg&we`;
 
 const draws = await fetchEndingSoon(DAYS, MIN_DAYS);

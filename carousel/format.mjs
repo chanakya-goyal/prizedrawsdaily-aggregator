@@ -1,4 +1,5 @@
 // Shared formatting helpers for carousel slides (UK locale, Europe/London).
+import { catCfg } from "./config.mjs";
 export const LDN = "Europe/London";
 
 export const priceLabel = (p) => {
@@ -67,11 +68,4 @@ export const catLabel = (name = "PRIZE") =>
   name.toUpperCase().replace(" DRAWS", "").replace(" PRIZES", "").replace(" GIVEAWAYS", "").trim();
 
 // Big punchy intro hook per category (matches the reference "WIN A ROLEX" energy).
-export const hookLabel = (slug, name) => ({
-  "car-draws": "WIN A DREAM CAR",
-  "cash-prizes": "WIN TAX-FREE CASH",
-  "house-draws": "WIN A DREAM HOME",
-  "tech-giveaways": "WIN THE LATEST TECH",
-  "luxury": "WIN LUXURY",
-  "collectibles": "WIN RARE FINDS",
-}[slug] || `WIN ${catLabel(name)}`);
+export const hookLabel = (slug, name) => catCfg(slug).hook || `WIN ${catLabel(name)}`;
