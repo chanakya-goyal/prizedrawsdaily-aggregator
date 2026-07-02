@@ -424,7 +424,7 @@ function prizeScene({ idx, a, b, dur, slide, hero, i, n, qz }) {
 function questionScene({ idx, a, b, dur, slide, hero, stampT, kickT, giantT, qT, sel }) {
   const len = b - a;
   const giant = slide.odds ? esc(slide.odds) : esc(String(slide.price || "").toUpperCase());
-  const qLine = slide.odds ? `COULD BE YOU. WORTH A GO?` : `FOR A ${esc(slide.title).toUpperCase()}?`;
+  const qLine = slide.odds ? `COULD BE YOU. WORTH A GO?` : `FOR A ${slide.title.toUpperCase()}?`;
   const media = hero
     ? `<div class="layer-bg"><div class="b-pan" style="animation: rl-bgpan ${len}ms ease-in-out ${a}ms both"><div class="hf-bg"><img src="${hero}"></div></div></div>
        <div class="layer-card"><div class="hd-drift" style="animation: rl-colddrift ${len}ms ease-in-out ${a}ms both"><div class="photo contain hf-main"><img src="${hero}"></div></div>

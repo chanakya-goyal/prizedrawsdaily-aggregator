@@ -47,3 +47,16 @@ test("stampHtml carries the text", () => {
   expect(stampHtml("JUST 5P A TICKET")).toContain("JUST 5P A TICKET");
   expect(SEEK_RUNTIME).toContain("getAnimations");
 });
+
+test("arm B: ampersand titles are escaped exactly once", () => {
+  const t = buildReelTimeline({
+    sel: { slug: "car-draws", name: "Car Draws", seoKeyword: "UK car competitions" },
+    slides: [{ title: "M&S <Hamper>", price: "5p", closes: "CLOSES TONIGHT", slug: "ms" }],
+    heroes: { ms: null },
+    arm: "B",
+    audioMeta: { bpm: 120, firstBeatOffsetMs: 0, dropMs: 4000 },
+  });
+  expect(t.html).not.toContain("&amp;amp;");   // double-escape tell
+  expect(t.html).not.toContain("&AMP;");
+  expect(t.html).toContain("M&amp;S");          // single correct escape survives (any case)
+});
