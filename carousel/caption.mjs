@@ -8,9 +8,11 @@ const prizeList = (items = []) => items
   .map((it) => (it.price ? `${it.title} · ${it.price}` : it.title))
   .join("\n");
 
-export function buildCaption(catName, slug, items = []) {
+export function buildCaption(catName, slug, items = [], seoKeyword = null) {
   // Instagram caption — minimalist (link in bio), exactly 5 hashtags.
-  const head = `UK ${nounOf(catName)} draws closing this week 👇`;
+  const head = seoKeyword
+    ? `${seoKeyword} closing this week 👇`
+    : `UK ${nounOf(catName)} draws closing this week 👇`;
   const list = prizeList(items);
   const tags = [...FIXED, ...catCfg(slug).hashtags].join(" ");
   return list

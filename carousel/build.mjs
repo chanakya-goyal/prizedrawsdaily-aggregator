@@ -5,6 +5,8 @@
 // Run: bun run carousel/build.mjs   (after plan.mjs + fetchimg.mjs)
 import { renderSlides } from "./render.mjs";
 import { buildCaption } from "./caption.mjs";
+import { buildBriefing } from "./brief.mjs";
+import { recentPosts } from "./state.mjs";
 import { toDrawSlide, catLabel, hookLabel, priceLabel } from "./format.mjs";
 import { readdir, mkdir } from "node:fs/promises";
 import { workDir, themeOf, catCfg } from "./config.mjs";
@@ -155,7 +157,10 @@ const slideName = (i) => i === 0 ? "intro" : i === slides.length - 1 ? "cta" : s
 for (let i = 0; i < pngs.length; i++) await Bun.write(`${outDir}/${String(i + 1).padStart(2, "0")}-${slideName(i)}.png`, pngs[i]);
 await Bun.write(`${outDir}/alt.json`, JSON.stringify(altTexts(sel, drawSlides), null, 2));
 
-const caption = buildCaption(sel.name, sel.slug, drawSlides.map((s) => ({ title: s.title, price: s.price })));
+let recentOpeners = [];
+try { recentOpeners = (await recentPosts(14)).map((r) => (r.caption || "").split("\n")[0]).filter(Boolean); } catch {}
+const caption = buildCaption(sel.name, sel.slug, drawSlides.map((s) => ({ title: s.title, price: s.price })), sel.seoKeyword);
 await Bun.write(`${outDir}/CAPTION.txt`, caption);
-console.log("\n--- CAPTION ---\n" + caption);
+await Bun.write(`${outDir}/BRIEFING.md`, buildBriefing({ sel, drawSlides, recentOpeners }));
+console.log("\n--- FALLBACK CAPTION (Claude: rewrite from BRIEFING.md) ---\n" + caption);
 console.log(`\nWrote ${pngs.length} slides → ${outDir}`);
