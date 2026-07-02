@@ -2,9 +2,25 @@
 // total_prize_value is GROSS TICKET REVENUE (entries × price), NOT prize worth —
 // the "£X+ IN PRIZES" line only renders past a per-category defensibility bar.
 import { catCfg } from "./config.mjs";
+import { cashAlt } from "./format.mjs";
 
-export function valueLine(totalPrizeValue, slug) {
-  const total = Number(totalPrizeValue) || 0;
+// Parse "£40,000 TAX-FREE CASH" → 40000. cashAlt() already normalises the string.
+const cashAltValue = (d) => {
+  const s = cashAlt(d.grand_prize, d.prize_description);
+  const m = s && s.match(/£([\d,]+)/);
+  return m ? Number(m[1].replaceAll(",", "")) : null;
+};
+
+// Per-draw claimable value: ticket revenue, capped at the operator's own cash
+// alternative when one is stated (the operator's number is the honest ceiling).
+export function capValue(d) {
+  const revenue = Number(d.total_prize_value) || 0;
+  const alt = cashAltValue(d);
+  return alt != null ? Math.min(revenue, alt) : revenue;
+}
+
+export function valueLine(draws, slug) {
+  const total = (Array.isArray(draws) ? draws : []).reduce((a, d) => a + capValue(d), 0);
   if (total < catCfg(slug).valueLineMin || total < 1000) return "";
   return `£${(Math.floor(total / 1000) * 1000).toLocaleString("en-GB")}+`;
 }

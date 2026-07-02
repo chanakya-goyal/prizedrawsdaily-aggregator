@@ -17,6 +17,7 @@
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 import { workDir } from "./config.mjs";
+import { dimsFromBuffer } from "./imgcheck.mjs";
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 // drop obvious non-product chrome (theme assets, icons, badges, social, UI graphics)
@@ -31,7 +32,7 @@ const proxied = (url, w = 1400) =>
   `https://images.weserv.nl/?url=${encodeURIComponent(url.replace(/^https?:\/\//, ""))}&w=${w}&output=jpg&q=92&we`;
 
 // upgrade a URL to the highest resolution the platform offers
-function maxRes(u) {
+export function upgradeUrl(u) {
   try {
     const url = new URL(u);
     if (/cdn\/shop\/|cdn\.shopify\.com/.test(url.href)) {        // Shopify
@@ -106,7 +107,7 @@ export async function fetchCandidates(entryUrl, { max = 6, timeout = 25000, titl
       if (!c.url || JUNK.test(c.url)) continue;
       // keep only things that look like real images (or known image CDNs)
       if (!IMG_RE.test(c.url) && !/cdn\/shop|cdn\.shopify|wp-content\/uploads|\/media\/|cloudfront|imgix|cloudinary/i.test(c.url)) continue;
-      const up = maxRes(c.url);
+      const up = upgradeUrl(c.url);
       const key = baseKey(up);
       const area = (c.w || 0) * (c.h || 0);
       // raw gallery shots preferred over branded share images; zoom/lightbox links boosted
@@ -177,11 +178,20 @@ if (import.meta.main) {
       let saved = [];
       try {
         const cands = await fetchCandidates(entryUrl, { title, browser });  // per-draw bounded by goto/networkidle timeouts
+        const downloaded = [];
         for (const c of cands) {
-          if (saved.length >= perDraw) break;
+          if (downloaded.length >= perDraw) break;
           const dl = await downloadImage(c.url);
-          if (dl) { const f = `cand-${saved.length + 1}.${dl.ext}`; await Bun.write(`${dir}/${f}`, dl.buf); saved.push({ file: f, url: c.url, w: c.w, h: c.h, hint: c.hint }); }
+          if (dl) downloaded.push({ ...dl, url: c.url, w: c.w, h: c.h, hint: c.hint, dims: dimsFromBuffer(dl.buf) });
         }
+        // Drop candidates whose downloaded buffer decodes under 400px max-dimension —
+        // but never filter a draw down to zero. Only safe to drop the small ones once
+        // ≥2 candidates already clear 400px (2026-07-02 incident: 150×100 thumbnail hero).
+        const over400 = downloaded.filter((d) => d.dims && Math.max(d.dims.w, d.dims.h) >= 400);
+        const keep = over400.length >= 2 ? over400 : downloaded;
+        keep.forEach((d, idx) => { d.file = `cand-${idx + 1}.${d.ext}`; });
+        for (const d of keep) await Bun.write(`${dir}/${d.file}`, d.buf);
+        saved = keep.map((d) => ({ file: d.file, url: d.url, w: d.w, h: d.h, hint: d.hint }));
         if (!saved.length) problems.push({ slug, reason: "no candidates" });
       } catch (e) { problems.push({ slug, reason: e?.message || "no candidates" }); /* one bad draw never stops the rest */ }
       if (saved.length) await Bun.write(`${dir}/pick.txt`, saved[0].file); // default best guess (Claude QAs/edits)

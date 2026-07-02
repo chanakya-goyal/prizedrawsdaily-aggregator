@@ -38,7 +38,9 @@ if (existing?.status === "published") {
   process.exit(2);
 }
 
-const caption = await Bun.file(`${OUT}/CAPTION.txt`).text();
+const caption = (await Bun.file(`${OUT}/CAPTION.txt`).text().catch(() => "")).trim()
+  || (await Bun.file(`${OUT}/CAPTION_FALLBACK.txt`).text().catch(() => "")).trim();
+if (!caption) { console.error("✗ no caption (CAPTION.txt or CAPTION_FALLBACK.txt)"); process.exit(1); }
 
 // ordered slide PNGs (01-…, 02-…, …)
 const pngs = (await readdir(OUT)).filter((f) => /^\d\d-.*\.png$/.test(f)).sort();

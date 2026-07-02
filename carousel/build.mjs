@@ -11,6 +11,7 @@ import { toDrawSlide, catLabel, hookLabel, priceLabel } from "./format.mjs";
 import { readdir, mkdir } from "node:fs/promises";
 import { workDir, themeOf, catCfg } from "./config.mjs";
 import { valueLine, altTexts } from "./honesty.mjs";
+import { minDimOk } from "./imgcheck.mjs";
 
 const DIR = workDir();
 const sel = JSON.parse(await Bun.file(`${DIR}/selection.json`).text());
@@ -58,7 +59,10 @@ for (let i = 0; i < sel.draws.length; i++) {
   const mine = findClean(d.slug, i + 1);
   if (mine) { srcPath[d.slug] = mine; srcKind[d.slug] = "your photo"; continue; }
   const auto = await fetchedPath(d.slug);
-  if (auto) { srcPath[d.slug] = auto; srcKind[d.slug] = "auto-fetched"; }
+  if (auto) {
+    if (await minDimOk(auto, 500)) { srcPath[d.slug] = auto; srcKind[d.slug] = "auto-fetched"; }
+    else console.log(`  ⚠ ${d.slug}: auto-fetched pick is under 500px — rejected (typographic fallback). Repick in .fetched/${d.slug}/pick.txt`);
+  }
 }
 const haveSlugs = sel.draws.filter((d) => srcPath[d.slug]).map((d) => d.slug);
 console.log(`Card style: ${CARD}  |  Photos: ${haveSlugs.length}/${sel.draws.length}`);
@@ -128,8 +132,7 @@ const from = prices.length ? `FROM JUST ${priceLabel(Math.min(...prices))} A TIC
 // cheapest ticket as the gold "FROM JUST __" hero (true, irresistible: dream prize / tiny entry)
 const fromAmount = prices.length ? priceLabel(Math.min(...prices)) : "";
 // total prize value → supporting hook, rounded DOWN to nearest £1,000 so we never overstate
-const totalValue = sel.draws.reduce((a, d) => a + (Number(d.total_prize_value) || 0), 0);
-const value = valueLine(totalValue, sel.slug);
+const value = valueLine(sel.draws, sel.slug);
 const introImgs = sel.draws.map((d) => heroOf(d.slug) || null);
 const intro = {
   type: "intro",
@@ -160,7 +163,7 @@ await Bun.write(`${outDir}/alt.json`, JSON.stringify(altTexts(sel, drawSlides), 
 let recentOpeners = [];
 try { recentOpeners = (await recentPosts(14)).map((r) => (r.caption || "").split("\n")[0]).filter(Boolean); } catch {}
 const caption = buildCaption(sel.name, sel.slug, drawSlides.map((s) => ({ title: s.title, price: s.price })), sel.seoKeyword);
-await Bun.write(`${outDir}/CAPTION.txt`, caption);
+await Bun.write(`${outDir}/CAPTION_FALLBACK.txt`, caption);
 await Bun.write(`${outDir}/BRIEFING.md`, buildBriefing({ sel, drawSlides, recentOpeners }));
-console.log("\n--- FALLBACK CAPTION (Claude: rewrite from BRIEFING.md) ---\n" + caption);
+console.log("\n--- FALLBACK CAPTION (written to CAPTION_FALLBACK.txt; Claude: write CAPTION.txt + FB_CAPTION.txt from BRIEFING.md) ---\n" + caption);
 console.log(`\nWrote ${pngs.length} slides → ${outDir}`);
