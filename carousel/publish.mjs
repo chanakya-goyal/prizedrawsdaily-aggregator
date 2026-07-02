@@ -109,32 +109,40 @@ await browser.close();
 // never clobber a published row's real asset_urls with a no-op re-run) but keep going.
 let reelUrl = null, coverUrl = null, storyUrl = null, reelMeta = null;
 
-if (await Bun.file(`${OUT}/reel.mp4`).exists()) {
-  reelMeta = await Bun.file(`${OUT}/reel-meta.json`).json().catch(() => null);
-  const existingReel = await getPost(todayLondon(), "reel").catch((e) => { console.error("⚠ reel preflight skipped (state unreachable): " + e.message); return null; });
-  if (existingReel?.status === "published") {
-    console.error(`⚠ today's REEL is already PUBLISHED (ig_media_id=${existingReel.ig_media_id}). Skipping re-hosting reel+cover.`);
-  } else {
-    const reelBuf = Buffer.from(await Bun.file(`${OUT}/reel.mp4`).arrayBuffer());
-    reelUrl = await withRetry(() => upload(`${today}/${sel.slug}/reel.mp4`, reelBuf, "video/mp4"), { label: "upload reel" });
-    console.log(`  ✓ reel.mp4 → ${(reelBuf.length / 1024 / 1024).toFixed(1)}MB → ${reelUrl}`);
-    if (await Bun.file(`${OUT}/cover.jpg`).exists()) {
-      const coverBuf = Buffer.from(await Bun.file(`${OUT}/cover.jpg`).arrayBuffer());
-      coverUrl = await withRetry(() => upload(`${today}/${sel.slug}/cover.jpg`, coverBuf, "image/jpeg"), { label: "upload cover" });
-      console.log(`  ✓ cover.jpg → ${(coverBuf.length / 1024).toFixed(0)}KB → ${coverUrl}`);
+try {
+  if (await Bun.file(`${OUT}/reel.mp4`).exists()) {
+    reelMeta = await Bun.file(`${OUT}/reel-meta.json`).json().catch(() => null);
+    const existingReel = await getPost(todayLondon(), "reel").catch((e) => { console.error("⚠ reel preflight skipped (state unreachable): " + e.message); return null; });
+    if (existingReel?.status === "published") {
+      console.error(`⚠ today's REEL is already PUBLISHED (ig_media_id=${existingReel.ig_media_id}). Skipping re-hosting reel+cover.`);
+    } else {
+      const reelBuf = Buffer.from(await Bun.file(`${OUT}/reel.mp4`).arrayBuffer());
+      reelUrl = await withRetry(() => upload(`${today}/${sel.slug}/reel.mp4`, reelBuf, "video/mp4"), { label: "upload reel" });
+      console.log(`  ✓ reel.mp4 → ${(reelBuf.length / 1024 / 1024).toFixed(1)}MB → ${reelUrl}`);
+      if (await Bun.file(`${OUT}/cover.jpg`).exists()) {
+        const coverBuf = Buffer.from(await Bun.file(`${OUT}/cover.jpg`).arrayBuffer());
+        coverUrl = await withRetry(() => upload(`${today}/${sel.slug}/cover.jpg`, coverBuf, "image/jpeg"), { label: "upload cover" });
+        console.log(`  ✓ cover.jpg → ${(coverBuf.length / 1024).toFixed(0)}KB → ${coverUrl}`);
+      }
     }
   }
+} catch (e) {
+  console.error("⚠ reel hosting failed (carousel continues): " + e.message);
 }
 
-if (await Bun.file(`${OUT}/story.mp4`).exists()) {
-  const existingStory = await getPost(todayLondon(), "story").catch((e) => { console.error("⚠ story preflight skipped (state unreachable): " + e.message); return null; });
-  if (existingStory?.status === "published") {
-    console.error(`⚠ today's STORY is already PUBLISHED (ig_media_id=${existingStory.ig_media_id}). Skipping re-hosting story.`);
-  } else {
-    const storyBuf = Buffer.from(await Bun.file(`${OUT}/story.mp4`).arrayBuffer());
-    storyUrl = await withRetry(() => upload(`${today}/${sel.slug}/story.mp4`, storyBuf, "video/mp4"), { label: "upload story" });
-    console.log(`  ✓ story.mp4 → ${(storyBuf.length / 1024 / 1024).toFixed(1)}MB → ${storyUrl}`);
+try {
+  if (await Bun.file(`${OUT}/story.mp4`).exists()) {
+    const existingStory = await getPost(todayLondon(), "story").catch((e) => { console.error("⚠ story preflight skipped (state unreachable): " + e.message); return null; });
+    if (existingStory?.status === "published") {
+      console.error(`⚠ today's STORY is already PUBLISHED (ig_media_id=${existingStory.ig_media_id}). Skipping re-hosting story.`);
+    } else {
+      const storyBuf = Buffer.from(await Bun.file(`${OUT}/story.mp4`).arrayBuffer());
+      storyUrl = await withRetry(() => upload(`${today}/${sel.slug}/story.mp4`, storyBuf, "video/mp4"), { label: "upload story" });
+      console.log(`  ✓ story.mp4 → ${(storyBuf.length / 1024 / 1024).toFixed(1)}MB → ${storyUrl}`);
+    }
   }
+} catch (e) {
+  console.error("⚠ story hosting failed (carousel continues): " + e.message);
 }
 
 // Facebook: ONE detailed captioned post (FACEBOOK_CREATE_PHOTO_POST), not a pile
