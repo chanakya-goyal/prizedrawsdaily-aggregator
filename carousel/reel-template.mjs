@@ -421,7 +421,10 @@ function prizeScene({ idx, a, b, dur, slide, hero, i, n, qz }) {
 }
 
 // Arm B hook scene: cold open events + giant price + question line.
-function questionScene({ idx, a, b, dur, slide, hero, stampT, kickT, giantT, qT, sel }) {
+// stampOutT: the cold-open stamp winds OUT before the giant odds/price slams in — the
+// two share the centre of the frame; without the out the badge sits on top of the giant
+// text and hides its first line (found in Task 6 keyframe QA).
+function questionScene({ idx, a, b, dur, slide, hero, stampT, stampOutT, kickT, giantT, qT, sel }) {
   const len = b - a;
   const giant = slide.odds ? esc(slide.odds) : esc(String(slide.price || "").toUpperCase());
   const qLine = slide.odds ? `COULD BE YOU. WORTH A GO?` : `FOR A ${slide.title.toUpperCase()}?`;
@@ -436,7 +439,7 @@ function questionScene({ idx, a, b, dur, slide, hero, stampT, kickT, giantT, qT,
     <div class="q-wrap"><div class="giantq wd" style="animation-delay:${giantT}ms">${giant}</div>
       <div class="q-line rl-title">${wordSpans(qLine, qT, { stagger: 70 })}</div></div>
     <div class="kickline" style="animation-delay:${kickT}ms">${esc(slide.title)} · <b>${esc(slide.closes || "")}</b></div>
-    ${stampBlock(stampText(slide, sel), stampT)}</section>`;
+    ${stampBlock(stampText(slide, sel), stampT, stampOutT)}</section>`;
 }
 
 // Arm C countdown scene: flip-clock ticking to the earliest close.
@@ -508,10 +511,11 @@ export function buildReelTimeline({ sel, slides, heroes, arm, audioMeta, nowIso 
   } else if (arm === "B") {
     // single-prize hook: giant price/odds question → hard cut to CTA
     const ctaCut = qz(5500);
+    const giantT = qz(2000);
     cutTimesMs.push(ctaCut);
     stampTimesMs.push(stamp1, qz(6000));
     addScene(questionScene({ idx: 0, a: 0, b: ctaCut, dur: durationMs, slide: top, hero: heroOf(top),
-      stampT: stamp1, kickT: kick1, giantT: qz(2000), qT: qz(2500), sel }), 0, ctaCut);
+      stampT: stamp1, stampOutT: giantT - 400, kickT: kick1, giantT, qT: qz(2500), sel }), 0, ctaCut);
     addScene(heroScene({ idx: 1, a: ctaCut, b: durationMs, dur: durationMs, slide: top, hero: heroOf(top),
       stampT: stampTimesMs[1], outT, lower3T: qz(ctaCut + 400), sel }), ctaCut, durationMs);
   } else {
