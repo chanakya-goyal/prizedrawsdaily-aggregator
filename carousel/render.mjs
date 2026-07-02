@@ -26,22 +26,22 @@ const READY_SCRIPT = `
 })();
 `;
 
-// floating ember/spark particles for the fiery backdrop
-function embersHtml(n = 46) {
+// parameterized particle field (config per category: embers | golddust | fireflies | holo | none)
+function particlesHtml(profile = { type: "embers", count: 46 }) {
+  const { type = "embers", count = 46 } = profile || {};
+  if (type === "none" || count <= 0) return "";
   let s = "";
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < count; i++) {
     const size = (3 + Math.random() * 9).toFixed(1);
     const left = (Math.random() * 100).toFixed(1);
     const top = (Math.random() * 100).toFixed(1);
     const op = (0.22 + Math.random() * 0.55).toFixed(2);
-    s += `<span class="ember" style="left:${left}%;top:${top}%;width:${size}px;height:${size}px;opacity:${op}"></span>`;
+    s += `<span class="p-${type}" style="left:${left}%;top:${top}%;width:${size}px;height:${size}px;opacity:${op}"></span>`;
   }
   return `<div class="embers">${s}</div>`;
 }
-
-// atmospheric FX layer: top bloom + (optional sunburst rays) + embers
-const bgFx = (rays = false, n = 46) =>
-  `<div class="bloom"></div>${rays ? `<div class="rays"></div>` : ""}${embersHtml(n)}`;
+const bgFx = (rays = false, profile) =>
+  `<div class="bloom"></div>${rays ? `<div class="rays"></div>` : ""}${particlesHtml(profile)}`;
 
 // celebratory gold confetti shower (intro + cta) — keeps to the upper ~56% so copy stays clean
 function confettiHtml(n = 22) {
@@ -69,7 +69,7 @@ function textOverlay(d, longTitle) {
     <div class="footer"><span class="wm">PRIZEDRAWSDAILY.CO.UK</span><span class="rp">18+ · UK ONLY · PLAY RESPONSIBLY</span></div>`;
 }
 
-function drawHtml(d) {
+function drawHtml(d, particles) {
   const longTitle = (d.title || "").length > 26;
   // (B) original photo shown full-frame inside the card.
   // contain = show the WHOLE product uncropped (operator shots, where cropping would
@@ -78,7 +78,7 @@ function drawHtml(d) {
   if (d.framePhoto) {
     const fitClass = d.framePhotoContain ? " contain" : "";
     return `<div class="slide draw carded">
-      ${bgFx(false)}
+      ${bgFx(false, particles)}
       <div class="stage"></div>
       <div class="glow"></div>
       <div class="podium"></div>
@@ -94,7 +94,7 @@ function drawHtml(d) {
   // (A default) cut-out product inside a framed display card (orange-tinted bg + soft fill)
   if (d.cutoutDataUrl) {
     return `<div class="slide draw carded">
-      ${bgFx(false)}
+      ${bgFx(false, particles)}
       <div class="stage"></div>
       <div class="glow"></div>
       <div class="podium"></div>
@@ -109,7 +109,7 @@ function drawHtml(d) {
   // fallback (no clean product cutout): typographic prize card
   const longName = (d.title || "").length > 22;
   return `<div class="slide draw feature">
-    <div class="glow"></div>${bgFx(true)}
+    <div class="glow"></div>${bgFx(true, particles)}
     <div class="scrim"></div>
     ${d.price ? `<div class="pill">JUST ${esc(d.price)} A TICKET</div>` : ""}
     ${d.n ? `<div class="rank">${esc(d.n)}</div>` : ""}
@@ -126,20 +126,21 @@ function drawHtml(d) {
 function thumbsHtml(thumbs = [], mode = "photo") {
   const cls = mode === "cutout" ? "thumb thumb-cut" : "thumb thumb-photo";
   return `<div class="thumbs">` + thumbs.map((t, i) =>
-    `<div class="${cls}">${t ? `<img src="${t}">` : `<span style="font-family:'Anton';font-size:42px;color:var(--accent)">${i + 1}</span>`}</div>`
+    `<div class="${cls}">${t ? `<img src="${t}">` : `<span style="font-family:var(--font-display),'Anton';font-size:42px;color:var(--accent)">${i + 1}</span>`}</div>`
   ).join("") + `</div>`;
 }
 
-function introHtml(d) {
+function introHtml(d, particles) {
   const kicker = d.banner ? `${esc(d.banner)} THIS WEEK` : "THIS WEEK'S BIGGEST DRAWS";
   const subBits = [];
   if (d.value) subBits.push(`${esc(d.value)} IN PRIZES`);
   if (d.count) subBits.push(`${esc(d.count)} TO WIN`);
   const sub = subBits.join(" · ");
+  const denseParticles = { ...particles, count: Math.round((particles?.count ?? 46) * 1.25) };
   return `<div class="slide intro">
     ${d.bg ? `<div class="backdrop"><img src="${d.bg}"></div>` : ""}
-    <div class="glow"></div>${bgFx(true, 58)}${confettiHtml(24)}
-    <div class="techfloor"></div><div class="techgrid"></div>
+    <div class="glow"></div>${bgFx(true, denseParticles)}${confettiHtml(24)}
+    <div class="techgrid"></div>
     <div class="scrim"></div>
     <div class="intro-wrap">
       <div class="intro-kicker">🏆 ${kicker}</div>
@@ -154,9 +155,10 @@ function introHtml(d) {
   </div>`;
 }
 
-function ctaHtml() {
+function ctaHtml(particles) {
+  const denseParticles = { ...particles, count: Math.round((particles?.count ?? 46) * 1.25) };
   return `<div class="slide cta">
-    <div class="glow"></div>${bgFx(true, 58)}${confettiHtml(20)}
+    <div class="glow"></div>${bgFx(true, denseParticles)}${confettiHtml(20)}
     <div class="scrim"></div>
     <div class="cta-wrap">
       <div class="cta-lead hl">SEE EVERY<br>LIVE UK DRAW</div>
@@ -168,22 +170,25 @@ function ctaHtml() {
   </div>`;
 }
 
-export function buildHtml(slide, theme = "default") {
-  const body = slide.type === "intro" ? introHtml(slide)
-    : slide.type === "cta" ? ctaHtml(slide)
-    : drawHtml(slide);
+export function buildHtml(slide, theme = "default", particles = { type: "embers", count: 46 }) {
+  const body = slide.type === "intro" ? introHtml(slide, particles)
+    : slide.type === "cta" ? ctaHtml(particles)
+    : drawHtml(slide, particles);
   return `<!doctype html><html><head><meta charset="utf-8">
 <style>${FONT_CSS}</style>
 <style>${CSS}</style></head><body data-type="${slide.type}" data-theme="${theme}">${body}<script>${READY_SCRIPT}</script></body></html>`;
 }
 
-export async function renderSlides(slides, theme = "default") {
+export async function renderSlides(slides, theme = "default", particles = { type: "embers", count: 46 }) {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1080, height: 1350 }, deviceScaleFactor: 2 });
   const out = [];
   for (const s of slides) {
-    await page.setContent(buildHtml(s, theme), { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page.waitForFunction("window.__ready === true", { timeout: 25000 }).catch(() => {});
+    await page.setContent(buildHtml(s, theme, particles), { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForFunction("window.__ready === true", { timeout: 25000 }).catch(async () => {
+      await browser.close();
+      throw new Error(`render not ready (fonts/images failed) on slide type=${s.type} title=${s.title || ""} — refusing to ship a degraded slide`);
+    });
     out.push(await page.screenshot({ type: "png", timeout: 60000, animations: "disabled" }));
   }
   await browser.close();

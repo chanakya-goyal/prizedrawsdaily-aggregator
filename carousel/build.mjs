@@ -7,7 +7,7 @@ import { renderSlides } from "./render.mjs";
 import { buildCaption } from "./caption.mjs";
 import { toDrawSlide, catLabel, hookLabel, priceLabel } from "./format.mjs";
 import { readdir, mkdir } from "node:fs/promises";
-import { workDir, themeOf } from "./config.mjs";
+import { workDir, themeOf, catCfg } from "./config.mjs";
 
 const DIR = workDir();
 const sel = JSON.parse(await Bun.file(`${DIR}/selection.json`).text());
@@ -149,7 +149,7 @@ const slides = [intro, ...drawSlides, { type: "cta" }];
 // default/unmapped → the fiery orange look.
 const theme = themeOf(sel.slug);
 console.log(`Theme: ${theme}`);
-const pngs = await renderSlides(slides, theme);
+const pngs = await renderSlides(slides, theme, catCfg(sel.slug).particles);
 const outDir = `${DIR}/out`;
 await mkdir(outDir, { recursive: true });
 const slideName = (i) => i === 0 ? "intro" : i === slides.length - 1 ? "cta" : sel.draws[i - 1].slug.slice(0, 40);

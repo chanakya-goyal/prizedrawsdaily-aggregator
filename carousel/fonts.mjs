@@ -13,15 +13,22 @@ const FACES = [
   ["Inter", 500, "inter-latin-500-normal.woff2"],
   ["Inter", 600, "inter-latin-600-normal.woff2"],
   ["Inter", 700, "inter-latin-700-normal.woff2"],
+  // theme display faces (spec §5)
+  ["Playfair Display", 700, "playfair-display-latin-700-italic.woff2", "italic"],
+  ["Playfair Display", 800, "playfair-display-latin-800-normal.woff2"],
+  ["Space Grotesk", 700, "space-grotesk-latin-700-normal.woff2"],
+  ["JetBrains Mono", 700, "jetbrains-mono-latin-700-normal.woff2"],
+  ["Fraunces", 900, "fraunces-latin-900-normal.woff2"],
+  ["Bungee", 400, "bungee-latin-400-normal.woff2"],
 ];
 
 export async function fontFaceCss() {
   const out = [];
-  for (const [family, weight, file] of FACES) {
+  for (const [family, weight, file, style = "normal"] of FACES) {
     try {
       const buf = Buffer.from(await Bun.file(new URL(`./assets/fonts/${file}`, import.meta.url)).arrayBuffer());
       const b64 = buf.toString("base64");
-      out.push(`@font-face{font-family:'${family}';font-style:normal;font-weight:${weight};font-display:block;src:url(data:font/woff2;base64,${b64}) format('woff2');}`);
+      out.push(`@font-face{font-family:'${family}';font-style:${style};font-weight:${weight};font-display:block;src:url(data:font/woff2;base64,${b64}) format('woff2');}`);
     } catch (e) { /* missing font file -> skip; CDN link is the fallback */ }
   }
   return out.join("\n");

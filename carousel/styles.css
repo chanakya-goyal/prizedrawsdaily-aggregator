@@ -31,6 +31,8 @@ body {
   /* premium "WIN" gold (used by jackpot intro, win-ribbon, spotlight, confetti) */
   --gold-1: #FFEFB0; --gold-2: #FFD24A; --gold-3: #E8A21C;
   --gold-rgb: 255,210,74; --gold-deep-rgb: 201,136,26;
+  --font-display: 'Anton';                 /* per-theme display face */
+  --font-kicker: 'Oswald';                 /* per-theme kicker face */
 }
 /* TECH — cool electric blue "gadget keynote" vibe */
 [data-theme="tech"] {
@@ -52,6 +54,100 @@ body {
   --pill-ink-rgb: 0,38,86;
 }
 
+/* LUXURY — old money: near-black + champagne gold, hairline borders, film grain, serif kickers */
+[data-theme="luxury"] {
+  --accent: #D8A93C;        --accent-rgb: 216,169,60;
+  --accent-lt: #F1CE7E;     --accent-lt-rgb: 241,206,126;
+  --accent-deep-rgb: 168,120,26;
+  --glow: #C89A38;          --glow-rgb: 200,154,56;
+  --ray-rgb: 236,206,140;
+  --spark-core: #FFF3D0;    --spark-mid: #E9C068;   --spark-glow-rgb: 226,186,96;
+  --hot: #F1CE7E;
+  --stroke: #171105;
+  --ink-end: #f4e8c8;
+  --grad-1: #FFF3D0; --grad-2: #EFCB72; --grad-3: #C1913A;
+  --bg-1: #17130c; --bg-2: #0d0b07; --bg-3: #060503; --bg-solid: #070604;
+  --card-rgb: 18,15,9;
+  --scrim-rgb: 7,6,4;
+  --pill-1: #F1CE7E; --pill-2: #D8A93C; --pill-3: #B8842A;
+  --pill-edge-rgb: 250,236,190;
+  --pill-ink-rgb: 70,48,6;
+  --font-kicker: 'Playfair Display';
+}
+[data-theme="luxury"] .card { border-width: 1px; }                     /* hairline gold frame */
+[data-theme="luxury"] .intro-kicker, [data-theme="luxury"] .feat-kicker { font-style: italic; letter-spacing: 2px; }
+[data-theme="luxury"] .slide::after {                                   /* 4% film grain */
+  content: ""; position: absolute; inset: 0; z-index: 9; pointer-events: none; opacity: .04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* CASH — jackpot night: deep casino green + gold marquee glow (no banknote rain — spec §5) */
+[data-theme="cash"] {
+  --accent: #22C55E;        --accent-rgb: 34,197,94;
+  --accent-lt: #7CE7A6;     --accent-lt-rgb: 124,231,166;
+  --accent-deep-rgb: 14,140,60;
+  --glow: #2ECC71;          --glow-rgb: 46,204,113;
+  --ray-rgb: 150,235,180;
+  --spark-core: #FFF3C8;    --spark-mid: #FFD24A;   --spark-glow-rgb: 255,210,74;
+  --hot: #FFD24A;
+  --stroke: #04170b;
+  --ink-end: #d8f7e4;
+  --grad-1: #E9FFE9; --grad-2: #5FE08A; --grad-3: #12A34E;
+  --bg-1: #0b2416; --bg-2: #071510; --bg-3: #030a06; --bg-solid: #04100a;
+  --card-rgb: 8,22,14;
+  --scrim-rgb: 4,10,7;
+  --pill-1: #FFE07A; --pill-2: #FFC93D; --pill-3: #E8A21C;
+  --pill-edge-rgb: 255,238,190;
+  --pill-ink-rgb: 80,54,0;
+}
+
+/* HOUSE — dream home at dusk: twilight navy/teal + glowing amber windows */
+[data-theme="house"] {
+  --accent: #FFB255;        --accent-rgb: 255,178,85;
+  --accent-lt: #FFD394;     --accent-lt-rgb: 255,211,148;
+  --accent-deep-rgb: 232,140,40;
+  --glow: #FFAA4A;          --glow-rgb: 255,170,74;
+  --ray-rgb: 255,205,140;
+  --spark-core: #FFF6DE;    --spark-mid: #FFCB7E;   --spark-glow-rgb: 255,196,110;
+  --hot: #FFD394;
+  --stroke: #0a1220;
+  --ink-end: #ffe9c9;
+  --grad-1: #FFF0D6; --grad-2: #FFC169; --grad-3: #F09A2E;
+  --bg-1: #14243c; --bg-2: #0b1526; --bg-3: #050a14; --bg-solid: #060b15;
+  --card-rgb: 12,20,34;
+  --scrim-rgb: 5,9,16;
+  --pill-1: #FFCB7E; --pill-2: #FFAA4A; --pill-3: #F08A1E;
+  --pill-edge-rgb: 255,228,180;
+  --pill-ink-rgb: 92,50,0;
+  --font-display: 'Fraunces';
+}
+
+/* COLLECT — holo grail: deep purple/magenta + animated-feel holo sheen on the card */
+[data-theme="collect"] {
+  --accent: #C05CFF;        --accent-rgb: 192,92,255;
+  --accent-lt: #E2A9FF;     --accent-lt-rgb: 226,169,255;
+  --accent-deep-rgb: 140,40,220;
+  --glow: #B44DFF;          --glow-rgb: 180,77,255;
+  --ray-rgb: 220,170,255;
+  --spark-core: #F6E8FF;    --spark-mid: #D08CFF;   --spark-glow-rgb: 200,150,255;
+  --hot: #FF7AD9;
+  --stroke: #150425;
+  --ink-end: #f0dcff;
+  --grad-1: #F6E8FF; --grad-2: #D08CFF; --grad-3: #9A2DE8;
+  --bg-1: #241238; --bg-2: #140a22; --bg-3: #080312; --bg-solid: #0a0514;
+  --card-rgb: 24,12,38;
+  --scrim-rgb: 9,4,16;
+  --pill-1: #E2A9FF; --pill-2: #C05CFF; --pill-3: #9A2DE8;
+  --pill-edge-rgb: 240,214,255;
+  --pill-ink-rgb: 70,10,120;
+  --font-display: 'Bungee';
+}
+[data-theme="collect"] .card::after {                                   /* holo sheen sweep */
+  content: ""; position: absolute; inset: 0; z-index: 5; pointer-events: none; opacity: .16;
+  background: conic-gradient(from 210deg at 60% 20%, transparent 0deg, #9ff 40deg, #f9f 80deg, #ff9 120deg, transparent 160deg);
+  mix-blend-mode: screen; border-radius: inherit;
+}
+
 .slide {
   position: relative; width: 1080px; height: 1350px; overflow: hidden;
   background:
@@ -61,7 +157,7 @@ body {
 }
 
 /* ---- glossy headline treatment (gradient fill + chunky dark outline + accent glow) ---- */
-.hl { font-family: 'Anton', sans-serif; font-weight: 400; text-transform: uppercase; letter-spacing: .5px;
+.hl { font-family: var(--font-display), 'Anton', sans-serif; font-weight: 400; text-transform: uppercase; letter-spacing: .5px;
   background: linear-gradient(180deg, #ffffff 0%, #ffffff 46%, var(--ink-end) 100%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
   -webkit-text-stroke: 7px var(--stroke); paint-order: stroke fill;
@@ -87,9 +183,20 @@ body {
   mix-blend-mode: screen; filter: blur(3px); pointer-events: none; }
 /* ember / spark particles (each with a soft glow halo) */
 .embers { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
-.ember { position: absolute; border-radius: 50%; mix-blend-mode: screen; filter: blur(.3px);
-  background: radial-gradient(circle, var(--spark-core) 0%, var(--spark-mid) 54%, rgba(var(--accent-rgb),0) 72%);
-  box-shadow: 0 0 9px 2px rgba(var(--spark-glow-rgb),.55); }
+
+/* ---- parameterized particles (spec §5): one skeleton, per-theme fields ---- */
+.p-embers { border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, var(--spark-core), var(--spark-mid) 60%, transparent 75%);
+  box-shadow: 0 0 14px 4px rgba(var(--spark-glow-rgb), .55); position: absolute; }
+.p-golddust { border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, #fff8e1, var(--gold-2) 65%, transparent 80%);
+  box-shadow: 0 0 10px 2px rgba(var(--gold-rgb), .38); position: absolute; }
+.p-fireflies { border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, #fffbe8, #ffd98a 60%, transparent 78%);
+  box-shadow: 0 0 16px 5px rgba(255, 196, 110, .34); position: absolute; }
+.p-holo { border-radius: 2px; transform: rotate(45deg);
+  background: linear-gradient(135deg, #9ff, #f9f 45%, #ff9 80%);
+  box-shadow: 0 0 12px 3px rgba(200, 150, 255, .4); position: absolute; }
 /* vibrant glow behind product */
 .glow { position: absolute; left: 50%; top: 42%; width: 980px; height: 980px; transform: translate(-50%,-50%); z-index: 1;
   background: radial-gradient(circle, var(--glow) 0%, rgba(var(--accent-rgb),.42) 28%, rgba(0,0,0,0) 64%);
@@ -98,26 +205,12 @@ body {
 /* ---- TECH backdrop (intro only; hidden unless [data-theme="tech"]) ---- */
 /* sit ABOVE the scrim (z-index 2) so the grid isn't darkened away, but below content (z-4) */
 /* faint flat blueprint grid behind the headline/thumbnails */
-.techgrid, .techfloor { display: none; }
-[data-theme="tech"] .techgrid { display: block; position: absolute; inset: 0; z-index: 3; pointer-events: none;
-  opacity: .5; mix-blend-mode: screen;
-  background-image:
-    linear-gradient(rgba(var(--accent-rgb),.22) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(var(--accent-rgb),.22) 1px, transparent 1px);
-  background-size: 96px 96px, 96px 96px;
-  -webkit-mask-image: radial-gradient(ellipse 84% 60% at 50% 38%, #000 0%, rgba(0,0,0,.4) 54%, transparent 80%);
-  mask-image: radial-gradient(ellipse 84% 60% at 50% 38%, #000 0%, rgba(0,0,0,.4) 54%, transparent 80%); }
-/* glowing perspective "stage floor" grid receding at the bottom — keynote/Tron vibe */
-[data-theme="tech"] .techfloor { display: block; position: absolute; left: 50%; bottom: -5%; width: 240%; height: 56%;
-  transform: translateX(-50%) perspective(600px) rotateX(72deg); transform-origin: 50% 100%;
-  z-index: 3; pointer-events: none; opacity: .75; mix-blend-mode: screen;
-  background-image:
-    linear-gradient(rgba(var(--accent-lt-rgb),.8) 2px, transparent 2px),
-    linear-gradient(90deg, rgba(var(--accent-lt-rgb),.8) 2px, transparent 2px);
-  background-size: 88px 88px, 88px 88px;
-  -webkit-mask-image: linear-gradient(to top, #000 4%, rgba(0,0,0,.55) 42%, transparent 80%);
-  mask-image: linear-gradient(to top, #000 4%, rgba(0,0,0,.55) 42%, transparent 80%);
-  filter: drop-shadow(0 0 14px rgba(var(--accent-rgb),.6)); }
+.techgrid { display: none; }
+[data-theme="tech"] .techgrid { display: block; position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: .12;
+  background: repeating-linear-gradient(180deg, rgba(140,215,255,.5) 0 1px, transparent 1px 5px); }  /* scanlines */
+[data-theme="tech"] .hl { text-shadow: 2px 0 rgba(255,40,80,.32), -2px 0 rgba(0,229,255,.32); }        /* chromatic split */
+[data-theme="tech"] .closes, [data-theme="tech"] .feat-closes, [data-theme="tech"] .intro-sub {
+  font-family: 'JetBrains Mono', monospace; letter-spacing: 0; }                                          /* spec-sheet data line */
 
 /* faded product backdrop (used by intro) */
 .backdrop { position: absolute; inset: 0; }
@@ -152,7 +245,7 @@ body {
 /* accent price pill */
 .pill { position: absolute; top: 52px; right: 50px; z-index: 6;
   background: linear-gradient(135deg, var(--pill-1) 0%, var(--pill-2) 52%, var(--pill-3) 100%); color: #fff;
-  font-family: 'Anton', sans-serif; font-size: 33px; letter-spacing: .4px;
+  font-family: var(--font-display), 'Anton', sans-serif; font-size: 33px; letter-spacing: .4px;
   padding: 15px 28px; border-radius: 14px; text-transform: uppercase;
   border: 2px solid rgba(var(--pill-edge-rgb),.6); box-shadow: 0 12px 32px rgba(var(--accent-deep-rgb),.55), inset 0 1px 0 rgba(255,255,255,.35);
   text-shadow: 0 2px 4px rgba(var(--pill-ink-rgb),.6); }
@@ -160,17 +253,17 @@ body {
 /* rank circle */
 .rank { position: absolute; top: 52px; left: 50px; z-index: 6; width: 86px; height: 86px; border-radius: 50%;
   background: rgba(var(--card-rgb),.55); border: 3px solid var(--accent); display: flex; align-items: center; justify-content: center;
-  font-family: 'Anton', sans-serif; font-size: 46px; backdrop-filter: blur(4px); box-shadow: 0 0 30px rgba(var(--accent-rgb),.6); }
+  font-family: var(--font-display), 'Anton', sans-serif; font-size: 46px; backdrop-filter: blur(4px); box-shadow: 0 0 30px rgba(var(--accent-rgb),.6); }
 
 /* title block (bottom-left) */
 .title-block { position: absolute; left: 58px; right: 58px; bottom: 124px; z-index: 5; }
-.prize { font-family: 'Anton', sans-serif; font-size: 98px; line-height: .9; text-transform: uppercase;
+.prize { font-family: var(--font-display), 'Anton', sans-serif; font-size: 98px; line-height: .9; text-transform: uppercase;
   background: linear-gradient(180deg, #ffffff 0%, #ffffff 50%, var(--ink-end) 100%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
   -webkit-text-stroke: 6px var(--stroke); paint-order: stroke fill;
   filter: drop-shadow(0 6px 16px rgba(0,0,0,.72)) drop-shadow(0 0 40px rgba(var(--accent-rgb),.42)); }
 .prize.long { font-size: 72px; }
-.cash { margin-top: 14px; font-family: 'Anton', sans-serif; font-size: 48px; text-transform: uppercase;
+.cash { margin-top: 14px; font-family: var(--font-display), 'Anton', sans-serif; font-size: 48px; text-transform: uppercase;
   background: linear-gradient(180deg, var(--grad-1) 0%, var(--grad-2) 56%, var(--grad-3) 100%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
   -webkit-text-stroke: 5px var(--stroke); paint-order: stroke fill;
@@ -182,7 +275,7 @@ body {
 /* footer */
 .footer { position: absolute; left: 0; right: 0; bottom: 44px; z-index: 7;
   display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.footer .wm { font-family: 'Anton', sans-serif; font-size: 28px; letter-spacing: 4px; color: #fff;
+.footer .wm { font-family: var(--font-display), 'Anton', sans-serif; font-size: 28px; letter-spacing: 4px; color: #fff;
   text-shadow: 0 0 22px rgba(var(--accent-rgb),.5); }
 .footer .rp { font-family: 'Oswald', sans-serif; font-size: 19px; font-weight: 500; letter-spacing: 3px; color: rgba(255,255,255,.55); }
 
@@ -191,13 +284,13 @@ body {
   justify-content: center; text-align: center; padding: 150px 78px 360px; }
 .feat-kicker { font-family: 'Oswald', sans-serif; font-weight: 700; letter-spacing: 5px; font-size: 26px;
   color: var(--accent); text-transform: uppercase; margin-bottom: 26px; text-shadow: 0 0 22px rgba(var(--accent-rgb),.65); }
-.feat-name { font-family: 'Anton', sans-serif; font-size: 96px; line-height: .9; text-transform: uppercase;
+.feat-name { font-family: var(--font-display), 'Anton', sans-serif; font-size: 96px; line-height: .9; text-transform: uppercase;
   background: linear-gradient(180deg, #fff 0%, #fff 50%, var(--ink-end) 100%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
   -webkit-text-stroke: 6px var(--stroke); paint-order: stroke fill;
   filter: drop-shadow(0 6px 18px rgba(0,0,0,.7)) drop-shadow(0 0 46px rgba(var(--accent-rgb),.45)); }
 .feat-name.long { font-size: 68px; }
-.feat-cash { margin-top: 26px; font-family: 'Anton', sans-serif; font-size: 46px; color: var(--accent);
+.feat-cash { margin-top: 26px; font-family: var(--font-display), 'Anton', sans-serif; font-size: 46px; color: var(--accent);
   -webkit-text-stroke: 5px var(--stroke); paint-order: stroke fill; text-transform: uppercase; }
 .feat-closes { margin-top: 26px; font-family: 'Oswald', sans-serif; font-size: 32px; font-weight: 600; color: #fff;
   letter-spacing: .5px; text-transform: uppercase; }
@@ -226,7 +319,7 @@ body {
   color: #fff; text-transform: uppercase; text-shadow: 0 2px 12px rgba(0,0,0,.85); }
 .intro-end b { color: var(--hot); }
 .intro-swipe { align-self: center; margin-top: 26px; display: inline-flex; align-items: center; gap: 14px;
-  font-family: 'Anton', sans-serif; font-size: 40px; letter-spacing: 1.5px; text-transform: uppercase; color: #fff;
+  font-family: var(--font-display), 'Anton', sans-serif; font-size: 40px; letter-spacing: 1.5px; text-transform: uppercase; color: #fff;
   padding: 16px 50px; border-radius: 999px;
   background: linear-gradient(135deg, var(--pill-1) 0%, var(--pill-2) 52%, var(--pill-3) 100%);
   border: 2px solid rgba(var(--pill-edge-rgb),.65);
@@ -238,7 +331,7 @@ body {
 .cta-wrap { position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; align-items: center;
   justify-content: center; text-align: center; padding: 0 70px; }
 .cta-lead { font-size: 104px; line-height: .88; }
-.cta-url { margin-top: 34px; font-family: 'Anton', sans-serif; font-size: 52px; letter-spacing: 1px;
+.cta-url { margin-top: 34px; font-family: var(--font-display), 'Anton', sans-serif; font-size: 52px; letter-spacing: 1px;
   background: linear-gradient(180deg, var(--grad-1) 0%, var(--grad-2) 56%, var(--grad-3) 100%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
   -webkit-text-stroke: 4px var(--stroke); paint-order: stroke fill;
@@ -277,7 +370,7 @@ body {
 /* diagonal "WIN THIS" corner ribbon, clipped by the card's rounded corner */
 .win-ribbon { position: absolute; top: 30px; left: -66px; z-index: 6; transform: rotate(-45deg); transform-origin: center;
   width: 268px; text-align: center; padding: 11px 0;
-  font-family: 'Anton', sans-serif; font-size: 27px; letter-spacing: 3px; text-transform: uppercase; color: #3a2400;
+  font-family: var(--font-display), 'Anton', sans-serif; font-size: 27px; letter-spacing: 3px; text-transform: uppercase; color: #3a2400;
   background: linear-gradient(180deg, var(--gold-1) 0%, var(--gold-2) 55%, var(--gold-3) 100%);
   border-top: 2px solid rgba(255,255,255,.55);
   box-shadow: 0 8px 20px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.5); }
