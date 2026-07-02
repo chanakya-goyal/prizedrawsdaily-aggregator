@@ -13,10 +13,13 @@ const cashAltValue = (d) => {
 
 // Per-draw claimable value: ticket revenue, capped at the operator's own cash
 // alternative when one is stated (the operator's number is the honest ceiling).
+// Guard alt > 0: a "£0"/"£000" cash-alt string parses to 0, and a zero cap would
+// zero out an otherwise-legitimate revenue figure — that's a parse artifact, not
+// an honest ceiling, so fall back to revenue instead.
 export function capValue(d) {
   const revenue = Number(d.total_prize_value) || 0;
   const alt = cashAltValue(d);
-  return alt != null ? Math.min(revenue, alt) : revenue;
+  return (alt != null && alt > 0) ? Math.min(revenue, alt) : revenue;
 }
 
 export function valueLine(draws, slug) {

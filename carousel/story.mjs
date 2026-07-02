@@ -129,7 +129,7 @@ export function buildStoryTimeline({ draw, hero, theme, audioMeta, nowIso = DEFA
   // everything else is a simple entrance cascade, not a "cut/slam".
   const grid = audioMeta?.bpm > 0 ? beatGrid(audioMeta, durationMs) : [];
   const stampT = grid.length ? Math.round(quantize(10000, grid)) : 10000;
-  const stampText = slide.price ? `JUST ${String(slide.price).toUpperCase()} A TICKET` : "DON'T MISS OUT";
+  const stampText = slide.price ? `JUST ${String(slide.price).toUpperCase()} A TICKET` : "CLOSING SOON";
 
   const media = hero
     ? `<div class="cbg"><img src="${hero}"></div><div class="photo"><img src="${hero}"></div><div class="pgrad"></div>`

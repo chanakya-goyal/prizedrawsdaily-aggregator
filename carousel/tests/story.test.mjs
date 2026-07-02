@@ -62,3 +62,10 @@ test("deterministic: two builds are byte-identical (no Date.now()/Math.random())
 test("throws without a draw", () => {
   expect(() => buildStoryTimeline({ draw: null, hero: null, theme: "default", audioMeta, nowIso })).toThrow();
 });
+
+test("price-less draw stamps brand-safe 'CLOSING SOON', never the banned 'DON'T MISS OUT'", () => {
+  const priceless = { ...draw, ticket_price: null };
+  const t = buildStoryTimeline({ draw: priceless, hero: null, theme: "default", audioMeta, nowIso });
+  expect(t.html).toContain("CLOSING SOON");
+  expect(t.html).not.toContain("DON'T MISS OUT");
+});

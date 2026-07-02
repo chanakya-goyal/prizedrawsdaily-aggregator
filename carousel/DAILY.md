@@ -37,7 +37,8 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
    step) means re-running whichever of the three actually used that photo.
 
    **Reel arm rotation:** `REEL_ARM=A|B|C bun carousel/reel.mjs` overrides; otherwise it rotates automatically —
-   `["A","B","C"][dayOfYear % 3]` where `dayOfYear` counts days since Jan 1 (machine-local time). The three
+   `["A","B","C"][dayOfYear % 3]` where `dayOfYear` counts days since Jan 1 (UTC-anchored — `Date.parse` of Jan-1,
+   timezone-independent). The three
    constructions (spec §4.4):
    - **A — 12–18s themed multi-prize.** Cold open (best prize, price stamp slam-in) → a scene per draw → outro
      stamp loop-back. The "full carousel-in-video" arm.
@@ -89,8 +90,11 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
    - Writes `out/publish.json`: `caption`, `fbCaption`, `heroUrl`, `urls`, `altTexts`, `reelUrl`, `coverUrl`,
      `storyUrl`, `reelMeta` (`{arm, durationMs, stampTimesMs, audio, coverText}`).
    - Writes idempotent write-ahead `assets_uploaded` rows in `carousel_posts`: `carousel` and `fb_photo` every
-     run, plus `reel`/`story` only when that asset was actually (re-)uploaded this run (a reel/story already
-     marked `published` today is skipped, not re-hosted, so its real row is never clobbered).
+     run, `reel`/`story` only when that asset was actually (re-)uploaded this run (a reel/story already marked
+     `published` today is skipped, not re-hosted, so its real row is never clobbered — but `reelUrl`/`storyUrl`
+     still resolve to the canonical public URL on a skip, so `publish.json` stays complete), and `fb_video`
+     whenever `reelUrl` resolved (uploaded or skip-resolved) and today's `fb_video` row isn't already
+     `published`.
    - Refuses outright (exit 2) if today's `carousel` row is already `published` — use `state-mark.mjs` to
      override if that's wrong.
 
@@ -112,26 +116,29 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
    3. **Story — SUPERVISED TEST** (first live run, and every run until proven): `INSTAGRAM_POST_IG_USER_MEDIA`
       (`ig_user_id`, `media_type: "STORIES"`, `video_url: publish.json.storyUrl`) → publish →
       `bun carousel/state-mark.mjs story published --ig <id>`. **If the Graph API rejects `STORIES` on this
-      Creator account, record the exact error text verbatim in the session and drop story from the routine** —
-      don't retry silently — pending a decision on switching to Business (reach was verified identical before/
-      after the earlier Business→Creator switch, so that decision is low-risk).
-   4. **Facebook — video post is now the PRIMARY action:** `FACEBOOK_CREATE_VIDEO_POST` (`page_id:
-      1106603652538117`, `file_url: publish.json.reelUrl`, `description: fbCaption`) →
-      `bun carousel/state-mark.mjs fb_video published --fb <post_id>`. The photo mirror
-      (`FACEBOOK_CREATE_PHOTO_POST`, `url: heroUrl`, `message: fbCaption`) is now only a **fallback for when the
-      video post fails** — it used to be the primary FB action in v2.
-      - **Known gap to work around:** `publish.mjs` still unconditionally write-aheads an `fb_photo`
-        `assets_uploaded` row *every* day, even on days the video succeeds and the photo mirror never actually
-        posts. `cleanup.mjs` refuses to run until **every** row for today is `published` — so once the FB video
-        succeeds, also close out that `fb_photo` row (reuse the video's post id:
-        `bun carousel/state-mark.mjs fb_photo published --fb <same post_id>`), or run the real photo-mirror post
-        (with its own id) if the video genuinely failed. This mismatch — `fb_video` is the new primary format but
-        `publish.mjs`'s write-ahead code was never extended past `fb_photo` — is worth fixing in code later;
-        this is the workaround until then.
+      Creator account, record the exact error text verbatim in the session, then run `bun carousel/state-mark.mjs
+      story skipped` so `cleanup.mjs`'s published-or-skipped gate can still proceed, and drop story from the
+      routine** — don't retry silently — pending a decision on switching to Business (reach was verified identical
+      before/after the earlier Business→Creator switch, so that decision is low-risk).
+   4. **Facebook:**
+      - **PRIMARY — video path** (a reel ran today, so `publish.json.reelUrl` exists and `publish.mjs` wrote an
+        `fb_video` `assets_uploaded` write-ahead row): `FACEBOOK_CREATE_VIDEO_POST` (`page_id: 1106603652538117`,
+        `file_url: publish.json.reelUrl`, `description: fbCaption`) →
+        `bun carousel/state-mark.mjs fb_video published --fb <post_id>` **AND**
+        `bun carousel/state-mark.mjs fb_photo skipped` — the photo mirror never posts on a video day, so its
+        write-ahead row needs a terminal status too, or `cleanup.mjs` would wait on it forever.
+      - **FALLBACK — the video post fails:** `FACEBOOK_CREATE_PHOTO_POST` (`url: heroUrl`, `message: fbCaption`)
+        → `bun carousel/state-mark.mjs fb_photo published --fb <post_id>` **AND**
+        `bun carousel/state-mark.mjs fb_video skipped` — record the video failure, then close its row so cleanup
+        can still proceed.
+      - **Carousel-only day (no reel ran):** `publish.mjs` never writes an `fb_video` row at all (there's no
+        `reelUrl` to post), so the photo post is simply the primary FB action, unchanged from v2:
+        `FACEBOOK_CREATE_PHOTO_POST` → `bun carousel/state-mark.mjs fb_photo published --fb <post_id>`.
 
 10. **Cleanup** — `bun carousel/cleanup.mjs`. Once every `carousel_posts` row for today (`carousel` + `fb_photo`
-    + `reel`/`story` if they ran) reads `published`, deletes today's raw JPEGs/mp4s from the bucket — the
-    platforms already copied the media in at ingest. Refuses loudly (exit 1) while anything's still pending —
+    + `fb_video`/`reel`/`story` if they ran) reads `published` **or** `skipped` — with at least one row actually
+    `published` — deletes today's raw JPEGs/mp4s from the bucket — the platforms already copied the media in at
+    ingest. Refuses loudly (exit 1) while anything's still pending (i.e. neither `published` nor `skipped`) —
     that's the point: a slow/retried Composio post can never lose the asset it still needs.
 
 11. **Reply sweep** — ~30–60 min post-publish (session timing allowing — the 7–9pm UK slot ≈ 11:30pm–1:30am IST
@@ -161,7 +168,7 @@ against which arm posted that day (`carousel_posts.hook_archetype` = `arm-A`/`ar
 written automatically by `publish.mjs` from `reel-meta.json`), plus per-post likes/comments (`ig_media`) for the
 same posts, holding slot/category as constant as the rotation allows.
 
-**Go/no-go rule (spec §4.4/§4.7/§9):** only a **format-sized gap (~5–10×)** counts as signal — day-to-day noise
+**Go/no-go rule (spec §4.4/§2/§9):** only a **format-sized gap (~5–10×)** counts as signal — day-to-day noise
 on a 49-follower account is expected and is NOT evidence. If by the end of week 2 no arm construction clearly
 beats carousel-era reach by that same order of magnitude, **stop and redesign the format with the user** rather
 than continuing to automate a construction that isn't working — don't quietly keep rotating forever on
@@ -194,12 +201,15 @@ insufficient data.
 - **`carousel_posts`** (Supabase) — one row per `(date, format)` tracking the pipeline: `pending` →
   `assets_uploaded` (written by `publish.mjs` before Composio posts, so a crash mid-post can't cause a
   silent double-publish) → `published` (written by you/Claude via `state-mark.mjs` once Composio confirms the
-  post id). Formats seen today: `carousel`, `fb_photo`, `reel`, `story`, and now `fb_video` (state-marked
-  manually — see the "known gap" note in step 9.4, `publish.mjs` doesn't write-ahead a row for it yet). Also
-  stores `category`, `draw_slugs`, `hook_archetype` (plain archetype id for carousel/caption; `arm-A`/`arm-B`/
-  `arm-C` for `reel` rows), `seo_keyword`, `caption`, `asset_urls`, `posted_at`. History off this table drives
-  selection (`recentDrawSlugs`/`lastCategory` in `plan.mjs` avoid repeating draws/categories) and the caption
-  briefing's "banned last-14-day openers".
+  post id) → or `skipped` (also via `state-mark.mjs`, when a format is deliberately dropped this run — a rejected
+  story, or whichever of `fb_video`/`fb_photo` didn't post — `published` and `skipped` are both terminal for
+  `cleanup.mjs`'s gate, see step 10). Formats seen today: `carousel`, `fb_photo`, `reel`, `story`, `fb_video` —
+  `publish.mjs` now write-aheads an `assets_uploaded` `fb_video` row itself whenever a reel ran this run (or a
+  published reel's URL was resolved via the skip branch), preflighted against an already-`published` `fb_video`
+  row exactly like `reel`/`story`. Also stores `category`, `draw_slugs`, `hook_archetype` (plain archetype id for
+  carousel/caption; `arm-A`/`arm-B`/`arm-C` for `reel` rows), `seo_keyword`, `caption`, `asset_urls`, `posted_at`.
+  History off this table drives selection (`recentDrawSlugs`/`lastCategory` in `plan.mjs` avoid repeating draws/
+  categories) and the caption briefing's "banned last-14-day openers".
 - **`carousel_metrics`** — daily per-post metrics (reach/likes/comments/FB reactions etc.), keyed by
   `(day, media_id, metric)`, ingested by `insights.mjs` (step 1) — the data source for the format experiment
   above and the future Phase 3 learn/report loop.

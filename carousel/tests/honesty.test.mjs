@@ -34,6 +34,10 @@ test("capValue caps a draw at its parseable cash alternative", () => {
   expect(capValue(D(35873, "Harley", "or £15,000 cash alternative"))).toBe(15000);
 });
 
+test("capValue ignores a zero-parse cash alt ('£0'/'£000') and falls back to revenue", () => {
+  expect(capValue(D(5000, "or £000 cash"))).toBe(5000);
+});
+
 test("valueLine v2 uses per-draw capped sum (2026-07-02 regression)", () => {
   const draws = [
     D(100000, "Land Rover or £40,000 tax-free cash"),  // → 40000

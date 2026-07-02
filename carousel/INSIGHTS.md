@@ -50,11 +50,17 @@ deterministic mapping + upsert + report.
 3. **Ingest each file** (batches `insertMetrics` upserts 50 rows at a time,
    keyed on `(day, media_id, metric)` — safe to re-run):
    ```
-   bun carousel/insights.mjs ingest ig_media  "$(workDir)/insights/ig_media.json"
-   bun carousel/insights.mjs ingest ig_reach  "$(workDir)/insights/ig_reach.json"
-   bun carousel/insights.mjs ingest fb_posts  "$(workDir)/insights/fb_posts.json"
+   bun carousel/insights.mjs ingest ig_media  ~/Desktop/pdd-today/insights/ig_media.json
+   bun carousel/insights.mjs ingest ig_reach  ~/Desktop/pdd-today/insights/ig_reach.json
+   bun carousel/insights.mjs ingest fb_posts  ~/Desktop/pdd-today/insights/fb_posts.json
    ```
-   (`$(workDir)` = the same folder from step 1, e.g. `~/Desktop/pdd-today/insights`.)
+   (paths shown are the default `workDir()` — adjust if `PDD_DIR` is set.)
+
+   Sanity-check a payload before it touches `carousel_metrics` with `--dry-run`
+   (parses + maps + prints the row count and up to 3 sample rows, no writes):
+   ```
+   bun carousel/insights.mjs ingest ig_media ~/Desktop/pdd-today/insights/ig_media.json --dry-run
+   ```
 
 4. **Report**:
    ```
@@ -76,6 +82,13 @@ deterministic mapping + upsert + report.
 `day` is always the **Europe/London calendar date** of the item's own timestamp
 (`timestamp` / `end_time` / `created_time`), matching `state.mjs`'s `todayLondon()`
 convention — not the day the pull happened.
+
+> **`ig_reach` caveat:** the Graph API's `end_time` for a `day`-period time-series
+> value marks the **end of a Pacific-anchored day bucket**, not a London-midnight
+> boundary — so converting it to a London calendar date can attribute a given
+> bucket's reach to the day before or after where you'd intuitively expect it.
+> Treat any arm-vs-reach comparison (the format-experiment go/no-go in `DAILY.md`)
+> as accurate to **±1 day**, not exact.
 
 ## Notes
 

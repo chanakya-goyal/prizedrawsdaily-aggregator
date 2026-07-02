@@ -15,11 +15,18 @@ import { recentPosts, todayLondon } from "./state.mjs";
 const SUPABASE_URL = process.env.SUPABASE_URL || GLOBAL.supabaseUrl;
 const BUCKET = GLOBAL.bucket;
 
-// readyForCleanup — pure. True only when there's at least one row for the day AND
-// every single one has reached "published". An empty list means nothing was
-// confirmed published today, so that's a refusal too, not a vacuous "ready".
+// readyForCleanup — pure. True only when there's at least one row for the day, every
+// row has reached a TERMINAL state ("published" OR "skipped" — a format that was
+// deliberately dropped this run, e.g. a failed FB video falling back to photo, or a
+// rejected story, per state-mark.mjs), and at least one row is actually "published"
+// (all-skipped, e.g. every format failed/was dropped, is NOT "ready" — there's
+// nothing to have copied the assets in, so cleanup would just delete them unused).
+// An empty list means nothing was confirmed published today, so that's a refusal
+// too, not a vacuous "ready".
 export function readyForCleanup(rows) {
-  return rows.length > 0 && rows.every((r) => r.status === "published");
+  return rows.length > 0
+    && rows.every((r) => r.status === "published" || r.status === "skipped")
+    && rows.some((r) => r.status === "published");
 }
 
 async function listObjects(key, prefix) {
@@ -56,8 +63,12 @@ if (import.meta.main) {
   if (!readyForCleanup(rows)) {
     if (rows.length === 0) {
       console.error(`✗ No carousel_posts rows found for ${today} — nothing confirmed published yet. Refusing to clean up.`);
+    } else if (!rows.some((r) => r.status === "published")) {
+      console.error(`✗ ${today} has no "published" row(s) — every format is pending/skipped. Refusing to clean up.`);
     } else {
-      const inFlight = rows.filter((r) => r.status !== "published").map((r) => `${r.format}:${r.status}`);
+      // "skipped" is terminal (a format deliberately dropped this run), not in-flight —
+      // don't list it as something cleanup is waiting on.
+      const inFlight = rows.filter((r) => r.status !== "published" && r.status !== "skipped").map((r) => `${r.format}:${r.status}`);
       console.error(`✗ ${today} still has row(s) in flight (${inFlight.join(", ")}). Refusing to clean up until everything is published.`);
     }
     process.exit(1);

@@ -108,6 +108,12 @@ await browser.close();
 // is already published, skip re-hosting (and skip the write-ahead row below, so we
 // never clobber a published row's real asset_urls with a no-op re-run) but keep going.
 let reelUrl = null, coverUrl = null, storyUrl = null, reelMeta = null;
+// uploadedThisRun gates the write-ahead upserts below: a skip-branch resolves the
+// URL (so publish.json stays complete for FB/DAILY consumption on re-runs) WITHOUT
+// having uploaded anything, so URL truthiness alone can't be the upsert gate — that
+// would re-upsert (and clobber) an already-published row's real asset_urls/status
+// on every idempotent re-run.
+let reelUploadedThisRun = false, storyUploadedThisRun = false;
 
 try {
   if (await Bun.file(`${OUT}/reel.mp4`).exists()) {
@@ -115,10 +121,16 @@ try {
     const existingReel = await getPost(todayLondon(), "reel").catch((e) => { console.error("⚠ reel preflight skipped (state unreachable): " + e.message); return null; });
     if (existingReel?.status === "published") {
       console.error(`⚠ today's REEL is already PUBLISHED (ig_media_id=${existingReel.ig_media_id}). Skipping re-hosting reel+cover.`);
+      // resolve to the canonical public URLs the upload path would have produced —
+      // publish.json must stay complete (FB video post + DAILY.md both read reelUrl)
+      // even on a retry run that skips re-hosting.
+      reelUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${today}/${sel.slug}/reel.mp4`;
+      coverUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${today}/${sel.slug}/cover.jpg`;
     } else {
       const reelBuf = Buffer.from(await Bun.file(`${OUT}/reel.mp4`).arrayBuffer());
       reelUrl = await withRetry(() => upload(`${today}/${sel.slug}/reel.mp4`, reelBuf, "video/mp4"), { label: "upload reel" });
       console.log(`  ✓ reel.mp4 → ${(reelBuf.length / 1024 / 1024).toFixed(1)}MB → ${reelUrl}`);
+      reelUploadedThisRun = true;
       if (await Bun.file(`${OUT}/cover.jpg`).exists()) {
         const coverBuf = Buffer.from(await Bun.file(`${OUT}/cover.jpg`).arrayBuffer());
         coverUrl = await withRetry(() => upload(`${today}/${sel.slug}/cover.jpg`, coverBuf, "image/jpeg"), { label: "upload cover" });
@@ -135,10 +147,12 @@ try {
     const existingStory = await getPost(todayLondon(), "story").catch((e) => { console.error("⚠ story preflight skipped (state unreachable): " + e.message); return null; });
     if (existingStory?.status === "published") {
       console.error(`⚠ today's STORY is already PUBLISHED (ig_media_id=${existingStory.ig_media_id}). Skipping re-hosting story.`);
+      storyUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${today}/${sel.slug}/story.mp4`;
     } else {
       const storyBuf = Buffer.from(await Bun.file(`${OUT}/story.mp4`).arrayBuffer());
       storyUrl = await withRetry(() => upload(`${today}/${sel.slug}/story.mp4`, storyBuf, "video/mp4"), { label: "upload story" });
       console.log(`  ✓ story.mp4 → ${(storyBuf.length / 1024 / 1024).toFixed(1)}MB → ${storyUrl}`);
+      storyUploadedThisRun = true;
     }
   }
 } catch (e) {
@@ -171,11 +185,12 @@ try {
     category: sel.slug, draw_slugs: sel.draws.map((d) => d.slug),
     caption: fbCaption, asset_urls: [heroUrl],
   });
-  // reel/story rows only get written when we actually just uploaded something this
-  // run — reelUrl/storyUrl stay null both when the file never existed AND when it
-  // was skipped as already-published, and in the latter case re-upserting here would
-  // clobber that row's real (published) status + asset_urls with this run's nulls.
-  if (reelUrl) {
+  // reel/story rows only get written when we actually uploaded something THIS run —
+  // gated on uploadedThisRun (not URL truthiness), since the skip branches above now
+  // populate reelUrl/storyUrl from the canonical public URL even when nothing was
+  // re-hosted. Re-upserting on a skip-run would clobber that row's real (published)
+  // status + asset_urls with a stale assets_uploaded write.
+  if (reelUploadedThisRun) {
     await upsertPost({
       date: todayLondon(), format: "reel", status: "assets_uploaded",
       category: sel.slug, draw_slugs: sel.draws.map((d) => d.slug),
@@ -183,14 +198,32 @@ try {
       asset_urls: [reelUrl, coverUrl],
     });
   }
-  if (storyUrl) {
+  if (storyUploadedThisRun) {
     await upsertPost({
       date: todayLondon(), format: "story", status: "assets_uploaded",
       category: sel.slug, draw_slugs: sel.draws.map((d) => d.slug),
       asset_urls: [storyUrl],
     });
   }
-  console.log(`✓ write-ahead rows: carousel + fb_photo${reelUrl ? " + reel" : ""}${storyUrl ? " + story" : ""} assets_uploaded (idempotent re-runs will not double-post)`);
+  // fb_video write-ahead row: FB video post is now the primary FB action (DAILY.md
+  // §9.4), but publish.mjs never wrote a row for it — cleanup.mjs then waited
+  // forever on a row that would never appear. Written whenever the reel asset is
+  // resolved this run (uploaded OR skip-branch canonical URL) since either way FB
+  // can post FACEBOOK_CREATE_VIDEO_POST from reelUrl. Preflighted like reel/story
+  // so a retry run never clobbers an already-published fb_video row.
+  if (reelUrl) {
+    const existingFbVideo = await getPost(todayLondon(), "fb_video").catch((e) => { console.error("⚠ fb_video preflight skipped (state unreachable): " + e.message); return null; });
+    if (existingFbVideo?.status === "published") {
+      console.log(`⚠ today's FB_VIDEO is already PUBLISHED (fb_post_id=${existingFbVideo.fb_post_id}). Skipping write-ahead row.`);
+    } else {
+      await upsertPost({
+        date: todayLondon(), format: "fb_video", status: "assets_uploaded",
+        category: sel.slug, draw_slugs: sel.draws.map((d) => d.slug),
+        caption: fbCaption, asset_urls: [reelUrl],
+      });
+    }
+  }
+  console.log(`✓ write-ahead rows: carousel + fb_photo${reelUploadedThisRun ? " + reel" : ""}${storyUploadedThisRun ? " + story" : ""}${reelUrl ? " + fb_video" : ""} assets_uploaded (idempotent re-runs will not double-post)`);
 } catch (e) {
   console.log(`⚠ state write failed (tables pending?): ${e?.message || e}`);
 }

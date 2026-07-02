@@ -224,10 +224,14 @@ async function main() {
 
   // ---- audio + timeline. trimToOnsetMs MUST be the manifest firstBeatOffsetMs (loudnorm
   // amplifies silent intros deep into tracks); nowIso is passed for ALL arms (determinism),
-  // closeIso = earliest draw_date so arm C's countdown is REAL, never synthetic.
+  // closeIso must match whichever draw arm C actually DISPLAYS (reel-template.mjs's arm-C
+  // countdownScene always renders `top` = slides[0] = sel.draws[0]) — so it's keyed off
+  // sel.draws[0] first, not an independent min() across the whole selection, which could
+  // silently disagree with the displayed draw after a manual backup swap during QA. Falls
+  // back to the old earliest-across-selection computation only if draws[0] lacks a date.
   const audioMeta = await pickAudio(catCfg(sel.slug).audioMood);
   const nowIso = new Date().toISOString();
-  const closeIso = sel.draws.map((d) => d.draw_date).filter(Boolean).sort()[0] ?? null;
+  const closeIso = sel.draws[0]?.draw_date ?? sel.draws.map((d) => d.draw_date).filter(Boolean).sort()[0] ?? null;
   const slides = sel.draws.map((d, i) => toDrawSlide(d, i + 1));
   const tl = buildReelTimeline({ sel, slides, heroes, arm, audioMeta, nowIso, closeIso });
   const theme = themeOf(sel.slug);

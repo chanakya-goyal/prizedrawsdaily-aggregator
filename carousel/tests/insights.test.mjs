@@ -22,3 +22,17 @@ test("fb_posts maps reactions/comments/shares, missing keys → 0", async () => 
 test("unknown kind throws", () => {
   expect(() => mapPayload("tiktok", {})).toThrow(/unknown kind/i);
 });
+
+test("--dry-run ingests nothing: exits 0 with an unreachable SUPABASE_URL, proving no network write was attempted", async () => {
+  // Any real insertMetrics() call would try to reach SUPABASE_URL and fail loudly
+  // (non-2xx / connection error → non-zero exit). Pointing SUPABASE_URL at a closed
+  // local port means a clean exit 0 is only possible if --dry-run truly short-circuits
+  // before any write.
+  const proc = Bun.spawn(
+    ["bun", "carousel/insights.mjs", "ingest", "ig_media", "carousel/tests/fixtures/ig_media.json", "--dry-run"],
+    { env: { ...process.env, SUPABASE_URL: "http://127.0.0.1:9" }, stdout: "pipe", stderr: "pipe" }
+  );
+  const [out, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+  expect(exitCode).toBe(0);
+  expect(out).toMatch(/dry run.*row\(s\) would be ingested/i);
+});

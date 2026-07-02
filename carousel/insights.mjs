@@ -3,8 +3,12 @@
 // Composio MCP directly (spec constraint); Claude pulls the JSON in-session
 // (see INSIGHTS.md for the exact tool calls) and feeds saved files to this CLI.
 //
-//   bun carousel/insights.mjs ingest <ig_media|ig_reach|fb_posts> <file.json>
+//   bun carousel/insights.mjs ingest <ig_media|ig_reach|fb_posts> <file.json> [--dry-run]
 //   bun carousel/insights.mjs report
+//
+// --dry-run (accepted anywhere in argv): parses the file + maps it, prints the row
+// count and up to 3 sample rows, and exits 0 WITHOUT calling insertMetrics — use it
+// to sanity-check a fresh Composio payload before it touches carousel_metrics.
 import { insertMetrics, recentPosts, recentMetrics } from "./state.mjs";
 
 const KINDS = ["ig_media", "ig_reach", "fb_posts"];
@@ -54,9 +58,9 @@ export function mapPayload(kind, json) {
   throw new Error(`insights: unknown kind "${kind}" (expected ${KINDS.join("|")})`);
 }
 
-async function cmdIngest(kind, file) {
+async function cmdIngest(kind, file, { dryRun = false } = {}) {
   if (!kind || !file) {
-    console.error(`usage: bun carousel/insights.mjs ingest <${KINDS.join("|")}> <file.json>`);
+    console.error(`usage: bun carousel/insights.mjs ingest <${KINDS.join("|")}> <file.json> [--dry-run]`);
     process.exit(1);
   }
   if (!KINDS.includes(kind)) {
@@ -81,6 +85,13 @@ async function cmdIngest(kind, file) {
     console.log(`(no rows mapped from ${kind} — empty payload)`);
     return;
   }
+
+  if (dryRun) {
+    console.log(`(dry run) ${rows.length} row(s) would be ingested from ${kind} (${file}) — no writes performed`);
+    for (const r of rows.slice(0, 3)) console.log("  " + JSON.stringify(r));
+    process.exit(0);
+  }
+
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH);
     await insertMetrics(batch);
@@ -137,12 +148,15 @@ export async function buildReport() {
 }
 
 if (import.meta.main) {
-  const [cmd, ...rest] = process.argv.slice(2);
-  if (cmd === "ingest") await cmdIngest(rest[0], rest[1]);
+  const argv = process.argv.slice(2);
+  const dryRun = argv.includes("--dry-run");
+  const [cmd, ...rest] = argv.filter((a) => a !== "--dry-run");
+  if (cmd === "ingest") await cmdIngest(rest[0], rest[1], { dryRun });
   else if (cmd === "report") await buildReport();
   else {
-    console.error(`usage: bun carousel/insights.mjs ingest <${KINDS.join("|")}> <file.json>`);
+    console.error(`usage: bun carousel/insights.mjs ingest <${KINDS.join("|")}> <file.json> [--dry-run]`);
     console.error("       bun carousel/insights.mjs report");
+    console.error("       --dry-run: parse + map only, print row count + up to 3 sample rows, no writes (exit 0)");
     process.exit(1);
   }
 }
