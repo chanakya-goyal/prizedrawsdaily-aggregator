@@ -6,7 +6,9 @@ import { workDir } from "./config.mjs";
 
 const DIR = `${workDir()}/.fetched`;
 const OUT = `${workDir()}/contact.png`;
-const dirs = (await readdir(DIR)).filter((d) => !d.startsWith("."));
+const dirs = (await readdir(DIR, { withFileTypes: true }))
+  .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+  .map((e) => e.name);
 
 async function dataUrl(path) {
   const buf = Buffer.from(await Bun.file(path).arrayBuffer());
