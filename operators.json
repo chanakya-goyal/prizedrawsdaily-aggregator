@@ -41,7 +41,8 @@
     "name": "Carpatic Giveaways",
     "slug": "carpatic-giveaways",
     "base": "https://carpaticgiveaways.com",
-    "method": "woo"
+    "method": "render",
+    "fetcher": "flaresolverr"
   },
   {
     "name": "Collie Competitions",
@@ -479,6 +480,123 @@
     "name": "Win A Bundle",
     "slug": "win-a-bundle",
     "base": "https://winabundle.co.uk",
-    "method": "woo"
+    "method": "woo",
+    "enabled": false
+  },
+  {
+    "name": "Flex Competitions",
+    "slug": "flex-competitions",
+    "base": "https://flexcompetitions.co.uk",
+    "method": "woo",
+    "apiStyle": "rest_route"
+  },
+  {
+    "name": "The Watch Draws",
+    "slug": "twd-competitions",
+    "base": "https://thewatchdraws.com",
+    "method": "woo",
+    "apiStyle": "rest_route"
+  },
+  {
+    "name": "Red Hot Raffles",
+    "slug": "red-hot-raffles",
+    "base": "https://www.redhotraffles.co.uk",
+    "method": "woo",
+    "apiStyle": "rest_route"
+  },
+  {
+    "name": "Make Me A Winner",
+    "slug": "make-me-a-winner",
+    "base": "https://makemeawinner.co.uk",
+    "method": "render",
+    "drawMatch": "/(campaign|bundle)/[a-z0-9]{3,}",
+    "wait": 6000
+  },
+  {
+    "name": "BOTB",
+    "slug": "botb",
+    "base": "https://www.botb.com",
+    "method": "render",
+    "wait": 6000
+  },
+  {
+    "name": "Ignite Comps",
+    "slug": "ignite-comps",
+    "base": "https://www.ignitecomps.co.uk",
+    "method": "render",
+    "wait": 6000
+  },
+  {
+    "name": "Diamond Draws",
+    "slug": "diamond-draws",
+    "base": "https://www.diamonddraws.com",
+    "method": "render"
+  },
+  {
+    "name": "Winmore",
+    "slug": "winmore",
+    "base": "https://winmore.uk",
+    "method": "render"
+  },
+  {
+    "name": "Winner Winner Chicken Dinner",
+    "slug": "winner-winner-chicken-dinner",
+    "base": "https://www.winnerwinnerchickendinner.co.uk",
+    "method": "render"
+  },
+  {
+    "name": "Bubbl Win",
+    "slug": "bubbl-win-ltd",
+    "base": "https://bubbl.win",
+    "method": "render"
+  },
+  {
+    "name": "The Birthday Draw",
+    "slug": "the-birthday-draw",
+    "base": "https://thebirthdaydraw.com",
+    "method": "render",
+    "enabled": false
+  },
+  {
+    "name": "Carp Fishing Draws & Giveaways",
+    "slug": "carp-fishing-draws-giveaways",
+    "base": "https://fishingdraws.co.uk",
+    "method": "render"
+  },
+  {
+    "name": "Radiance Rewards",
+    "slug": "radiance-rewards",
+    "base": "https://radiancerewards.co.uk",
+    "method": "render"
+  },
+  {
+    "name": "Bounty Competitions",
+    "slug": "bounty-competitions",
+    "base": "https://bountycompetitions.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Phat Lads",
+    "slug": "phatlads",
+    "base": "https://phatlads.com",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Jammy",
+    "slug": "jammy",
+    "base": "https://www.jammy.co.uk",
+    "method": "render",
+    "fetcher": "flaresolverr"
+  },
+  {
+    "name": "Omaze UK",
+    "slug": "omaze",
+    "base": "https://omaze.co.uk",
+    "method": "render",
+    "drawMatch": "/products/[a-z0-9][a-z0-9-]+/?$",
+    "aiAssist": true,
+    "enabled": false
   }
 ]

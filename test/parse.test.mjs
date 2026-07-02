@@ -175,6 +175,39 @@ describe("fieldsFromHtml — WooCommerce-Lottery plugin (labelled entries + data
   });
 });
 
+describe("fieldsFromHtml — lottery-for-woocommerce data-time countdowns", () => {
+  // The 2026-06-27 operator cohort (croc-comps, bee-the-winner, drift, galaxy, …) renders the
+  // close date only as a countdown data-time attribute — epoch seconds on some sites, a
+  // "YYYY/MM/DD HH:MM:SS" string on others. Both previously scraped null draw_date.
+  test("epoch-seconds data-time (croc-comps shape)", () => {
+    const h = `<html><body><h1>Win a Rolex</h1>
+      <div class="lottery-time-countdown" data-time="1783872000"></div></body></html>`;
+    const r = fieldsFromHtml({ html: h, url: "https://op.test/product/rolex", op: { base: "https://op.test" } });
+    expect(r.draw_date).toStartWith("2026-07-12");
+  });
+  test("datetime-string data-time (bee-the-winner shape)", () => {
+    const h = `<html><body><h1>Win £500 Cash</h1>
+      <div class="lty-lottery-countdown-timer" data-time="2026/07/23 17:00:00"></div></body></html>`;
+    const r = fieldsFromHtml({ html: h, url: "https://op.test/product/cash-500", op: { base: "https://op.test" } });
+    expect(r.draw_date).toStartWith("2026-07-23");
+  });
+  test("prefers the product-summary countdown over a related-comps carousel node", () => {
+    const h = `<html><body><h1>Win a PS5</h1>
+      <div class="related-comps"><div class="lottery-time-countdown" data-time="2026/07/05 20:00:00"></div></div>
+      <div class="summary"><div class="lottery-time-countdown" data-time="2026/07/23 17:00:00"></div></div>
+      </body></html>`;
+    const r = fieldsFromHtml({ html: h, url: "https://op.test/product/ps5", op: { base: "https://op.test" } });
+    expect(r.draw_date).toStartWith("2026-07-23");
+  });
+  test("a bare data-time outside countdown/lottery nodes is ignored", () => {
+    const h = `<html><body><h1>Win a PS5</h1>
+      <div class="hero-slider" data-time="1700000000"></div>
+      <p>Draw 9th July 2026</p></body></html>`;
+    const r = fieldsFromHtml({ html: h, url: "https://op.test/product/ps5", op: { base: "https://op.test" } });
+    expect(r.draw_date).toStartWith("2026-07-09");
+  });
+});
+
 describe("isGenericTitle — only slogans that name no prize are generic", () => {
   const op = "Daydream Draws";
   const generic = [
