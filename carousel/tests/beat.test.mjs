@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { beatGrid, quantize } from "../beat.mjs";
+import { beatGrid, quantize, pickAudio } from "../beat.mjs";
 
 test("beatGrid generates beats from offset at 60000/bpm intervals", () => {
   const g = beatGrid({ bpm: 120, firstBeatOffsetMs: 250 }, 2100);
@@ -11,4 +11,8 @@ test("quantize snaps to nearest beat", () => {
   expect(quantize(560, g)).toBe(500);
   expect(quantize(790, g)).toBe(1000);
   expect(quantize(300, [])).toBe(300);
+});
+
+test("pickAudio throws on unknown mood", async () => {
+  await expect(pickAudio("no-such-mood")).rejects.toThrow(/no audio in manifest/);
 });

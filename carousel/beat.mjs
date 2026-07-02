@@ -12,7 +12,7 @@ export const quantize = (tMs, grid) =>
 
 export async function pickAudio(mood) {
   const manifest = await Bun.file(new URL("./assets/audio/manifest.json", import.meta.url)).json();
-  const t = manifest.find((m) => m.mood === mood) || manifest[0];
-  if (!t) throw new Error(`no audio in manifest (mood=${mood}) — run Task 2 acquisition`);
+  const t = manifest.find((m) => m.mood === mood);
+  if (!t) throw new Error(`no audio in manifest for mood="${mood}" — check config.json audioMood vs assets/audio/manifest.json`);
   return t;
 }
