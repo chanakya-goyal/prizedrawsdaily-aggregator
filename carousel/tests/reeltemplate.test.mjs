@@ -66,9 +66,50 @@ for (const arm of ["A", "B", "C"]) {
   });
 }
 
-test("v2: hook interrupt derives the CHEAPEST real price", () => {
+test("v2: hook interrupt shows the featured price for single-prize arm B", () => {
   const t = buildReelTimeline({ sel, slides, heroes, arm: "B", audioMeta: audio });
-  expect(t.html).toContain("5P?!"); // 5p beats £8.97
+  expect(t.html).toContain("5P?!"); // slides[0] IS the cheapest here, and IS the featured prize
+});
+
+// user-reported bug: hook showed the globally-cheapest price ("£1.49?!") while the
+// Reel actually featured a different, pricier single prize ("£6.97") — arm B/C only
+// ever render slides[0] ("top"), so the hook must use slides[0].price, not min(all).
+const mismatch = [
+  { title: "Harley Breakout", price: "£6.97", closes: "CLOSES TONIGHT", slug: "hd" },
+  { title: "Land Rover Discovery", price: "£1.49", closes: "CLOSES TONIGHT", slug: "lr" },
+];
+const mismatchHeroes = { hd: null, lr: null };
+
+for (const arm of ["B", "C"]) {
+  test(`v2: arm ${arm} hook price = the FEATURED prize (slides[0]), not the cheapest across all slides`, () => {
+    const t = buildReelTimeline({ sel, slides: mismatch, heroes: mismatchHeroes, arm, audioMeta: audio });
+    expect(t.html).toContain("£6.97?!");     // slides[0]'s price, in the hook
+    expect(t.html).not.toContain("£1.49");   // the unfeatured cheaper prize never appears
+    expect(t.html).not.toContain(">FROM<");  // single prize on screen — no "FROM" qualifier needed
+  });
+}
+
+test("v2: arm A hook contextualizes the cheapest price with FROM (multi-prize entry point)", () => {
+  const t = buildReelTimeline({ sel, slides: mismatch, heroes: mismatchHeroes, arm: "A", audioMeta: audio });
+  expect(t.html).toContain("£1.49?!");  // cheapest across the whole multi-prize selection
+  expect(t.html).toContain(">FROM<");   // unambiguous: an entry point, not the one prize on screen
+});
+
+test("v2: hook fallback never shows an unlabeled/mismatched bare number", () => {
+  const noPriceTop = [
+    { title: "Mystery Prize", closes: "CLOSES TONIGHT", slug: "mp" }, // no price at all
+    { title: "Harley Breakout", price: "£6.97", closes: "CLOSES TONIGHT", slug: "hd" },
+  ];
+  const h = { mp: null, hd: null };
+  // arm B: top has no price → falls back to the cheapest AVAILABLE price, qualified with FROM
+  const b = buildReelTimeline({ sel, slides: noPriceTop, heroes: h, arm: "B", audioMeta: audio });
+  expect(b.html).toContain("£6.97?!");
+  expect(b.html).toContain(">FROM<");
+
+  // no prices anywhere → the odds/WIN?! fallback, never a bare number
+  const none = [{ title: "Mystery Prize", closes: "CLOSES TONIGHT", slug: "mp" }];
+  const c = buildReelTimeline({ sel, slides: none, heroes: { mp: null }, arm: "C", audioMeta: audio });
+  expect(c.html).toContain("WIN?!");
 });
 
 test("v2: urgency chip only when closes label says tonight/tomorrow", () => {

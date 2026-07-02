@@ -350,8 +350,13 @@ body { background: var(--bg-solid); color:#fff; font-family:'Oswald', ui-sans-se
 @keyframes rl-hookdark { 0% { opacity:.6; } 92% { opacity:.6; } 100% { opacity:0; } }
 .hookwrap { position:absolute; inset:0; z-index:57; display:flex; align-items:center; justify-content:center;
   text-align:center; pointer-events:none; }
-.hookp-out { animation: rl-hookout 133ms cubic-bezier(.55,0,.8,.4) both; }
+.hookp-out { animation: rl-hookout 133ms cubic-bezier(.55,0,.8,.4) both;
+  display:flex; flex-direction:column; align-items:center; }
 @keyframes rl-hookout { 0% { opacity:1; transform: scale(1); } 100% { opacity:0; transform: scale(1.7); } }
+/* arm A only: qualifies the giant price as an entry point across several prizes,
+   never letting the cheapest price read as the one thing on screen */
+.hookfrom { font-family:'Oswald',sans-serif; font-weight:700; font-size:58px; letter-spacing:10px;
+  text-transform:uppercase; color: var(--gold-2); text-shadow: 0 4px 16px rgba(0,0,0,.78); margin-bottom:-18px; }
 .hookp { font-size:330px; line-height:.85; letter-spacing:2px; -webkit-text-stroke:10px var(--stroke);
   animation: rl-hookslam 150ms cubic-bezier(.2,1.9,.3,1) 67ms both; }
 .hookp.long { font-size:200px; }
@@ -552,20 +557,37 @@ function cutFxHtml(times, dur, seed) {
   return s;
 }
 
-// hook interrupt: cheapest REAL ticket price across the selection, "5P?!"-style.
+// hook interrupt: "5P?!"-style. MUST match what the Reel actually features —
+// arm B/C are single-prize formats (only slides[0]/"top" is ever shown), so the hook
+// price is slides[0].price, unqualified. Arm A is multi-prize (the reprise + prize
+// scenes cycle through several slides), so the hook shows the CHEAPEST price across
+// the selection, but qualified with "FROM" so it's never mistaken for a single
+// featured price. Fallback chain (never an unlabeled/mismatched bare number):
+// missing top price → cheapest-with-FROM; no prices anywhere → the "WIN?!" hook.
 const priceVal = (p) => {
   const m = /^(\d+(?:\.\d+)?)p$/i.exec(String(p || ""));
   if (m) return +m[1] / 100;
   const m2 = /^£\s?(\d+(?:\.\d+)?)/.exec(String(p || ""));
   return m2 ? +m2[1] : Infinity;
 };
-function hookHtml(slides, flashT) {
+function hookHtml(slides, flashT, arm) {
+  const top = slides[0];
+  const topHasPrice = top?.price != null && priceVal(top.price) < Infinity;
   const cheap = slides.reduce((best, s) => (priceVal(s.price) < priceVal(best?.price) ? s : best), null);
-  const txt = cheap?.price != null && priceVal(cheap.price) < Infinity
-    ? `${String(cheap.price).toUpperCase()}?!` : "WIN?!";
+  const cheapHasPrice = cheap?.price != null && priceVal(cheap.price) < Infinity;
+
+  let priceText = null, isFrom = false;
+  if (arm !== "A" && topHasPrice) {
+    priceText = String(top.price).toUpperCase();       // single-prize formats: the ONE prize on screen
+  } else if (cheapHasPrice) {
+    priceText = String(cheap.price).toUpperCase();      // arm A entry point, or top price missing
+    isFrom = true;
+  }
+  const txt = priceText != null ? `${priceText}?!` : "WIN?!";
   const long = txt.length > 5;
+  const fromHtml = isFrom ? `<div class="hookfrom">FROM</div>` : "";
   return `<div class="hookdark" style="animation-duration:${flashT}ms"></div>
-<div class="hookwrap"><div class="hookp-out" style="animation-delay:${flashT}ms"><div class="hookp${long ? " long" : ""}">${esc(txt)}</div></div></div>`;
+<div class="hookwrap"><div class="hookp-out" style="animation-delay:${flashT}ms">${fromHtml}<div class="hookp${long ? " long" : ""}">${esc(txt)}</div></div></div>`;
 }
 
 // ---------------------------------------------------------------- scene builders
@@ -761,7 +783,7 @@ ${fxHtml}
 ${particleField(cfg.particles, seed)}
 <div class="lsweep"></div>
 <div class="vign"></div>
-${hookHtml(slides, stamp1)}
+${hookHtml(slides, stamp1, arm)}
 <div class="flash" style="--flash-t:${stamp1}ms"></div>
 <div class="pbar"><i style="animation: rl-pbar ${durationMs}ms linear 0ms both"></i></div>
 <footer class="rfoot">18+ · UK ONLY · PLAY RESPONSIBLY</footer>
