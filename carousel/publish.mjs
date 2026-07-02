@@ -32,7 +32,7 @@ const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London"
 const sel = JSON.parse(await Bun.file(`${DIR}/selection.json`).text());
 
 // idempotency preflight — refuse to re-publish a carousel that's already live
-const existing = await getPost(todayLondon(), "carousel").catch(() => null);
+const existing = await getPost(todayLondon(), "carousel").catch((e) => { console.error("⚠ preflight skipped (state unreachable): " + e.message); return null; });
 if (existing?.status === "published") {
   console.error(`✗ Today's carousel is already PUBLISHED (ig_media_id=${existing.ig_media_id}). Refusing to re-publish. Use state-mark.mjs if this is wrong.`);
   process.exit(2);
@@ -100,7 +100,8 @@ await browser.close();
 // of caption-less photos. heroUrl = the intro slide (most eye-catching); fbCaption
 // is the full body with a real clickable link.
 const fbItems = sel.draws.map((d) => { const s = toDrawSlide(d); return { title: s.title, price: s.price }; });
-const fbCaption = buildFbCaption(sel.name, sel.slug, fbItems);
+const fbCaption = (await Bun.file(`${OUT}/FB_CAPTION.txt`).text().catch(() => "")).trim()
+  || buildFbCaption(sel.name, sel.slug, fbItems);
 const heroUrl = urls[0];
 
 const altTexts = await Bun.file(`${OUT}/alt.json`).json().catch(() => []);
@@ -116,7 +117,12 @@ try {
     hook_archetype: sel.archetype || null, seo_keyword: sel.seoKeyword || null,
     caption, asset_urls: urls,
   });
-  console.log("✓ write-ahead row: carousel assets_uploaded (idempotent re-runs will not double-post)");
+  await upsertPost({
+    date: todayLondon(), format: "fb_photo", status: "assets_uploaded",
+    category: sel.slug, draw_slugs: sel.draws.map((d) => d.slug),
+    caption: fbCaption, asset_urls: [heroUrl],
+  });
+  console.log("✓ write-ahead rows: carousel + fb_photo assets_uploaded (idempotent re-runs will not double-post)");
 } catch (e) {
   console.log(`⚠ state write failed (tables pending?): ${e?.message || e}`);
 }

@@ -44,3 +44,17 @@ test("insertMetrics upserts on day,media_id,metric", async () => {
 test("todayLondon shape", () => {
   expect(todayLondon()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 });
+
+test("markStatus warns loudly when zero rows match", async () => {
+  _setFetch(async () => new Response(JSON.stringify([]), { status: 200, headers: { "content-type": "application/json" } }));
+  const originalError = console.error;
+  const messages = [];
+  console.error = (...args) => { messages.push(args.join(" ")); };
+  try {
+    const rows = await markStatus("2026-07-02", "carousel", "published");
+    expect(rows).toEqual([]);
+    expect(messages.some((m) => m.includes("matched NO row"))).toBe(true);
+  } finally {
+    console.error = originalError;
+  }
+});

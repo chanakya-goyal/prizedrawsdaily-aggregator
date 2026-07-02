@@ -7,7 +7,7 @@ export const hashtagsFor = (slug) => [...GLOBAL.fixedHashtags, ...catCfg(slug).h
 export function buildBriefing({ sel, drawSlides, recentOpeners = [] }) {
   const kw = sel.seoKeyword || catCfg(sel.slug).seoKeyword;
   const rows = drawSlides.map((s, i) =>
-    `| ${i + 1} | ${s.title} | ${s.price || "?"} | ${s.closes || "?"} | ${s.odds || "—"} | ${s.cashAlt || "—"} |`).join("\n");
+    `| ${i + 1} | ${String(s.title).replaceAll("|", "\\|")} | ${s.price || "?"} | ${s.closes || "?"} | ${s.odds || "—"} | ${s.cashAlt || "—"} |`).join("\n");
   const banned = [...GLOBAL.bannedPhrases, ...recentOpeners].map((p) => `- "${p}"`).join("\n");
   return `# Caption briefing — ${sel.name} (${new Date().toLocaleDateString("en-GB", { timeZone: "Europe/London" })})
 
@@ -29,5 +29,5 @@ ${rows}
 ## Banned phrases (templated tells + last-14-day openers)
 ${banned}
 
-Write the IG caption (≤2,200 chars) AND a fuller FB caption (with the clickable link https://prizedrawsdaily.co.uk in the body). Save over out/CAPTION.txt (IG) before publish; FB caption goes into publish.json fbCaption.`;
+Write the IG caption (≤2,200 chars) AND a fuller FB caption (with the clickable link https://prizedrawsdaily.co.uk in the body). Save the IG caption over out/CAPTION.txt AND the FB caption to out/FB_CAPTION.txt before running publish.`;
 }

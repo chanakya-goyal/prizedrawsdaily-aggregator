@@ -1,7 +1,7 @@
 // carousel/state.mjs — durable post/metric state in Supabase (spec §4.2).
 // Writes need SUPABASE_SERVICE_ROLE_KEY; reads fall back to the publishable key.
 import { GLOBAL } from "./config.mjs";
-import { withRetry, fetchOk } from "./util.mjs";
+import { withRetry } from "./util.mjs";
 
 const URL_ = process.env.SUPABASE_URL || GLOBAL.supabaseUrl;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || GLOBAL.supabasePublishableKey;
@@ -33,9 +33,11 @@ export async function upsertPost(row) {
 export async function markStatus(date, format, status, patch = {}) {
   const body = { status, updated_at: new Date().toISOString(), ...patch };
   if (status === "published" && !body.posted_at) body.posted_at = new Date().toISOString();
-  return rest(`carousel_posts?date=eq.${date}&format=eq.${format}`, {
-    method: "PATCH", headers: hdrs({ Prefer: "return=minimal" }), body: JSON.stringify(body),
+  const rows = await rest(`carousel_posts?date=eq.${date}&format=eq.${format}`, {
+    method: "PATCH", headers: hdrs({ Prefer: "return=representation" }), body: JSON.stringify(body),
   }, "markStatus");
+  if (!rows || rows.length === 0) console.error(`⚠ markStatus matched NO row for ${date}/${format} — nothing recorded`);
+  return rows;
 }
 
 export async function getPost(date, format) {

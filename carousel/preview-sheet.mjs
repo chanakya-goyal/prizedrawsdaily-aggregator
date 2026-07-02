@@ -8,7 +8,7 @@
 import { chromium } from "playwright";
 import { tmpdir } from "node:os";
 import { renderSlides } from "./render.mjs";
-import { catCfg, themeOf, CFG } from "./config.mjs";
+import { catCfg, themeOf } from "./config.mjs";
 
 const SAMPLES = {
   "car-draws":      { type: "draw", n: 1, title: "BMW M340d Touring", price: "99p", cashAlt: "£30,000 TAX-FREE CASH", closes: "CLOSES TONIGHT", odds: "1 IN 4,999" },

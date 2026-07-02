@@ -21,11 +21,13 @@ A premium daily IG carousel + FB crosspost for **@prizedrawsdaily**, built from 
 
 4. **Build → preview** — `bun carousel/build.mjs` → 7 slides in `~/Desktop/pdd-today/out/`. You eyeball them.
    Build also writes `out/BRIEFING.md` (verified facts table + hook archetype + banned phrases) and a
-   fallback `out/CAPTION.txt`. **Claude reads `BRIEFING.md` and writes the final IG caption over
-   `CAPTION.txt`**, plus a fuller FB caption (with the clickable link) — publish.mjs picks both up.
+   fallback `out/CAPTION.txt`. **Claude reads `BRIEFING.md` and writes BOTH caption files**: the IG
+   caption over `out/CAPTION.txt`, and a fuller FB caption (with the clickable link) to
+   `out/FB_CAPTION.txt` — `publish.mjs` picks both up (if `FB_CAPTION.txt` is missing, e.g. a dry run,
+   it falls back to the `buildFbCaption` template).
 
 5. **Publish** — `bun carousel/publish.mjs` (hosts JPEGs, writes `publish.json` with `caption`, `fbCaption`, `heroUrl`, `urls`, `altTexts`) → Claude posts via Composio:
-   - **Instagram (full carousel):** `INSTAGRAM_CREATE_CAROUSEL_CONTAINER` (`child_image_urls`=urls + `caption`) → `INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH` (ig_user_id `27332554436394910`).
+   - **Instagram (full carousel), alt text recipe:** preferred route = build one **per-child container** per image via `INSTAGRAM_POST_IG_USER_MEDIA` (`is_carousel_item: true`, `image_url`, `alt_text` from `publish.json.altTexts[i]`), then create the **parent carousel container** via `INSTAGRAM_CREATE_CAROUSEL_CONTAINER` with `children: [<child ids>]` + `caption` → `INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH` (ig_user_id `27332554436394910`). (Verified against live Composio schemas: `INSTAGRAM_CREATE_CAROUSEL_CONTAINER` exposes NO `alt_text` param — only `child_image_urls`; `INSTAGRAM_POST_IG_USER_MEDIA` has `additionalProperties: true`, so `alt_text` MAY pass through on per-child containers.) If Instagram rejects `alt_text` on the per-child call, fall back to the one-call recipe: `INSTAGRAM_CREATE_CAROUSEL_CONTAINER` (`child_image_urls`=urls + `caption`) → `INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH` — alt text is then not attached (known limitation).
    - **Facebook — ONE detailed captioned post** (Page "Prize Draws Daily" `1106603652538117`): `FACEBOOK_CREATE_PHOTO_POST` (`page_id`, `url`=`heroUrl`, `message`=`fbCaption`). The caption (prize list + clickable prizedrawsdaily.co.uk link + 18+) posts **inline with the image** — one rich post, NOT caption-less individual photos.
      - **Why one image:** this Composio FB app can't attach multiple photos to a captioned post (`FACEBOOK_CREATE_POST` has no media field; `FACEBOOK_UPLOAD_PHOTOS_BATCH` has no caption field → the old batch recipe produced the caption-less photo pile we're replacing). IG carries the full carousel; FB gets the intro hero + full caption.
    - `publish.mjs` records a write-ahead state row (`assets_uploaded`) before Composio posts, and **refuses to
@@ -43,7 +45,7 @@ A premium daily IG carousel + FB crosspost for **@prizedrawsdaily**, built from 
 
 ## Good to know
 - **Override anytime:** drop your own `1.jpg`–`5.jpg` and it beats the auto-fetch. Or edit `.fetched/{slug}/pick.txt` to a different candidate.
-- **Caption** auto (both in `caption.mjs`): IG = `buildCaption` (minimalist, "link in bio", 5 hashtags); FB = `buildFbCaption` (fuller, prize list + real clickable link + "18+ · UK only · Play responsibly").
+- **Caption** — Claude authors both from `out/BRIEFING.md` (verified facts + hook archetype + banned phrases): IG caption → `out/CAPTION.txt`, FB caption (fuller, real clickable link + "18+ · UK only · Play responsibly") → `out/FB_CAPTION.txt`. `caption.mjs`'s `buildCaption`/`buildFbCaption` templates are only used as a **fallback for dry runs** where no `out/FB_CAPTION.txt` exists.
 - **Best UK posting time:** ~12–1 PM UK (≈ **4:30–5:30 PM IST**) or 7–9 PM UK. Claude checks live UK time.
 - **Design knobs:** `styles.css` (glow/embers/fonts) · `CARD=cutout bun carousel/build.mjs` for cut-out cards.
 - **Needs** `SUPABASE_SERVICE_ROLE_KEY` in `~/pdd-aggregator/.env` (already set) for hosting.
