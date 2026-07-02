@@ -10,14 +10,16 @@ import { chromium } from "playwright";
 import { readdir } from "node:fs/promises";
 import { buildFbCaption } from "./caption.mjs";
 import { toDrawSlide } from "./format.mjs";
-import { workDir } from "./config.mjs";
+import { GLOBAL, workDir } from "./config.mjs";
+import { withRetry } from "./util.mjs";
+import { upsertPost, todayLondon, getPost } from "./state.mjs";
 
 const DIR = workDir();
 const OUT = `${DIR}/out`;
-const SUPABASE_URL = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
+const SUPABASE_URL = process.env.SUPABASE_URL || GLOBAL.supabaseUrl;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const BUCKET = "carousel-slides";
-const IG_USER_ID = "27332554436394910"; // @prizedrawsdaily
+const BUCKET = GLOBAL.bucket;
+const IG_USER_ID = GLOBAL.igUserId;
 
 if (!KEY) {
   console.error("✗ SUPABASE_SERVICE_ROLE_KEY missing. Add it to ~/pdd-aggregator/.env:");
@@ -28,6 +30,14 @@ if (!KEY) {
 // date folder (Europe/London) for tidy storage paths
 const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }); // YYYY-MM-DD
 const sel = JSON.parse(await Bun.file(`${DIR}/selection.json`).text());
+
+// idempotency preflight — refuse to re-publish a carousel that's already live
+const existing = await getPost(todayLondon(), "carousel").catch(() => null);
+if (existing?.status === "published") {
+  console.error(`✗ Today's carousel is already PUBLISHED (ig_media_id=${existing.ig_media_id}). Refusing to re-publish. Use state-mark.mjs if this is wrong.`);
+  process.exit(2);
+}
+
 const caption = await Bun.file(`${OUT}/CAPTION.txt`).text();
 
 // ordered slide PNGs (01-…, 02-…, …)
@@ -75,11 +85,12 @@ async function upload(path, jpeg) {
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${path}`;
 }
 
-await ensureBucket();
+await withRetry(() => ensureBucket(), { label: "ensureBucket" });
 const urls = [];
 for (let i = 0; i < pngs.length; i++) {
   const jpeg = await toJpeg(`${OUT}/${pngs[i]}`);
-  const url = await upload(`${today}/${sel.slug}/${String(i + 1).padStart(2, "0")}.jpg`, jpeg);
+  const path = `${today}/${sel.slug}/${String(i + 1).padStart(2, "0")}.jpg`;
+  const url = await withRetry(() => upload(path, jpeg), { label: "upload" });
   urls.push(url);
   console.log(`  ✓ ${pngs[i]} → ${(jpeg.length / 1024).toFixed(0)}KB → ${url}`);
 }
@@ -92,8 +103,23 @@ const fbItems = sel.draws.map((d) => { const s = toDrawSlide(d); return { title:
 const fbCaption = buildFbCaption(sel.name, sel.slug, fbItems);
 const heroUrl = urls[0];
 
-const publish = { date: today, category: sel.slug, igUserId: IG_USER_ID, caption, fbCaption, heroUrl, urls };
+const altTexts = await Bun.file(`${OUT}/alt.json`).json().catch(() => []);
+const publish = { date: today, category: sel.slug, seoKeyword: sel.seoKeyword || null, archetype: sel.archetype || null, igUserId: IG_USER_ID, caption, fbCaption, heroUrl, urls, altTexts };
 await Bun.write(`${OUT}/publish.json`, JSON.stringify(publish, null, 2));
+// write-ahead row (spec §4.2): marks today's carousel "assets_uploaded" before Composio posts,
+// so a crash/retry mid-post can't silently double-publish. Tables are pending a one-time SQL
+// paste (state-schema.sql) — don't let that block today's publish; log + carry on.
+try {
+  await upsertPost({
+    date: todayLondon(), format: "carousel", status: "assets_uploaded",
+    category: sel.slug, draw_slugs: sel.draws.map((d) => d.slug),
+    hook_archetype: sel.archetype || null, seo_keyword: sel.seoKeyword || null,
+    caption, asset_urls: urls,
+  });
+  console.log("✓ write-ahead row: carousel assets_uploaded (idempotent re-runs will not double-post)");
+} catch (e) {
+  console.log(`⚠ state write failed (tables pending?): ${e?.message || e}`);
+}
 console.log(`\n✓ ${urls.length} public JPEGs hosted. Wrote ${OUT}/publish.json`);
 console.log("\n--- FB CAPTION (single detailed post) ---\n" + fbCaption);
 console.log("\nNext: IG → carousel (urls + caption). FB → FACEBOOK_CREATE_PHOTO_POST(heroUrl, message=fbCaption).");

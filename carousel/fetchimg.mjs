@@ -155,6 +155,8 @@ export async function downloadImage(url) {
   return null;
 }
 
+const problems = [];
+
 // ---- CLI ----
 if (import.meta.main) {
   const DIR = workDir();
@@ -180,12 +182,15 @@ if (import.meta.main) {
           const dl = await downloadImage(c.url);
           if (dl) { const f = `cand-${saved.length + 1}.${dl.ext}`; await Bun.write(`${dir}/${f}`, dl.buf); saved.push({ file: f, url: c.url, w: c.w, h: c.h, hint: c.hint }); }
         }
-      } catch { /* one bad draw never stops the rest */ }
+        if (!saved.length) problems.push({ slug, reason: "no candidates" });
+      } catch (e) { problems.push({ slug, reason: e?.message || "no candidates" }); /* one bad draw never stops the rest */ }
       if (saved.length) await Bun.write(`${dir}/pick.txt`, saved[0].file); // default best guess (Claude QAs/edits)
       await Bun.write(`${dir}/candidates.json`, JSON.stringify({ slug, entryUrl, candidates: saved }, null, 2));
       result[slug] = saved.length;
       console.log(`  ${slug.slice(0, 46).padEnd(48)} ${saved.length} candidate(s)`);
     }
   } finally { await browser.close().catch(() => {}); }
+  await Bun.write(`${outDir}/report.json`, JSON.stringify({ date: new Date().toISOString(), problems }, null, 2));
+  if (problems.length) console.log(`⚠ ${problems.length} draw(s) had photo problems (see .fetched/report.json):`, problems.map((p) => p.slug).join(", "));
   console.log("RESULT " + JSON.stringify(result));
 }
