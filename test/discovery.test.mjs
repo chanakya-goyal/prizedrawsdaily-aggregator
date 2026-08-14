@@ -1,5 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { norm, domainsFor, probeDomain, knownOperatorSet } from "../discovery/lib.mjs";
+import { trustScreen } from "../discovery/trust.mjs";
 
 const jsonResponse = (body) => new Response(JSON.stringify(body), { status: 200 });
 
@@ -38,5 +39,31 @@ describe("discovery lib", () => {
     const known = await knownOperatorSet();
     expect(known.has(norm("rev-comps"))).toBe(true); // operators.json
     expect(known.has(norm("goodlifeplus.co.uk"))).toBe(true); // skipped-operators.csv
+  });
+});
+
+describe("trustScreen", () => {
+  const page = `<html><body>Registered in England, Company No. 12345678
+    <a href="/terms-and-conditions">Terms</a>
+    <a href="https://www.instagram.com/acmecomps">ig</a></body></html>`;
+  const rdap = { events: [{ eventAction: "registration", eventDate: "2021-03-01T00:00:00Z" }] };
+  const tp = `<html><script type="application/ld+json">{"@type":"LocalBusiness","aggregateRating":{"ratingValue":"4.6"}}</script></html>`;
+  const fetchImpl = async (url) => {
+    if (url.includes("rdap.org")) return new Response(JSON.stringify(rdap), { status: 200 });
+    if (url.includes("trustpilot.com")) return new Response(tp, { status: 200 });
+    return new Response(page, { status: 200 });
+  };
+  test("extracts company number, terms, socials, rating, age", async () => {
+    const t = await trustScreen("acmecomps.co.uk", { fetchImpl });
+    expect(t.companyNumber).toBe("12345678");
+    expect(t.hasTerms).toBe(true);
+    expect(t.socials.some((s) => s.includes("instagram.com/acmecomps"))).toBe(true);
+    expect(t.trustpilotScore).toBe(4.6);
+    expect(t.trustpilotUrl).toContain("trustpilot.com/review/acmecomps.co.uk");
+    expect(t.domainAgeDays).toBeGreaterThan(1000);
+  });
+  test("every probe failing yields a null-shaped result, not a throw", async () => {
+    const t = await trustScreen("dead.co.uk", { fetchImpl: async () => { throw new Error("net"); } });
+    expect(t).toEqual({ domainAgeDays: null, companyNumber: null, hasTerms: false, trustpilotUrl: null, trustpilotScore: null, socials: [] });
   });
 });
