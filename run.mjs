@@ -36,8 +36,12 @@ const slugify = (s) => (s || "draw").toLowerCase().replace(/&/g, " and ").replac
 // Match the website's convention: "<title>-<operatorSlug>", regex-safe, <=120 chars.
 const makeSlug = (title, opSlug) => `${slugify(title).slice(0, Math.max(8, 119 - opSlug.length))}-${opSlug}`.slice(0, 120);
 
+// Every Supabase call carries a hard timeout: one silently-dead TCP connection with no
+// RST is an infinite await in Bun's fetch, and it stalled two full Action runs for 2h+
+// on 2026-08-14 (the flush after Red Hot Raffles both times).
+const SB_TIMEOUT = { signal: () => AbortSignal.timeout(30000) };
 async function sbGet(path) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: { apikey: READ_KEY, Authorization: `Bearer ${READ_KEY}` } });
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: { apikey: READ_KEY, Authorization: `Bearer ${READ_KEY}` }, signal: SB_TIMEOUT.signal() });
   if (!r.ok) throw new Error(`GET ${path} → ${r.status} ${await r.text()}`);
   return r.json();
 }
@@ -57,6 +61,7 @@ async function sbInsert(rows) {
     method: "POST",
     headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
     body: JSON.stringify(rows),
+    signal: SB_TIMEOUT.signal(),
   });
   if (!r.ok) throw new Error(`INSERT → ${r.status} ${await r.text()}`);
   return r.json();
@@ -66,6 +71,7 @@ async function sbUpdate(id, row) {
     method: "PATCH",
     headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify(row),
+    signal: SB_TIMEOUT.signal(),
   });
   if (!r.ok) throw new Error(`UPDATE ${id} → ${r.status} ${await r.text()}`);
 }
@@ -106,9 +112,15 @@ let pages = 0, skipped = 0;
 // 90-minute scrape because inserts only happened at the very end).
 const sbCreds = { supabaseUrl: SUPABASE_URL, serviceKey: SERVICE_KEY };
 let totalNew = 0, totalRefreshed = 0, rehosted = 0, missed = 0, inserted = 0, insertSkipped = 0, updated = 0, liveInserted = 0;
+// Race-based bound: unlike a fetch AbortSignal (which Bun has historically not honoured in
+// every stage of a request), Promise.race ALWAYS resolves the await — the stalled work is
+// leaked, not waited on. Used around flush IO because a hung await inside flush is
+// unreachable by both the per-op budget and the loop-top deadline check.
+const raced = (p, ms, label) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} exceeded ${Math.round(ms / 1000)}s`)), ms))]);
 async function flush() {
   totalNew += toInsert.length; totalRefreshed += toUpdate.length;
   if (DRY_RUN || (!toInsert.length && !toUpdate.length)) { toInsert.length = 0; toUpdate.length = 0; return; }
+  console.log(`  💾 flushing ${toInsert.length} new + ${toUpdate.length} refreshed…`); // stage marker — if a run stalls, the log shows whether it died in rehost/insert/update
   // Re-host every image onto our own Storage BEFORE writing, so the site never hotlinks a
   // third-party host (which breaks under Cloudflare bot protection — the root cause of
   // operator images silently breaking). A fetch miss keeps the original URL, never blocks.
@@ -116,7 +128,7 @@ async function flush() {
     const drawSlug = item.row.slug || item.slug;
     if (!item.row.image_url || !drawSlug) continue;
     try {
-      const res = await rehostImage(item.row.image_url, item.opSlug, drawSlug, sbCreds);
+      const res = await raced(rehostImage(item.row.image_url, item.opSlug, drawSlug, sbCreds), 90_000, "re-host");
       if (res.changed) { item.row.image_url = res.url; rehosted++; }
       else if (res.via === "miss") { missed++; console.log(`  ⚠️ image unreachable, kept origin: ${drawSlug.slice(0, 44)}`); }
     } catch (e) { missed++; console.log(`  ! re-host failed ${drawSlug.slice(0, 40)}: ${(e.message || "").slice(0, 60)}`); }
@@ -126,19 +138,19 @@ async function flush() {
   for (let i = 0; i < toInsert.length; i += 50) {
     const batch = toInsert.slice(i, i + 50).map((x) => x.row);
     try {
-      flushed += (await sbInsert(batch)).length;
+      flushed += (await raced(sbInsert(batch), 60_000, "insert")).length;
     } catch (e) {
       // A single bad row (e.g. a duplicate slug/entry_url race with another run) must not
       // sink the whole batch — retry row by row and skip only the offender.
       for (const row of batch) {
-        try { flushed += (await sbInsert([row])).length; }
+        try { flushed += (await raced(sbInsert([row]), 60_000, "insert")).length; }
         catch (e2) { insertSkipped++; console.log(`  ⏭ insert skipped ${row.slug}: ${(e2.message || "").slice(0, 70)}`); }
       }
     }
   }
   inserted += flushed;
   let refreshed = 0;
-  for (const u of toUpdate) { try { await sbUpdate(u.id, u.row); refreshed++; } catch (e) { console.log(`  ! update failed: ${(e.message || "").slice(0, 70)}`); } }
+  for (const u of toUpdate) { try { await raced(sbUpdate(u.id, u.row), 60_000, "update"); refreshed++; } catch (e) { console.log(`  ! update failed: ${(e.message || "").slice(0, 70)}`); } }
   updated += refreshed;
   console.log(`  💾 flush: +${flushed} inserted, +${refreshed} refreshed (${inserted}/${updated} total)`);
   toInsert.length = 0; toUpdate.length = 0;
