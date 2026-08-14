@@ -75,6 +75,8 @@ jobs:
           PER_OP_API: "60" # woo/shopify per-op cap (cheap JSON → whole live catalogue)
           BATCHES: "1"
           MAX_DRAWS: "3500" # backstop on pages read — covers all operators in one run
+          OP_BUDGET_MS: "480000" # 8min hard cap per operator — no single op may monopolise the run
+          RUN_DEADLINE_MIN: "130" # stop cleanly (flush + summary + exit 0) before the 150min job kill
 
       - name: Auto-expire finished comps (active + draft) → status='ended'
         if: always() # run even if the scrape step partially failed, so the site stays clean

@@ -143,17 +143,27 @@ async function flush() {
   console.log(`  💾 flush: +${flushed} inserted, +${refreshed} refreshed (${inserted}/${updated} total)`);
   toInsert.length = 0; toUpdate.length = 0;
 }
+// No single operator may monopolise the run (Red Hot Raffles ate 125 of 150 minutes on
+// 2026-08-14): each op gets a hard wall-clock budget, and the whole run stops CLEANLY at
+// a deadline safely under the job timeout — flushed, summarised, exit 0 — instead of
+// being killed mid-work.
+const OP_BUDGET_MS = Number(process.env.OP_BUDGET_MS || 8 * 60_000);
+const DEADLINE_MIN = Number(process.env.RUN_DEADLINE_MIN || 0); // 0 = no deadline
+const deadlineAt = DEADLINE_MIN ? now.getTime() + DEADLINE_MIN * 60_000 : Infinity;
+const withBudget = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`op budget ${Math.round(ms / 1000)}s exceeded — skipping operator`)), ms))]);
+
 for (const op of operators) {
   if (pages >= MAX_PAGES) { console.log(`\n⏹ hit MAX_PAGES cap (${MAX_PAGES}) — remaining operators run next time`); break; }
+  if (Date.now() > deadlineAt) { console.log(`\n⏹ RUN_DEADLINE_MIN (${DEADLINE_MIN}m) reached — flushing and stopping early; remaining operators run next time`); break; }
   if (!opMap[op.slug]) { console.log(`· ${op.name}: not in DB, skip`); continue; }
   console.log(`\n── ${op.name} (${op.method}) ──`);
   const c = { slug: op.slug, scraped: 0, inserted: 0, published: 0, heldDraft: 0 };
   counts.push(c);
   let draws = [];
   try {
-    if (op.method === "woo") draws = await wooOperator(op, PER_OP_API);
-    else if (op.method === "shopify") draws = await shopifyOperator(op, PER_OP_API);
-    else draws = await renderOperator(ctx, op, PER_OP);
+    if (op.method === "woo") draws = await withBudget(wooOperator(op, PER_OP_API), OP_BUDGET_MS);
+    else if (op.method === "shopify") draws = await withBudget(shopifyOperator(op, PER_OP_API), OP_BUDGET_MS);
+    else draws = await withBudget(renderOperator(ctx, op, PER_OP), OP_BUDGET_MS);
   } catch (e) { console.log(`  FAILED: ${(e.message || "").slice(0, 80)}`); continue; }
   pages += draws.length;
   c.scraped = draws.length;
