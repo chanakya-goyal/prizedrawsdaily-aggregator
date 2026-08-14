@@ -1,0 +1,39 @@
+name: Weekly operator discovery (keyless — approval queue only)
+
+# Finds new UK prize-draw operators (seeds + crosslink + competitor sitemaps; serpapi is a
+# no-op here by design — the key never enters CI), probes them deterministically, and
+# publishes an evidence-backed approval queue. Writes NO DB rows and commits nothing:
+# onboarding stays behind the human `bun discovery/approve.mjs <slug>` gate.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - name: Gate (scraper tests)
+        run: bun run test:scraper
+      - name: Run discovery
+        run: bun discovery/run.mjs
+      - name: Publish queue to summary
+        if: always()
+        run: cat discovery/QUEUE.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "no queue produced" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: discovery-queue
+          path: |
+            discovery/QUEUE.md
+            discovery/queue.json
+          if-no-files-found: ignore
