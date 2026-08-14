@@ -29,3 +29,24 @@ describe("rev-comps woo fixture", () => {
     }
   });
 });
+
+// Fixture-locked: waffle-competitions runs the lty (lottery-for-woocommerce) plugin, which
+// publishes "44 Tickets Sold" + "256 remaining" but never the cap. Their sum IS the exact
+// cap (progress bar confirms 44/300 = 14.67%) — a derived total that keeps the sold-count
+// veto intact. Captured 2026-08-14 via `bun capture.mjs waffle-competitions`.
+describe("waffle-competitions woo fixture (lty sold+remaining cap)", () => {
+  const op = { slug: "waffle-competitions", base: "https://wafflecompetitions.com", method: "woo" };
+
+  test("cap derives from sold+remaining; date comes from the lty countdown attr", async () => {
+    const products = await Bun.file("test/fixtures/woo/waffle-competitions.products.json").json();
+    const html = await Bun.file("test/fixtures/woo/waffle-competitions.product.html").text();
+    const p = products[0];
+    const minor = p.prices?.currency_minor_unit ?? 2;
+    const knownPrice = p.prices?.price != null ? Number((Number(p.prices.price) / 10 ** minor).toFixed(2)) : null;
+    const d = fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: p.images?.[0]?.src, knownPrice,
+      descriptionText: `${p.name || ""}\n${p.short_description || ""}\n${p.description || ""}` });
+    expect(d.total_entries).toBe(300);              // 44 sold + 256 remaining
+    expect(d.draw_date).toBeTruthy();               // lty data-time attr
+    expect(d.ticket_price).toBe(0);                 // this fixture product is free-entry — businessGate routes it out; the lty cap/date extraction is what's under test
+  });
+});
