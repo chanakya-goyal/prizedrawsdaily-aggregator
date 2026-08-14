@@ -6,6 +6,7 @@ import { fieldsFromHtml, compileOpRegex, CATEGORIES, UA, WINDOW_DAYS, normalizeU
 import { fetchHtml, renderVia } from "./lib/fetcher.mjs";
 
 export { CATEGORIES, UA, WINDOW_DAYS, normalizeUkDate };
+import { detectZap, parseZapRefresh, mergeZap, fetchZapRefresh } from "./lib/zap.mjs";
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Bounded-concurrency map — runs the per-product page fetches in parallel (with a ceiling so
@@ -133,7 +134,8 @@ export async function wooOperator(op, perOp = 6) {
   // live draw. (is_in_stock stays true after a draw closes, so is_purchasable is the right flag.)
   const products = (Array.isArray(body) ? body : []).filter((p) => p.is_purchasable !== false).slice(0, perOp);
   if (!products.length) { console.log(`  woo API returned no purchasable products`); return []; }
-  const draws = await pMap(products, FETCH_CONCURRENCY, async (p) => {
+  let sawZap = false;
+  const pairs = await pMap(products, FETCH_CONCURRENCY, async (p) => {
     try {
       const minor = p.prices?.currency_minor_unit ?? 2;
       const price = p.prices?.price != null ? Number((Number(p.prices.price) / 10 ** minor).toFixed(2)) : null;
@@ -148,10 +150,20 @@ export async function wooOperator(op, perOp = 6) {
       const apiStock = sm ? Number(sm[1].replace(/,/g, "")) : null;
       let html = "";
       try { html = (await fetchHtml(p.permalink, op)).text; } catch { /* API desc still usable */ }
-      return fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText, apiCategories, apiStock });
+      if (!sawZap && detectZap(html)) sawZap = true;
+      return { id: p.id, draw: fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText, apiCategories, apiStock }) };
     } catch (e) { console.log(`  ! ${(p.permalink || p.name || "?").slice(-42)} parse failed: ${(e.message || "").slice(0, 50)}`); return null; }
   });
-  return draws.filter(Boolean);
+  const kept = pairs.filter((x) => x && x.draw);
+  // Zap/craic-competitions family: cap + close date exist only behind a public admin-ajax
+  // call (the pages paint them client-side) — one batched request fills every gap.
+  if (sawZap && kept.some((x) => x.draw.total_entries == null || !x.draw.draw_date)) {
+    const rows = parseZapRefresh(await fetchZapRefresh(op.base, kept.map((x) => x.id)), new Date());
+    let filled = 0;
+    for (const x of kept) { const before = x.draw.draw_date; mergeZap(x.draw, rows[x.id]); if (x.draw.draw_date !== before || x.draw.total_entries != null) filled++; }
+    if (filled) console.log(`  ⚡ zap ajax filled cap/date for ${filled} draw(s)`);
+  }
+  return kept.map((x) => x.draw);
 }
 
 export async function shopifyOperator(op, perOp = 6) {
