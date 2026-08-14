@@ -83,7 +83,8 @@
   "name": "DreamTech Competitions",
   "slug": "dreamtech-competitions",
   "base": "https://dreamtechcompetitions.co.uk",
-  "method": "woo"
+  "method": "render",
+  "fetcher": "flaresolverr"
  },
  {
   "name": "East Anglia Competitions Ltd",
@@ -535,7 +536,9 @@
   "name": "Diamond Draws",
   "slug": "diamond-draws",
   "base": "https://www.diamonddraws.com",
-  "method": "render"
+  "method": "render",
+  "listing": "https://www.diamonddraws.com/competitions",
+  "wait": 8000
  },
  {
   "name": "Winmore",
