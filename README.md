@@ -88,3 +88,38 @@ health report lists **silent operators** (0 draws) so you know which ones need t
 and can be triggered from the **Actions** tab. Required repo secrets: `SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY`. The cowork routine is scheduled separately (see
 `manager/PROMPT.md`).
+
+⚠️ The workflow's test gate is `bun run test:scraper` (= `bun test test/`) on purpose:
+everything in `test/` must stay **offline-deterministic** (no network, no Chromium, no
+ffmpeg) because a failing gate skips the day's scrape — carousel suites doing exactly that
+silently stopped all scraping for 10+ days in Aug 2026. Inserts flush every ~25 rows
+mid-run, so a job-timeout kill only loses the tail of a sweep, never the whole thing.
+
+## Tripwire
+
+The last workflow step runs `manager/tripwire.mjs`: if the scrape step didn't succeed or
+live inventory drops under `TRIPWIRE_FLOOR` (workflow env, currently 350), it opens (or
+comments on) a GitHub issue labelled `tripwire` and turns the run red. Raise the floor as
+steady-state inventory grows — target is ~80% of stable live count.
+
+## Discovery engine
+
+`discovery/` finds new UK operators and onboards them behind a human gate:
+
+```
+sources (seeds.txt · crosslink mining · competitor sitemaps · SerpApi local-only)
+  → dedupe vs operators.json + skip list + rejected.json
+  → deterministic platform probe (live purchasable products or it doesn't count)
+  → trust screen (RDAP domain age · company number · T&Cs · Trustpilot · socials)
+  → discovery/QUEUE.md + queue.json  (evidence + paste-ready config per candidate)
+```
+
+- `bun discovery/run.mjs` — build the queue (also runs weekly via
+  `.github/workflows/discovery.yml`, which publishes the queue as the run summary +
+  artifact and never writes to the DB).
+- `bun discovery/approve.mjs <slug>` — insert the operator DB row (as **unverified**:
+  `review_status` null until editorial review) + append the `operators.json` entry.
+- `bun discovery/reject.mjs <slug> "<reason>"` — record it in `discovery/rejected.json`
+  so it never resurfaces.
+- `SERPAPI_KEY` in the local env adds the Google-SERP source; it is deliberately absent
+  from CI.
