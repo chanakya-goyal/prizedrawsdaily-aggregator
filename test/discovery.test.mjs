@@ -67,3 +67,36 @@ describe("trustScreen", () => {
     expect(t).toEqual({ domainAgeDays: null, companyNumber: null, hasTerms: false, trustpilotUrl: null, trustpilotScore: null, socials: [] });
   });
 });
+
+describe("discovery sources", () => {
+  test("extractCompDomains finds comp-flavoured external hosts only", async () => {
+    const { extractCompDomains } = await import("../discovery/sources/crosslink.mjs");
+    const html = `<a href="https://www.acmecompetitions.co.uk/win">x</a>
+      <a href="https://twitter.com/foo">no</a>
+      <a href="https://rafflekings.com/">y</a>`;
+    const out = extractCompDomains(html, { excludeHosts: new Set() });
+    expect(out).toContain("acmecompetitions.co.uk");
+    expect(out).toContain("rafflekings.com");
+    expect(out).not.toContain("twitter.com");
+  });
+  test("extractCompDomains respects excludeHosts", async () => {
+    const { extractCompDomains } = await import("../discovery/sources/crosslink.mjs");
+    const html = `<a href="https://rafflekings.com/">y</a>`;
+    expect(extractCompDomains(html, { excludeHosts: new Set(["rafflekings.com"]) })).toEqual([]);
+  });
+  test("seeds.txt lines become candidates, comments and blanks skipped", async () => {
+    const { candidates } = await import("../discovery/sources/seeds.mjs");
+    await Bun.write("discovery/seeds-test-fixture.txt", "# comment\n\nexamplecomps.co.uk\n");
+    const out = await candidates({ seedsPath: "discovery/seeds-test-fixture.txt" });
+    expect(out).toEqual([{ domain: "examplecomps.co.uk", via: "seed" }]);
+    const { unlinkSync } = await import("node:fs");
+    unlinkSync("discovery/seeds-test-fixture.txt");
+  });
+  test("serpapi source is a no-op without a key", async () => {
+    const { candidates } = await import("../discovery/sources/serpapi.mjs");
+    const prev = process.env.SERPAPI_KEY;
+    delete process.env.SERPAPI_KEY;
+    expect(await candidates({})).toEqual([]);
+    if (prev) process.env.SERPAPI_KEY = prev;
+  });
+});

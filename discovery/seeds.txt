@@ -1,0 +1,2 @@
+# Manual candidate domains — one per line. Lines starting with # are ignored.
+# Added by hand or by a cowork session; discovery/run.mjs picks these up first.
