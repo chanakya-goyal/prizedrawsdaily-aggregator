@@ -508,7 +508,8 @@
   "slug": "red-hot-raffles",
   "base": "https://www.redhotraffles.co.uk",
   "method": "woo",
-  "apiStyle": "rest_route"
+  "apiStyle": "rest_route",
+  "enabled": false
  },
  {
   "name": "Make Me A Winner",
