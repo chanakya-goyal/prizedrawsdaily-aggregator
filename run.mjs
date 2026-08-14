@@ -100,6 +100,49 @@ const toInsert = [];
 const toUpdate = [];
 const counts = [];
 let pages = 0, skipped = 0;
+
+// Incremental flush: re-host + write pending rows every few operators so a job-timeout
+// kill loses only the tail, never the sweep (the 2026-08-14 90-min cancel lost a full
+// 90-minute scrape because inserts only happened at the very end).
+const sbCreds = { supabaseUrl: SUPABASE_URL, serviceKey: SERVICE_KEY };
+let totalNew = 0, totalRefreshed = 0, rehosted = 0, missed = 0, inserted = 0, insertSkipped = 0, updated = 0, liveInserted = 0;
+async function flush() {
+  totalNew += toInsert.length; totalRefreshed += toUpdate.length;
+  if (DRY_RUN || (!toInsert.length && !toUpdate.length)) { toInsert.length = 0; toUpdate.length = 0; return; }
+  // Re-host every image onto our own Storage BEFORE writing, so the site never hotlinks a
+  // third-party host (which breaks under Cloudflare bot protection — the root cause of
+  // operator images silently breaking). A fetch miss keeps the original URL, never blocks.
+  for (const item of [...toInsert, ...toUpdate]) {
+    const drawSlug = item.row.slug || item.slug;
+    if (!item.row.image_url || !drawSlug) continue;
+    try {
+      const res = await rehostImage(item.row.image_url, item.opSlug, drawSlug, sbCreds);
+      if (res.changed) { item.row.image_url = res.url; rehosted++; }
+      else if (res.via === "miss") { missed++; console.log(`  ⚠️ image unreachable, kept origin: ${drawSlug.slice(0, 44)}`); }
+    } catch (e) { missed++; console.log(`  ! re-host failed ${drawSlug.slice(0, 40)}: ${(e.message || "").slice(0, 60)}`); }
+  }
+  liveInserted += toInsert.filter((x) => x.row.status === "active").length;
+  let flushed = 0;
+  for (let i = 0; i < toInsert.length; i += 50) {
+    const batch = toInsert.slice(i, i + 50).map((x) => x.row);
+    try {
+      flushed += (await sbInsert(batch)).length;
+    } catch (e) {
+      // A single bad row (e.g. a duplicate slug/entry_url race with another run) must not
+      // sink the whole batch — retry row by row and skip only the offender.
+      for (const row of batch) {
+        try { flushed += (await sbInsert([row])).length; }
+        catch (e2) { insertSkipped++; console.log(`  ⏭ insert skipped ${row.slug}: ${(e2.message || "").slice(0, 70)}`); }
+      }
+    }
+  }
+  inserted += flushed;
+  let refreshed = 0;
+  for (const u of toUpdate) { try { await sbUpdate(u.id, u.row); refreshed++; } catch (e) { console.log(`  ! update failed: ${(e.message || "").slice(0, 70)}`); } }
+  updated += refreshed;
+  console.log(`  💾 flush: +${flushed} inserted, +${refreshed} refreshed (${inserted}/${updated} total)`);
+  toInsert.length = 0; toUpdate.length = 0;
+}
 for (const op of operators) {
   if (pages >= MAX_PAGES) { console.log(`\n⏹ hit MAX_PAGES cap (${MAX_PAGES}) — remaining operators run next time`); break; }
   if (!opMap[op.slug]) { console.log(`· ${op.name}: not in DB, skip`); continue; }
@@ -154,47 +197,17 @@ for (const op of operators) {
     });
     console.log(`  ✅ ${d.title.slice(0, 44)} | ${d.category} | £${d.ticket_price}×${d.total_entries}${flags.length ? "  ⚠️→draft: " + flags.join("; ") : ""}`);
   }
+  if (!DRY_RUN && toInsert.length + toUpdate.length >= 25) await flush();
 }
 if (browser) await browser.close();
+await flush();
 
-console.log(`\n\n==== ${toInsert.length} new, ${toUpdate.length} refreshed (${pages} pages read, ${skipped} skipped) ====`);
+console.log(`\n\n==== ${totalNew} new, ${totalRefreshed} refreshed (${pages} pages read, ${skipped} skipped) ====`);
 if (DRY_RUN) {
   console.log("(dry run — nothing written)");
 } else {
-  // Re-host every image onto our own Storage BEFORE writing, so the site never hotlinks a
-  // third-party host (which breaks under Cloudflare bot protection — the root cause of
-  // operator images silently breaking). A fetch miss keeps the original URL, never blocks.
-  const sb = { supabaseUrl: SUPABASE_URL, serviceKey: SERVICE_KEY };
-  let rehosted = 0, missed = 0;
-  for (const item of [...toInsert, ...toUpdate]) {
-    const drawSlug = item.row.slug || item.slug;
-    if (!item.row.image_url || !drawSlug) continue;
-    try {
-      const res = await rehostImage(item.row.image_url, item.opSlug, drawSlug, sb);
-      if (res.changed) { item.row.image_url = res.url; rehosted++; }
-      else if (res.via === "miss") { missed++; console.log(`  ⚠️ image unreachable, kept origin: ${drawSlug.slice(0, 44)}`); }
-    } catch (e) { missed++; console.log(`  ! re-host failed ${drawSlug.slice(0, 40)}: ${(e.message || "").slice(0, 60)}`); }
-  }
   console.log(`🖼  re-hosted ${rehosted} image(s) to Storage${missed ? `, ${missed} kept origin (unreachable)` : ""}`);
-
-  let inserted = 0, insertSkipped = 0;
-  for (let i = 0; i < toInsert.length; i += 50) {
-    const batch = toInsert.slice(i, i + 50).map((x) => x.row);
-    try {
-      inserted += (await sbInsert(batch)).length;
-    } catch (e) {
-      // A single bad row (e.g. a duplicate slug/entry_url race with another run) must not
-      // sink the whole batch — retry row by row and skip only the offender.
-      for (const row of batch) {
-        try { inserted += (await sbInsert([row])).length; }
-        catch (e2) { insertSkipped++; console.log(`  ⏭ insert skipped ${row.slug}: ${(e2.message || "").slice(0, 70)}`); }
-      }
-    }
-  }
-  let updated = 0;
-  for (const u of toUpdate) { try { await sbUpdate(u.id, u.row); updated++; } catch (e) { console.log(`  ! update failed: ${(e.message || "").slice(0, 70)}`); } }
-  const live = toInsert.filter((x) => x.row.status === "active").length;
-  console.log(`✅ inserted ${inserted} (${live} live, ${inserted - live} draft) · refreshed ${updated} drafts${insertSkipped ? ` · ⏭ ${insertSkipped} skipped (duplicate/conflict)` : ""}`);
+  console.log(`✅ inserted ${inserted} (${liveInserted} live, ${inserted - liveInserted} draft) · refreshed ${updated} drafts${insertSkipped ? ` · ⏭ ${insertSkipped} skipped (duplicate/conflict)` : ""}`);
 }
 
 await writeStepSummary(buildHealthReport({ counts, expected: expectedSlugs }));
