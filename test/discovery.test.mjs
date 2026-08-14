@@ -121,3 +121,15 @@ describe("buildQueue", () => {
     expect(md).toContain("bun discovery/approve.mjs bigraffle");
   });
 });
+
+describe("approve builders", () => {
+  test("produce exact insert shapes", async () => {
+    const { buildOperatorConfig, buildDbRow } = await import("../discovery/approve.mjs");
+    const entry = { slug: "acmecomps", domain: "acmecomps.co.uk", base: "https://acmecomps.co.uk", method: "woo" };
+    expect(buildOperatorConfig(entry)).toEqual({ name: "Acmecomps", slug: "acmecomps", base: "https://acmecomps.co.uk", method: "woo" });
+    const row = buildDbRow(entry);
+    expect(row.review_status).toBeNull(); // site must show it as unverified, never "verified"
+    expect(row.website_url).toBe("https://acmecomps.co.uk");
+    expect(row.slug).toBe("acmecomps");
+  });
+});
