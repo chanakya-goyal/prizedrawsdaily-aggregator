@@ -44,8 +44,8 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Run parser/gate tests
-        run: bun test
+      - name: Run parser/gate tests (scraper only — carousel suites need ffmpeg/Chromium and must never gate the scrape)
+        run: bun run test:scraper
 
       - name: Install Chromium for Playwright
         run: bunx playwright install --with-deps chromium

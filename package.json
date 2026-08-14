@@ -5,6 +5,8 @@
   "private": true,
   "scripts": {
     "test": "bun test",
+    "test:scraper": "bun test test/",
+    "test:carousel": "bun test carousel/tests/",
     "scrape": "bun run.mjs"
   },
   "devDependencies": {
