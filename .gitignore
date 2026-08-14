@@ -38,3 +38,5 @@ qa-grandprize-run.js
 # carousel local/generated state
 carousel/tests/tmp/
 carousel/*.local.*
+discovery/queue.json
+discovery/QUEUE.md

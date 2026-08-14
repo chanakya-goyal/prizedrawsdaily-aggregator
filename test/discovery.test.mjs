@@ -100,3 +100,24 @@ describe("discovery sources", () => {
     if (prev) process.env.SERPAPI_KEY = prev;
   });
 });
+
+describe("buildQueue", () => {
+  test("renders sorted json + md with config snippet and trust evidence", async () => {
+    const { buildQueue } = await import("../discovery/run.mjs");
+    const probed = [
+      { domain: "acmecomps.co.uk", base: "https://acmecomps.co.uk", via: "seed", method: "woo", live: 12, total: 14,
+        sample: "Win a GT3", trust: { domainAgeDays: 900, companyNumber: "12345678", hasTerms: true,
+        trustpilotUrl: null, trustpilotScore: null, socials: [] }, foundAt: "2026-08-14" },
+      { domain: "bigraffle.com", base: "https://bigraffle.com", via: "crosslink:rev-comps", method: "shopify", live: 30,
+        total: 30, sample: "Rolex", trust: { domainAgeDays: null, companyNumber: null, hasTerms: false,
+        trustpilotUrl: null, trustpilotScore: null, socials: [] }, foundAt: "2026-08-14" },
+    ];
+    const { json, md } = buildQueue(probed);
+    expect(json[0].domain).toBe("bigraffle.com");            // live desc
+    expect(json[0].slug).toBe("bigraffle");
+    expect(md).toContain('"method": "shopify"');             // paste-ready snippet
+    expect(md).toContain("12345678");                        // trust evidence surfaced
+    expect(md).toContain("⚠️");                              // missing trust signals flagged
+    expect(md).toContain("bun discovery/approve.mjs bigraffle");
+  });
+});
