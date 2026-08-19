@@ -131,7 +131,10 @@ function thumbsHtml(thumbs = [], mode = "photo") {
 }
 
 function introHtml(d, particles) {
-  const kicker = d.banner ? `${esc(d.banner)} THIS WEEK` : "THIS WEEK'S BIGGEST DRAWS";
+  // A banner that already states its own timing (e.g. "…ENDING TODAY") shouldn't get "THIS WEEK" tacked on.
+  const kicker = d.banner
+    ? (/\b(TODAY|TONIGHT|CLOSING)\b/i.test(d.banner) ? esc(d.banner) : `${esc(d.banner)} THIS WEEK`)
+    : "THIS WEEK'S BIGGEST DRAWS";
   const subBits = [];
   if (d.value) subBits.push(`${esc(d.value)} IN PRIZES`);
   if (d.count) subBits.push(`${esc(d.count)} TO WIN`);

@@ -136,8 +136,8 @@ const value = valueLine(sel.draws, sel.slug);
 const introImgs = sel.draws.map((d) => heroOf(d.slug) || null);
 const intro = {
   type: "intro",
-  banner: `${sel.draws.length} ${catLabel(sel.name)} DRAWS`,
-  hook: hookLabel(sel.slug, sel.name),
+  banner: sel.banner || `${sel.draws.length} ${catLabel(sel.name)} DRAWS`,
+  hook: sel.hook || hookLabel(sel.slug, sel.name),
   value,
   fromAmount,
   count: sel.draws.length,

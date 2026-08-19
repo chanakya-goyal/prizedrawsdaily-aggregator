@@ -7,6 +7,7 @@ import { fetchHtml, renderVia } from "./lib/fetcher.mjs";
 
 export { CATEGORIES, UA, WINDOW_DAYS, normalizeUkDate };
 import { detectZap, parseZapRefresh, mergeZap, fetchZapRefresh } from "./lib/zap.mjs";
+import { isPurchasable, hasAvailableVariant } from "./lib/liveness.mjs";
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Bounded-concurrency map — runs the per-product page fetches in parallel (with a ceiling so
@@ -130,9 +131,11 @@ export async function wooOperator(op, perOp = 6) {
   const r = await fetchHtml(apiUrl, op);
   if (!r.ok) { console.log(`  woo API ${r.status} for ${op.base}`); return []; }
   let body = null; try { body = JSON.parse(r.text); } catch { /* non-JSON → no products */ }
-  // is_purchasable===false = a FINISHED competition (you can't buy tickets) — never ingest it as a
-  // live draw. (is_in_stock stays true after a draw closes, so is_purchasable is the right flag.)
-  const products = (Array.isArray(body) ? body : []).filter((p) => p.is_purchasable !== false).slice(0, perOp);
+  // A non-purchasable product is a FINISHED competition (you can't buy tickets) — never ingest
+  // it as a live draw. (is_in_stock stays true after a draw closes, so purchasability is the
+  // right flag.) The type-safety matters: the API returns the NUMBER 0 as well as `false`, and
+  // the old `!== false` test let every one of those through — see lib/liveness.mjs.
+  const products = (Array.isArray(body) ? body : []).filter(isPurchasable).slice(0, perOp);
   if (!products.length) { console.log(`  woo API returned no purchasable products`); return []; }
   let sawZap = false;
   const pairs = await pMap(products, FETCH_CONCURRENCY, async (p) => {
@@ -170,8 +173,14 @@ export async function shopifyOperator(op, perOp = 6) {
   const r = await fetchHtml(`${op.base}/products.json?limit=${perOp + 4}`, op);
   if (!r.ok) { console.log(`  shopify API ${r.status} for ${op.base}`); return []; }
   let body = null; try { body = JSON.parse(r.text); } catch { /* non-JSON → no products */ }
-  const products = (Array.isArray(body?.products) ? body.products : []).slice(0, perOp);
-  if (!products.length) { console.log(`  shopify API returned no products`); return []; }
+  // Shopify has no is_purchasable equivalent — an available variant is the signal, and until
+  // now nothing filtered on it at all, so sold-out/finished comps were ingested as live and
+  // every one of them also burned a product-page fetch. (The LIST feed carries `available`;
+  // the single-product /products/<handle>.json endpoint omits it — read it here, not there.)
+  const all = Array.isArray(body?.products) ? body.products : [];
+  const products = all.filter(hasAvailableVariant).slice(0, perOp);
+  if (!products.length) { console.log(`  shopify API returned no available products (of ${all.length})`); return []; }
+  if (all.length !== products.length) console.log(`  shopify: ${products.length} available of ${all.length} listed`);
   const draws = await pMap(products, FETCH_CONCURRENCY, async (p) => {
     try {
       const url = `${op.base}/products/${p.handle}`;
