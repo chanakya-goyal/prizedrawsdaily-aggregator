@@ -125,21 +125,68 @@ export async function renderOperator(ctx, op, perOp = 6) {
   return draws.filter(Boolean);
 }
 
+// ---- Woo pagination -------------------------------------------------------
+// The Store API caps per_page at 100, so depth needs ?page=N. But paging to the END is not
+// an option: these catalogues are ARCHIVES, not inventories — capital-competitions returns
+// 18,616 products and gaming-giveaways 9,894, nearly all of them finished comps. Since each
+// kept product also costs one HTML fetch, "paginate everything" is tens of thousands of
+// requests for a few dozen live draws.
+//
+// `after=` (a documented Store API filter) bounds it server-side instead: at after=90d,
+// gaming-giveaways drops from 9,894 products to ~195. Combined with a live-row target, every
+// operator finishes in 1-4 pages.
+export const WOO_PER_PAGE = 100; // API maximum
+
+export function wooPageUrl(op, { page, after }) {
+  const qs = `per_page=${WOO_PER_PAGE}&orderby=date&order=desc&page=${page}${after ? `&after=${encodeURIComponent(after)}` : ""}`;
+  return op.apiStyle === "rest_route"
+    ? `${op.base}/?rest_route=/wc/store/v1/products&${qs}`
+    : `${op.base}/wp-json/wc/store/v1/products?${qs}`;
+}
+
+// Stop when the operator has no more pages, or we already hold what we came for. Pure so the
+// loop's exit conditions are testable without the network.
+export function shouldStopPaging({ returned, liveSoFar, target, page, maxPages, emptyStreak }) {
+  if (returned < WOO_PER_PAGE) return "last page";
+  if (liveSoFar >= target) return "target reached";
+  if (page >= maxPages) return "page cap";
+  // Products are newest-first, so once two whole pages contain nothing purchasable we are
+  // deep in the archive and everything below is older still.
+  if (emptyStreak >= 2) return "two pages with no live products";
+  return null;
+}
+
 export async function wooOperator(op, perOp = 6) {
   // Some hosts 500/404 the pretty /wp-json/ route but still serve the Store API via the
   // ?rest_route= query form (flex-competitions, thewatchdraws, redhotraffles).
-  const apiUrl = op.apiStyle === "rest_route"
-    ? `${op.base}/?rest_route=/wc/store/v1/products&per_page=${perOp + 2}&orderby=date`
-    : `${op.base}/wp-json/wc/store/v1/products?per_page=${perOp + 2}&orderby=date`;
-  const r = await fetchHtml(apiUrl, op);
-  if (!r.ok) { console.log(`  woo API ${r.status} for ${op.base}`); return []; }
-  let body = null; try { body = JSON.parse(r.text); } catch { /* non-JSON → no products */ }
-  // A non-purchasable product is a FINISHED competition (you can't buy tickets) — never ingest
-  // it as a live draw. (is_in_stock stays true after a draw closes, so purchasability is the
-  // right flag.) The type-safety matters: the API returns the NUMBER 0 as well as `false`, and
-  // the old `!== false` test let every one of those through — see lib/liveness.mjs.
-  const products = (Array.isArray(body) ? body : []).filter(isPurchasable).slice(0, perOp);
+  const target = Number(op.maxLive || perOp);
+  const maxPages = Number(op.maxPages || process.env.WOO_MAX_PAGES || 5);
+  const lookbackDays = Number(op.lookbackDays || process.env.WOO_LOOKBACK_DAYS || 90);
+  const after = new Date(Date.now() - lookbackDays * 864e5).toISOString().replace(/\.\d+Z$/, "");
+
+  const collected = [];
+  let emptyStreak = 0, pagesRead = 0;
+  for (let page = 1; page <= maxPages; page++) {
+    const r = await fetchHtml(wooPageUrl(op, { page, after }), op);
+    // Page 1 failing is an operator problem worth reporting; a later page failing just ends
+    // the walk with what we already have.
+    if (!r.ok) { if (page === 1) { console.log(`  woo API ${r.status} for ${op.base}`); return []; } break; }
+    let arr = null; try { arr = JSON.parse(r.text); } catch { /* non-JSON → stop */ }
+    if (!Array.isArray(arr) || arr.length === 0) break;
+    pagesRead = page;
+    const live = arr.filter(isPurchasable);
+    emptyStreak = live.length === 0 ? emptyStreak + 1 : 0;
+    collected.push(...live);
+    const stop = shouldStopPaging({ returned: arr.length, liveSoFar: collected.length, target, page, maxPages, emptyStreak });
+    if (stop) { if (page > 1) console.log(`  paged ${pagesRead}×${WOO_PER_PAGE} (${stop})`); break; }
+  }
+  // `collected` is already purchasable-only (filtered per page above, type-safely — the API
+  // returns the NUMBER 0 as well as `false`; see lib/liveness.mjs). `maxLive` is the ceiling
+  // on how much of one operator's catalogue we list, so a 600-comp collectibles operator
+  // can't crowd out everything else on the site.
+  const products = collected.slice(0, target);
   if (!products.length) { console.log(`  woo API returned no purchasable products`); return []; }
+  if (collected.length > products.length) console.log(`  capped at maxLive ${target} (${collected.length} live upstream)`);
   let sawZap = false;
   const pairs = await pMap(products, FETCH_CONCURRENCY, async (p) => {
     try {

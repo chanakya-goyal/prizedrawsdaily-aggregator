@@ -36,7 +36,9 @@
   "name": "Capital Competitions Carp / Catch",
   "slug": "capital-competitions-carp-catch",
   "base": "https://competitions.online",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 40,
+  "note": "carp/fishing flood — capped for balance."
  },
  {
   "name": "Carpatic Giveaways",
@@ -69,7 +71,9 @@
   "name": "Dream Big Draws",
   "slug": "dream-big-draws",
   "base": "https://dreambigdraws.com",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 40,
+  "note": "Pokemon/collectibles flood — capped for balance."
  },
  {
   "name": "Dream Car Giveaways",
@@ -116,7 +120,9 @@
   "name": "Gaming Giveaways",
   "slug": "gaming-giveaways",
   "base": "https://www.gaminggiveaways.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 40,
+  "note": "collectibles/instant-win flood — capped for balance."
  },
  {
   "name": "Historia Prize Draw",
@@ -158,7 +164,9 @@
   "name": "Pawsome Comps",
   "slug": "pawsome-comps",
   "base": "https://pawsomecomps.com",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 40,
+  "note": "high-volume small comps — capped for balance."
  },
  {
   "name": "Planetofdreams",
@@ -203,7 +211,9 @@
   "name": "Redline Competitions",
   "slug": "redline-competitions",
   "base": "https://redline-competitions.com",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 100,
+  "note": "car operator."
  },
  {
   "name": "Rendalls Competitions",
@@ -232,7 +242,9 @@
   "name": "Storm Competitions ",
   "slug": "storm-competitions",
   "base": "https://www.stormcompetitions.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 100,
+  "note": "car/mixed operator."
  },
  {
   "name": "Supreemlife",
@@ -250,7 +262,9 @@
   "name": "The Car Competition",
   "slug": "the-car-competition",
   "base": "https://www.thecarcompetition.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 150,
+  "note": "253 live comps measured 2026-08-19 — a car operator, the site's weakest category."
  },
  {
   "name": "The Giveaway Guys",
@@ -283,7 +297,9 @@
   "name": "Waffle Competitions",
   "slug": "waffle-competitions",
   "base": "https://wafflecompetitions.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 40,
+  "note": "325 live, overwhelmingly micro-raffles — capped so one operator can't flood the listings."
  },
  {
   "name": "Winner Winner Competitions",
@@ -431,7 +447,9 @@
   "name": "Golf Star Competitions",
   "slug": "golf-star-competitions",
   "base": "https://golfstarcompetitions.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 60,
+  "note": "already the largest live contributor; hold at the default."
  },
  {
   "name": "Infinity Draws",
@@ -487,7 +505,9 @@
   "name": "Universal Competitions",
   "slug": "universal-competitions",
   "base": "https://universal-competitions.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 100,
+  "note": "108 live measured; currently contributes nothing."
  },
  {
   "name": "Win A Bundle",
