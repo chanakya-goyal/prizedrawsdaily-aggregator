@@ -40,3 +40,4 @@ carousel/tests/tmp/
 carousel/*.local.*
 discovery/queue.json
 discovery/QUEUE.md
+tripwire.md

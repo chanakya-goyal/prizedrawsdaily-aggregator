@@ -524,7 +524,9 @@
   "slug": "botb",
   "base": "https://www.botb.com",
   "method": "render",
-  "wait": 6000
+  "wait": 6000,
+  "enabled": false,
+  "disabledReason": "Spot-the-ball skill competition, not a capped raffle — structurally cannot supply our required fields. Its own API (/umbraco/00000002/appv2/getactivecompetitions) reports MaxEntries:0 for most comps and its entry URLs are category pages (/prizes/cars), not per-competition slugs. Every one of the 21 drafts it produced was wrong: ticket_price £9.99 (the subscription price) on all of them despite titles saying 5p/15p/£1.29, six titled with raw URL slugs (ASubscriberComp…), and nine with total_entries 2026 — the year misparsed as a ticket count. Deleted 2026-08-19."
  },
  {
   "name": "Ignite Comps",
