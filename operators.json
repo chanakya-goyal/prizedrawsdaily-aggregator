@@ -3,9 +3,10 @@
   "name": "7Days Performance",
   "slug": "seven-days-perf",
   "base": "https://7daysperformance.co.uk",
-  "method": "render",
-  "listing": "https://7daysperformance.co.uk/current-competitions",
-  "drawMatch": "/product/[a-z0-9]"
+  "method": "api",
+  "apiStyle": "raffle-engine",
+  "drawPath": "/product/{slug}",
+  "note": "Angular SPA — every HTML path returns the same shell, so the old render config was capped at ~10 of 56 live comps. Public keyless JSON: /api/v2/raffle-draws/GBP."
  },
  {
   "name": "All Star Prizes",
@@ -72,12 +73,10 @@
   "name": "Dream Car Giveaways",
   "slug": "dream-car-giveaways",
   "base": "https://dreamcargiveaways.co.uk",
-  "method": "render",
-  "drawMatch": "/competitions/[a-z0-9][a-z0-9-]+/?$",
-  "exclude": [
-   "/competitions/(cars|cash|tech|instant-wins|instant-cash)/?$"
-  ],
-  "aiAssist": true
+  "method": "api",
+  "apiStyle": "hydra",
+  "listApi": "https://api.dreamcargiveaways.co.uk/competitions",
+  "note": "Pure car operator that was excluded from the daily run entirely by the aiAssist filter. Public API Platform (Hydra JSON-LD) needs no AI and no browser. regularPrice is in PENCE."
  },
  {
   "name": "DreamTech Competitions",
@@ -271,10 +270,10 @@
   "name": "UKCC",
   "slug": "ukcc",
   "base": "https://ukcc.co.uk",
-  "method": "render",
-  "listing": "https://ukcc.co.uk/all-comps",
-  "drawMatch": "/competition/[a-z0-9]",
-  "wait": 6000
+  "method": "api",
+  "apiStyle": "raffle-engine",
+  "drawPath": "/competition/{slug}",
+  "note": "Same platform as 7Days Performance — identical API and schema, only the public URL shape differs."
  },
  {
   "name": "Waffle Competitions",
@@ -609,5 +608,14 @@
   "drawMatch": "/products/[a-z0-9][a-z0-9-]+/?$",
   "aiAssist": true,
   "enabled": false
+ },
+ {
+  "name": "Dream Big Competitions",
+  "slug": "dream-big-competitions",
+  "base": "https://dreambigcompetitions.com",
+  "method": "api",
+  "apiStyle": "inertia",
+  "listing": "https://dreambigcompetitions.com/competitions",
+  "note": "Laravel + Inertia (compengine.io whitelabel) — full page state is JSON in the #app data-page attribute. JDM-leaning car operator."
  }
 ]

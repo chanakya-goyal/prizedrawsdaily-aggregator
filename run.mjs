@@ -7,11 +7,12 @@
 // template description (lib/describe.mjs) and insert as 'draft'. The cowork/Claude routine
 // then rewrites descriptions, validates, and publishes.
 import { chromium } from "playwright";
-import { renderOperator, wooOperator, shopifyOperator, dedupe, makeContext } from "./extractor.mjs";
+import { renderOperator, wooOperator, shopifyOperator, apiOperator, dedupe, makeContext } from "./extractor.mjs";
 import { gate } from "./gate.mjs";
 import { templateDescription } from "./lib/describe.mjs";
-import { fieldFlags, buildHealthReport, writeStepSummary } from "./lib/manager.mjs";
+import { fieldFlags, buildHealthReport, writeStepSummary, checkImage } from "./lib/manager.mjs";
 import { rehostImage } from "./lib/rehost.mjs";
+import { verifyAgainstStored, summarise } from "./lib/verify.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -26,6 +27,14 @@ const PER_OP = Number(process.env.PER_OP || 5);             // render: per-op ca
 const PER_OP_API = Number(process.env.PER_OP_API || 60);
 const BATCHES = Number(process.env.BATCHES || 1);            // no LLM quota → full coverage daily
 const MAX_PAGES = Number(process.env.MAX_DRAWS || 2000);    // backstop on pages read per run (raised with PER_OP_API)
+// Auto-publish a draft the moment a second independent scrape agrees with it (lib/verify.mjs).
+// New rows are never published on first sighting — PUBLISH_STATUS still governs those.
+// AUTO_PUBLISH=false reverts to the old behaviour (everything waits for human review) with
+// no code change: the verdicts are still computed and reported, just not acted on.
+const AUTO_PUBLISH = process.env.AUTO_PUBLISH !== "false";
+// Ceiling on how many rows one run may publish. A scoring mistake is then bounded to this
+// many rows for at most a day, rather than the whole backlog at once.
+const AUTO_PUBLISH_MAX = Number(process.env.AUTO_PUBLISH_MAX || 200);
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
 const METHODS = process.env.METHODS ? new Set(process.env.METHODS.split(",").map((s) => s.trim())) : null;
 const READ_KEY = SERVICE_KEY || ANON_KEY;
@@ -93,7 +102,9 @@ const cats = await sbGet("categories?select=id,slug");
 const catMap = Object.fromEntries(cats.map((c) => [c.slug, c.id]));
 const dbOps = await sbGet("operators?select=id,slug");
 const opMap = Object.fromEntries(dbOps.map((o) => [o.slug, o.id]));
-const existing = await sbGetAll("draws?select=id,entry_url,slug,status");
+// The field values come back too, not just identity: publish verification compares this
+// stored observation against today's fresh scrape (see lib/verify.mjs).
+const existing = await sbGetAll("draws?select=id,entry_url,slug,status,title,ticket_price,total_entries,draw_date,image_url,prize_description");
 const byUrl = new Map(existing.filter((d) => d.entry_url).map((d) => [d.entry_url, d]));
 const takenSlugs = new Set(existing.map((d) => d.slug));
 console.log(`loaded ${cats.length} cats, ${dbOps.length} operators, ${existing.length} existing draws\n`);
@@ -105,7 +116,8 @@ const ctx = browser ? await makeContext(browser) : null;
 const toInsert = [];
 const toUpdate = [];
 const counts = [];
-let pages = 0, skipped = 0;
+const verdicts = [];
+let pages = 0, skipped = 0, autoPublished = 0;
 
 // Incremental flush: re-host + write pending rows every few operators so a job-timeout
 // kill loses only the tail, never the sweep (the 2026-08-14 90-min cancel lost a full
@@ -149,6 +161,24 @@ async function flush() {
     }
   }
   inserted += flushed;
+  // Publish gate, final step. The image is checked HERE rather than at verdict time because
+  // re-hosting above has just rewritten image_url to our own storage — checking the operator's
+  // original URL would test the wrong thing. Anything that isn't a clean 2xx stays draft and
+  // gets another chance tomorrow; we never publish a card we can't prove renders.
+  const candidates = toUpdate.filter((u) => u.candidate);
+  if (candidates.length) {
+    const checks = await Promise.all(candidates.map(async (u) => {
+      if (autoPublished >= AUTO_PUBLISH_MAX) return { u, ok: false, why: "run publish cap reached" };
+      try {
+        const img = await raced(checkImage(u.row.image_url), 15_000, "image check");
+        return { u, ok: img.ok === true, why: `image ${img.reason}` };
+      } catch { return { u, ok: false, why: "image check timed out" }; }
+    }));
+    for (const { u, ok, why } of checks) {
+      if (ok && autoPublished < AUTO_PUBLISH_MAX) { u.row.status = "active"; autoPublished++; }
+      else console.log(`  ⏸ held back at publish: ${u.slug.slice(0, 44)} — ${why}`);
+    }
+  }
   let refreshed = 0;
   for (const u of toUpdate) { try { await raced(sbUpdate(u.id, u.row), 60_000, "update"); refreshed++; } catch (e) { console.log(`  ! update failed: ${(e.message || "").slice(0, 70)}`); } }
   updated += refreshed;
@@ -173,7 +203,8 @@ for (const op of operators) {
   counts.push(c);
   let draws = [];
   try {
-    if (op.method === "woo") draws = await withBudget(wooOperator(op, PER_OP_API), OP_BUDGET_MS);
+    if (op.method === "api") draws = await withBudget(apiOperator(op, PER_OP_API), OP_BUDGET_MS);
+    else if (op.method === "woo") draws = await withBudget(wooOperator(op, PER_OP_API), OP_BUDGET_MS);
     else if (op.method === "shopify") draws = await withBudget(shopifyOperator(op, PER_OP_API), OP_BUDGET_MS);
     else draws = await withBudget(renderOperator(ctx, op, PER_OP), OP_BUDGET_MS);
   } catch (e) { console.log(`  FAILED: ${(e.message || "").slice(0, 80)}`); continue; }
@@ -190,13 +221,21 @@ for (const op of operators) {
       // the ticket price); never touch a published/ended row.
       if (ex.status !== "draft") { skipped++; continue; }
       byUrl.delete(d.entry_url);
-      toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, row: {
+      // This is the SECOND independent observation of a row we already hold. If it agrees
+      // with what's stored, that draft has been read twice, on different days, by separate
+      // fetches — enough to publish it. The image check is async and runs in flush(), so the
+      // verdict is provisional here and only rows that also pass it go live.
+      const verdict = verifyAgainstStored(ex, d, { now, imageOk: true });
+      const candidate = AUTO_PUBLISH && verdict.publish;
+      verdicts.push(verdict);
+      toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate, row: {
         category_id: catMap[d.category] || null, title: d.title, grand_prize: d.grand_prize,
         image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
         total_prize_value: tpv, draw_date: d.draw_date,
       } });
-      c.inserted++; c.heldDraft++;
-      console.log(`  ♻️ ${d.title.slice(0, 44)} | £${d.ticket_price}×${d.total_entries} (refreshed draft)`);
+      c.inserted++;
+      if (candidate) { c.published++; console.log(`  ✅ ${d.title.slice(0, 44)} | £${d.ticket_price}×${d.total_entries} (verified — publishing)`); }
+      else { c.heldDraft++; console.log(`  ♻️ ${d.title.slice(0, 44)} | £${d.ticket_price}×${d.total_entries} (held: ${verdict.reasons.slice(0, 2).join("; ").slice(0, 80) || "auto-publish off"})`); }
       continue;
     }
     if (!d.description) d.description = templateDescription(d);
@@ -230,6 +269,17 @@ if (DRY_RUN) {
 } else {
   console.log(`🖼  re-hosted ${rehosted} image(s) to Storage${missed ? `, ${missed} kept origin (unreachable)` : ""}`);
   console.log(`✅ inserted ${inserted} (${liveInserted} live, ${inserted - liveInserted} draft) · refreshed ${updated} drafts${insertSkipped ? ` · ⏭ ${insertSkipped} skipped (duplicate/conflict)` : ""}`);
+}
+// Publish verification report — always printed, in dry runs too, because the hold reasons are
+// the parser's to-do list: "total_entries → likely a stock counter" names a specific bug.
+if (verdicts.length) {
+  const s = summarise(verdicts);
+  // In a dry run flush() returns before the image check, so report the verdict-level count
+  // as "would publish" rather than claiming rows went live.
+  console.log(DRY_RUN
+    ? `\n🔎 publish verification: ${s.published} would publish, ${s.held} held (of ${verdicts.length} re-observed drafts)`
+    : `\n🔎 publish verification: ${autoPublished} published, ${verdicts.length - autoPublished} held (${AUTO_PUBLISH ? `cap ${AUTO_PUBLISH_MAX}` : "AUTO_PUBLISH=false"})`);
+  for (const [reason, n] of Object.entries(s.heldReasons)) console.log(`     ${String(n).padStart(4)} × ${reason}`);
 }
 
 await writeStepSummary(buildHealthReport({ counts, expected: expectedSlugs }));

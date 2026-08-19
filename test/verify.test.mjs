@@ -1,0 +1,145 @@
+import { test, expect, describe } from "bun:test";
+import { verifyAgainstStored, ukDayKey, summarise } from "../lib/verify.mjs";
+
+const NOW = new Date("2026-08-19T10:00:00Z");
+const SOON = "2026-08-30T20:00:00+01:00";
+
+// A clean, internally-consistent car draw: passes fieldFlags (car pool £0.99 × 20000 = £19,800).
+const base = {
+  title: "Win This 2025 BMW M2 + £2,000 Cash!",
+  grand_prize: "2025 BMW M2",
+  category: "car-draws",
+  ticket_price: 0.99,
+  total_entries: 20000,
+  draw_date: SOON,
+  image_url: "https://kkuuwksgyypicnblwubs.supabase.co/storage/v1/object/public/draw-images/x/y.webp",
+  entry_url: "https://7daysperformance.co.uk/product/win-bmw-m2-210826",
+  description: "A well formed description that is comfortably over twenty characters long.",
+};
+const stored = { ...base, prize_description: base.description };
+const ok = (over = {}) => verifyAgainstStored(stored, { ...base, ...over }, { now: NOW, imageOk: true });
+
+describe("verifyAgainstStored — publishes only when two observations agree", () => {
+  test("identical re-observation with a good image publishes", () => {
+    const v = ok();
+    expect(v.publish).toBe(true);
+    expect(v.reasons).toEqual([]);
+    expect(v.hasDrift).toBe(false);
+  });
+
+  test("a changed ticket price holds and names the drift", () => {
+    const v = ok({ ticket_price: 1.99 });
+    expect(v.publish).toBe(false);
+    expect(v.reasons.join(" ")).toContain("ticket_price");
+    expect(v.drift.ticket_price).toEqual([0.99, 1.99]);
+  });
+
+  test("price comparison is to 2dp, so float noise is not drift", () => {
+    expect(ok({ ticket_price: 0.99000000001 }).publish).toBe(true);
+  });
+
+  // The apiStock-as-cap misfeature: "N in stock" is tickets REMAINING and drops daily.
+  // Such rows must never publish, and the reason must say why.
+  test("a moving total_entries holds — a cap does not move", () => {
+    const v = ok({ total_entries: 19850 });
+    expect(v.publish).toBe(false);
+    expect(v.reasons.join(" ")).toContain("stock counter");
+    expect(v.drift.total_entries).toEqual([20000, 19850]);
+  });
+
+  test("a different draw day holds", () => {
+    const v = ok({ draw_date: "2026-08-31T20:00:00+01:00" });
+    expect(v.publish).toBe(false);
+    expect(v.reasons.join(" ")).toContain("draw_date");
+  });
+
+  // Operators nudge 8:45pm vs 9pm without it meaning anything.
+  test("a different clock time on the SAME UK day still publishes", () => {
+    expect(ok({ draw_date: "2026-08-30T21:45:00+01:00" }).publish).toBe(true);
+  });
+
+  test("a draw closing within the lead window holds", () => {
+    const v = ok({ draw_date: "2026-08-19T10:30:00Z" });
+    expect(v.publish).toBe(false);
+    expect(v.reasons.join(" ")).toContain("closes too soon");
+  });
+
+  test("an already-closed draw holds", () => {
+    expect(ok({ draw_date: "2026-08-18T20:00:00+01:00" }).publish).toBe(false);
+  });
+});
+
+describe("verifyAgainstStored — title comparison", () => {
+  test("entity/emoji/whitespace churn is not drift", () => {
+    expect(ok({ title: "Win This 2025 BMW M2 + £2,000 Cash!  " }).publish).toBe(true);
+    expect(ok({ title: "🚗 Win This 2025 BMW M2 + £2,000 Cash!" }).publish).toBe(true);
+  });
+  test("an appended suffix is containment, not drift", () => {
+    expect(ok({ title: "Win This 2025 BMW M2 + £2,000 Cash! - AUTO DRAW" }).publish).toBe(true);
+  });
+  test("a genuinely different prize holds", () => {
+    const v = ok({ title: "Win This Audi RS5 Performance", grand_prize: "Audi RS5" });
+    expect(v.publish).toBe(false);
+    expect(v.reasons.join(" ")).toContain("title changed");
+  });
+});
+
+describe("verifyAgainstStored — image is required, not assumed", () => {
+  test("an unreachable image holds", () => {
+    const v = verifyAgainstStored(stored, base, { now: NOW, imageOk: false });
+    expect(v.publish).toBe(false);
+    expect(v.reasons.join(" ")).toContain("unreachable");
+  });
+  // Stricter than the human path on purpose: an unattended publisher cannot weigh
+  // "probably fine", so an unverified image waits a day rather than shipping a broken card.
+  test("an UNVERIFIED image (timeout) also holds", () => {
+    const v = verifyAgainstStored(stored, base, { now: NOW, imageOk: null });
+    expect(v.publish).toBe(false);
+    expect(v.reasons.join(" ")).toContain("unverified");
+  });
+});
+
+describe("verifyAgainstStored — fieldFlags still apply", () => {
+  test("a car draw with an implausibly small pool holds even when both runs agree", () => {
+    const tiny = { ...base, ticket_price: 0.01, total_entries: 600 }; // £6 pool
+    const v = verifyAgainstStored({ ...tiny, prize_description: tiny.description }, tiny, { now: NOW, imageOk: true });
+    expect(v.publish).toBe(false);
+    expect(v.reasons.join(" ")).toMatch(/pool/i);
+  });
+  test("a ticket price over the sanity ceiling holds", () => {
+    const dear = { ...base, ticket_price: 75 };
+    const v = verifyAgainstStored({ ...dear, prize_description: dear.description }, dear, { now: NOW, imageOk: true });
+    expect(v.publish).toBe(false);
+  });
+  test("agreement alone cannot publish a row with a bad image url", () => {
+    const bad = { ...base, image_url: "not-a-url" };
+    const v = verifyAgainstStored({ ...bad, prize_description: bad.description }, bad, { now: NOW, imageOk: true });
+    expect(v.publish).toBe(false);
+  });
+});
+
+describe("ukDayKey", () => {
+  test("resolves to the UK calendar day, not the viewer's", () => {
+    expect(ukDayKey("2026-08-30T20:00:00+01:00")).toBe("2026-08-30");
+    // 23:30 UTC in August is 00:30 the NEXT day in London (BST) — the UK day is what counts.
+    expect(ukDayKey("2026-08-30T23:30:00Z")).toBe("2026-08-31");
+  });
+  test("null for unparseable input", () => {
+    expect(ukDayKey("not a date")).toBe(null);
+    expect(ukDayKey(null)).toBe(null);
+  });
+});
+
+describe("summarise", () => {
+  test("counts publishes, holds, and tallies reasons without their values", () => {
+    const s = summarise([
+      { publish: true, reasons: [] },
+      { publish: false, reasons: ["ticket_price 0.25 → 0.5"] },
+      { publish: false, reasons: ["ticket_price 1 → 2", "image not confirmed (unreachable)"] },
+    ]);
+    expect(s.published).toBe(1);
+    expect(s.held).toBe(2);
+    expect(s.heldReasons["ticket_price"]).toBe(2);
+    expect(s.heldReasons["image not confirmed"]).toBe(1);
+  });
+});

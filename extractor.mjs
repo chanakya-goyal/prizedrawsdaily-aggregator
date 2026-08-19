@@ -8,6 +8,9 @@ import { fetchHtml, renderVia } from "./lib/fetcher.mjs";
 export { CATEGORIES, UA, WINDOW_DAYS, normalizeUkDate };
 import { detectZap, parseZapRefresh, mergeZap, fetchZapRefresh } from "./lib/zap.mjs";
 import { isPurchasable, hasAvailableVariant } from "./lib/liveness.mjs";
+import { raffleEngineOperator } from "./lib/adapters/raffle-engine.mjs";
+import { hydraOperator } from "./lib/adapters/hydra.mjs";
+import { inertiaOperator } from "./lib/adapters/inertia.mjs";
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Bounded-concurrency map — runs the per-product page fetches in parallel (with a ceiling so
@@ -196,6 +199,22 @@ export async function shopifyOperator(op, perOp = 6) {
     } catch (e) { console.log(`  ! ${(p.handle || p.title || "?")} parse failed: ${(e.message || "").slice(0, 50)}`); return null; }
   });
   return draws.filter(Boolean);
+}
+
+// JSON-API operators. `apiStyle` picks the platform parser; each returns the same shape
+// fieldsFromHtml does, so the gate, dedupe, flush and re-host stages see no difference.
+// These beat the browser path on every axis: complete catalogues instead of a link cap,
+// exact operator-published numbers instead of regex inference, and no Chromium.
+const API_ADAPTERS = {
+  "raffle-engine": raffleEngineOperator, // 7Days Performance, UKCC
+  hydra: hydraOperator,                  // Dream Car Giveaways
+  inertia: inertiaOperator,              // Dream Big Competitions (compengine.io)
+};
+
+export async function apiOperator(op, perOp = 300) {
+  const fn = API_ADAPTERS[op.apiStyle];
+  if (!fn) { console.log(`  unknown apiStyle '${op.apiStyle}' — skipping`); return []; }
+  return fn(op, perOp);
 }
 
 export function dedupe(draws) {

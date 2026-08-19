@@ -1,0 +1,218 @@
+{
+ "hydra:member": [
+  {
+   "@id": "/competitions/csTz3pu-eCW0ZO_4YzJZUg",
+   "@type": "Competition",
+   "id": "csTz3pu-eCW0ZO_4YzJZUg",
+   "name": "Win this Carbon Vorsprung Audi RS3 & £3,000 or £46,000 Tax Free",
+   "urlStub": "win-this-carbon-vorsprung-audi-rs3-3000-or-46000-tax-free",
+   "publishTs": "2026-08-18T22:15:00+01:00",
+   "closeTs": "2026-08-25T22:00:00+01:00",
+   "status": "published",
+   "launchPrice": null,
+   "launchPriceThreshold": null,
+   "regularPrice": 9,
+   "numTickets": 999999,
+   "numInstantPrizes": 0,
+   "instantPrizesTotalValue": 0,
+   "maxUserTickets": 5500,
+   "thumb": "/media-uploads/kOcyNXS5etu4SyhJXNIB3M",
+   "homepageFeatured": null,
+   "primaryPrize": {
+    "@id": "/prizes/ed3QiyoKfwObm0EAgtz7_0",
+    "@type": "Prize",
+    "prizeVehicle": {
+     "@id": "/prize-vehicles/QBwdym5Lf7_4MihDq6S2tw",
+     "@type": "PrizeVehicle",
+     "statBhp": "401",
+     "statAcceleration": "3.3",
+     "statMiles": "5500",
+     "statYear": "2024"
+    }
+   },
+   "drawTs": "2026-08-25T22:00:00+01:00",
+   "numTicketsAvailable": 984527,
+   "category": "car_sports",
+   "appOnly": false,
+   "subscriberExclusive": false,
+   "primaryWin": null,
+   "thumbnail": "kOcyNXS5etu4SyhJXNIB3M",
+   "prizes": [
+    {
+     "@id": "/prizes/ed3QiyoKfwObm0EAgtz7_0",
+     "@type": "Prize",
+     "prizeVehicle": {
+      "@id": "/prize-vehicles/QBwdym5Lf7_4MihDq6S2tw",
+      "@type": "PrizeVehicle",
+      "statBhp": "401",
+      "statAcceleration": "3.3",
+      "statMiles": "5500",
+      "statYear": "2024"
+     }
+    }
+   ],
+   "winningTickets": []
+  },
+  {
+   "@id": "/competitions/-IrF8kSWfICcNaq5cRg7m0",
+   "@type": "Competition",
+   "id": "-IrF8kSWfICcNaq5cRg7m0",
+   "name": "Fund A Full Tank - Cash Instant Win!",
+   "urlStub": "fund-a-full-tank-cash-instant-win",
+   "publishTs": "2026-08-18T22:15:00+01:00",
+   "closeTs": "2026-08-25T22:00:00+01:00",
+   "status": "published",
+   "launchPrice": null,
+   "launchPriceThreshold": null,
+   "regularPrice": 6,
+   "numTickets": 1399998,
+   "numInstantPrizes": 50000,
+   "instantPrizesTotalValue": 4469700,
+   "maxUserTickets": 12500,
+   "thumb": "/media-uploads/7rMPiN_Gdyu5VSV1nvjzTg",
+   "homepageFeatured": null,
+   "primaryPrize": {
+    "@id": "/prizes/uSj6OKSIdOa4ZazZzWEK9g",
+    "@type": "Prize",
+    "prizeVehicle": null
+   },
+   "drawTs": "2026-08-25T22:10:00+01:00",
+   "numTicketsAvailable": 1384348,
+   "category": "instant_wins",
+   "appOnly": false,
+   "subscriberExclusive": false,
+   "primaryWin": null,
+   "thumbnail": "7rMPiN_Gdyu5VSV1nvjzTg",
+   "prizes": [
+    {
+     "@id": "/prizes/uSj6OKSIdOa4ZazZzWEK9g",
+     "@type": "Prize",
+     "prizeVehicle": null
+    }
+   ],
+   "winningTickets": []
+  },
+  {
+   "@id": "/competitions/5DFs4Zl3e8W8g4fICFsCiM",
+   "@type": "Competition",
+   "id": "5DFs4Zl3e8W8g4fICFsCiM",
+   "name": "Scratch to Win - 300,000+ Prizes / £430,000 Prize Pot",
+   "urlStub": "scratch-to-win-300000-prizes-450000-prize-pot",
+   "publishTs": "2026-08-17T23:05:00+01:00",
+   "closeTs": "2026-08-24T23:00:00+01:00",
+   "status": "published",
+   "launchPrice": null,
+   "launchPriceThreshold": null,
+   "regularPrice": 139,
+   "numTickets": 599999,
+   "numInstantPrizes": 300000,
+   "instantPrizesTotalValue": 37770010,
+   "maxUserTickets": 720,
+   "thumb": "/media-uploads/iOFEnHmndSW91-OnHPpURw",
+   "homepageFeatured": null,
+   "primaryPrize": {
+    "@id": "/prizes/QoO5C9s8dDO98yOkDzI2e0",
+    "@type": "Prize",
+    "prizeVehicle": null
+   },
+   "drawTs": "2026-08-24T23:10:00+01:00",
+   "numTicketsAvailable": 592414,
+   "category": "instant_wins",
+   "appOnly": false,
+   "subscriberExclusive": false,
+   "primaryWin": null,
+   "thumbnail": "iOFEnHmndSW91-OnHPpURw",
+   "prizes": [
+    {
+     "@id": "/prizes/QoO5C9s8dDO98yOkDzI2e0",
+     "@type": "Prize",
+     "prizeVehicle": null
+    }
+   ],
+   "winningTickets": []
+  },
+  {
+   "@id": "/competitions/uMrrmvarf46doGB5krxRxw",
+   "@type": "Competition",
+   "id": "uMrrmvarf46doGB5krxRxw",
+   "name": "Win this Stormforce AMD Ryzen5 Desktop PC & Monitor Bundle",
+   "urlStub": "win-this-stormforce-amd-ryzen5-desktop-pc-monitor-bundle-1o",
+   "publishTs": "2026-08-17T22:15:00+01:00",
+   "closeTs": "2026-08-24T22:00:00+01:00",
+   "status": "published",
+   "launchPrice": null,
+   "launchPriceThreshold": null,
+   "regularPrice": 99,
+   "numTickets": 1707,
+   "numInstantPrizes": 0,
+   "instantPrizesTotalValue": 0,
+   "maxUserTickets": 100,
+   "thumb": "/media-uploads/mQcfa36YcNa3nHKDzYwHCg",
+   "homepageFeatured": null,
+   "primaryPrize": {
+    "@id": "/prizes/h3Pk9UhrcHqfAfsztct2F0",
+    "@type": "Prize",
+    "prizeVehicle": null
+   },
+   "drawTs": "2026-08-24T22:10:00+01:00",
+   "numTicketsAvailable": 1520,
+   "category": "other_tech",
+   "appOnly": false,
+   "subscriberExclusive": false,
+   "primaryWin": null,
+   "thumbnail": "mQcfa36YcNa3nHKDzYwHCg",
+   "prizes": [
+    {
+     "@id": "/prizes/h3Pk9UhrcHqfAfsztct2F0",
+     "@type": "Prize",
+     "prizeVehicle": null
+    }
+   ],
+   "winningTickets": []
+  },
+  {
+   "@id": "/competitions/rGe_MOw9fZyaJXyTIVzexg",
+   "@type": "Competition",
+   "id": "rGe_MOw9fZyaJXyTIVzexg",
+   "name": "Win £1,000 Tax Free Cash",
+   "urlStub": "win-1000-tax-free-cash-1s",
+   "publishTs": "2026-08-17T22:15:00+01:00",
+   "closeTs": "2026-08-24T22:00:00+01:00",
+   "status": "published",
+   "launchPrice": null,
+   "launchPriceThreshold": null,
+   "regularPrice": 169,
+   "numTickets": 1199,
+   "numInstantPrizes": 0,
+   "instantPrizesTotalValue": 0,
+   "maxUserTickets": 52,
+   "thumb": "/media-uploads/qVBH0irUcmObceoWwIPZ3g",
+   "homepageFeatured": null,
+   "primaryPrize": {
+    "@id": "/prizes/xrMZkxyaeFefw-VLo_U3dM",
+    "@type": "Prize",
+    "prizeVehicle": null
+   },
+   "drawTs": "2026-08-24T22:10:00+01:00",
+   "numTicketsAvailable": 1103,
+   "category": "other_cash",
+   "appOnly": false,
+   "subscriberExclusive": false,
+   "primaryWin": null,
+   "thumbnail": "qVBH0irUcmObceoWwIPZ3g",
+   "prizes": [
+    {
+     "@id": "/prizes/xrMZkxyaeFefw-VLo_U3dM",
+     "@type": "Prize",
+     "prizeVehicle": null
+    }
+   ],
+   "winningTickets": []
+  }
+ ],
+ "hydra:view": {
+  "@id": "/competitions?page=1",
+  "@type": "hydra:PartialCollectionView",
+  "hydra:next": "/competitions?page=2"
+ }
+}
