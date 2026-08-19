@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { verifyAgainstStored, ukDayKey, summarise, relistDecision } from "../lib/verify.mjs";
+import { verifyAgainstStored, ukDayKey, summarise, relistDecision, correctionDecision } from "../lib/verify.mjs";
 
 const NOW = new Date("2026-08-19T10:00:00Z");
 const SOON = "2026-08-30T20:00:00+01:00";
@@ -115,6 +115,56 @@ describe("verifyAgainstStored — fieldFlags still apply", () => {
     const bad = { ...base, image_url: "not-a-url" };
     const v = verifyAgainstStored({ ...bad, prize_description: bad.description }, bad, { now: NOW, imageOk: true });
     expect(v.publish).toBe(false);
+  });
+});
+
+// Correcting a LIVE row is the only write that lands on the public site from ONE observation,
+// so it gets no agreement test — which makes fieldFlags the only thing between a one-day
+// misparse and a wrong price on a published card.
+describe("correctionDecision — a flagged read never overwrites a live row", () => {
+  const live = { ...stored, status: "active" };
+  const decide = (over) => correctionDecision(live, { ...base, ...over }, { now: NOW });
+
+  test("a clean read that disagrees corrects the row and names the fields", () => {
+    const c = decide({ ticket_price: 1.49 });
+    expect(c.correct).toBe(true);
+    expect(c.fields).toEqual(["ticket_price"]);
+    expect(c.flags).toEqual([]);
+  });
+
+  test("no drift is not a correction", () => {
+    const c = decide({});
+    expect(c.correct).toBe(false);
+    expect(c.reason).toBe("no drift");
+  });
+
+  // The failure this guard exists for: the price parse breaks and reads £0.01, which is drift,
+  // so the old code wrote it straight onto the live card. £0.01 × 20000 = a £200 "car draw".
+  test("a misparsed price that collapses a car draw's pool is refused", () => {
+    const c = decide({ ticket_price: 0.01 });
+    expect(c.correct).toBe(false);
+    expect(c.reason).toMatch(/flagged/);
+    expect(c.flags.join(" ")).toMatch(/pool/i);
+  });
+
+  test("a fresh read whose image url stopped being a url is refused", () => {
+    const c = decide({ image_url: "/wp-content/uploads/placeholder.png", ticket_price: 1.49 });
+    expect(c.correct).toBe(false);
+    expect(c.flags.join(" ")).toContain("image");
+  });
+
+  test("an absurd ticket price is refused rather than published as a correction", () => {
+    expect(decide({ ticket_price: 750 }).correct).toBe(false);
+  });
+
+  // The scraper only attaches a template description on INSERT, so a live correction usually
+  // arrives with no description at all; the stored one has to stand in or every correction
+  // would be refused as "thin description".
+  test("the stored description stands in for a fresh read that has none", () => {
+    const { description, ...noDesc } = { ...base, draw_date: "2026-09-02T20:00:00+01:00" };
+    const c = correctionDecision(live, noDesc, { now: NOW });
+    expect(c.correct).toBe(true);
+    expect(c.fields).toEqual(["draw_date"]);
   });
 });
 

@@ -12,7 +12,7 @@ import { gate } from "./gate.mjs";
 import { templateDescription } from "./lib/describe.mjs";
 import { fieldFlags, buildHealthReport, writeStepSummary, checkImage } from "./lib/manager.mjs";
 import { rehostImage } from "./lib/rehost.mjs";
-import { verifyAgainstStored, summarise, relistDecision } from "./lib/verify.mjs";
+import { verifyAgainstStored, summarise, relistDecision, correctionDecision } from "./lib/verify.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -261,10 +261,18 @@ for (const op of operators) {
       // a ticket price or moving a draw date would leave the wrong number on the public site
       // indefinitely. Correct the FIELDS in place and leave `status` alone: a data change is
       // not a reason to yank a live draw off the site, and a comp that has actually finished
-      // is ended-sweep's job.
+      // is ended-sweep's job. This is a single-observation write onto a PUBLISHED row, so
+      // correctionDecision() holds it to the deterministic half of the publish bar: a flagged
+      // read never overwrites values the site is already showing (lib/verify.mjs).
       if (ex.status === "active") {
-        const v = verifyAgainstStored(ex, d, { now, imageOk: true });
-        if (!v.hasDrift) { skipped++; continue; }
+        const c = correctionDecision(ex, d, { now });
+        if (!c.correct) {
+          skipped++;
+          // Silent when there's simply nothing to correct; loud when a flagged read was
+          // REFUSED, because that is the parser breaking on a row the public can see.
+          if (c.flags.length) console.log(`  🚫 ${d.title.slice(0, 40)} — live row left alone: ${c.reason.slice(0, 90)}`);
+          continue;
+        }
         byUrl.delete(d.entry_url);
         toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: false, row: {
           category_id: catMap[d.category] || null, title: d.title, grand_prize: d.grand_prize,
@@ -272,7 +280,7 @@ for (const op of operators) {
           total_prize_value: tpv, draw_date: d.draw_date,
         } });
         correctedLive++;
-        console.log(`  🔄 ${d.title.slice(0, 40)} — live row corrected: ${Object.keys(v.drift).join(", ")}`);
+        console.log(`  🔄 ${d.title.slice(0, 40)} — live row corrected: ${c.fields.join(", ")}`);
         continue;
       }
       if (ex.status !== "draft") { skipped++; continue; }
