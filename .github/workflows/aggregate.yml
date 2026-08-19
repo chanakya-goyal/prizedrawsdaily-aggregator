@@ -76,7 +76,11 @@ jobs:
           # Anything else stays draft with a reason. AUTO_PUBLISH=false reverts to fully
           # human-gated publishing without a code change.
           AUTO_PUBLISH: "true"
-          AUTO_PUBLISH_MAX: "200" # bounds a scoring mistake to 200 rows for at most a day
+          # Staged rollout: a scoring mistake is bounded to this many rows for at most a day,
+          # and 283 drafts are queued — publishing them all at once would double the site
+          # overnight with nobody having looked at a single card. Hold at 50/run until the
+          # cowork spot-check has passed 3 days running, then raise to 200.
+          AUTO_PUBLISH_MAX: "50"
           PER_OP: "15" # render per-op cap (raised from 5 for Operation 1000 depth)
           PER_OP_API: "60" # woo/shopify per-op cap (cheap JSON → whole live catalogue)
           BATCHES: "1"
