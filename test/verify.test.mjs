@@ -144,6 +144,22 @@ describe("summarise", () => {
   });
 });
 
+// run.mjs is a top-level-await script that talks to Supabase on import, so its env parsing
+// cannot be exercised by importing it. The one flag worth pinning anyway is the publish
+// switch: if its default ever goes back to opt-OUT, every local/cowork invocation holding the
+// service key publishes to the live site as a side effect. Assert the source, precisely.
+describe("auto-publish is opt-in, and only the daily Action opts in", () => {
+  test("run.mjs treats AUTO_PUBLISH as off unless it is explicitly \"true\"", async () => {
+    const src = await Bun.file("run.mjs").text();
+    expect(src).toContain('const AUTO_PUBLISH = process.env.AUTO_PUBLISH === "true";');
+    expect(src).not.toContain('process.env.AUTO_PUBLISH !== "false"');
+  });
+  test("the daily workflow sets AUTO_PUBLISH explicitly", async () => {
+    const yml = await Bun.file(".github/workflows/aggregate.yml").text();
+    expect(yml).toMatch(/^\s*AUTO_PUBLISH:\s*"true"\s*$/m);
+  });
+});
+
 describe("relistDecision — recurring competitions must be able to come back", () => {
   const NOW2 = new Date("2026-08-19T10:00:00Z");
   const ended = (drawDate) => ({ status: "ended", draw_date: drawDate });

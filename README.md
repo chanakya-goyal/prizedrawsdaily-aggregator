@@ -24,7 +24,10 @@ Anything that disagrees stays `draft` with the reason recorded, so the hold list
 the parser's to-do list. A `total_entries` that moves between runs, for example, is not a cap
 at all — it's a stock counter — and that row will correctly never publish.
 
-`AUTO_PUBLISH=false` restores fully human-gated publishing with no code change;
+Publishing is **opt-in**: only `AUTO_PUBLISH=true` acts on the verdicts, and the daily Action
+is the only place that sets it — every other invocation (local shell, cowork routine, a one-off
+`ONLY=…` run) computes and reports the same verdicts but writes nothing live. Dropping that one
+env var from the workflow restores fully human-gated publishing with no code change;
 `AUTO_PUBLISH_MAX` bounds how many rows a single run can make live.
 
 ## How extraction works (no LLM)
