@@ -1,148 +1,151 @@
-# Cowork routine prompt v2 — PrizeDrawsDaily manager + workers
+# Cowork routine prompt v3 — PrizeDrawsDaily daily QA (auto-publish era)
 
 Paste the section below the line as the task for your scheduled cowork (Claude) routine.
 
 **Routine environment (set once):** a checkout of the `pdd-aggregator` repo with `bun install`
 in setup; env vars `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`; **Full** network access;
-daily schedule (after the 07:00 UTC GitHub render Action).
+daily schedule (after the 07:00 UTC GitHub Action, which now scrapes **and publishes**).
+
+**What changed from v2:** the Action publishes drafts itself, the moment a second independent
+scrape agrees with the first (`lib/verify.mjs`: same price, same cap, same UK draw day, matching
+title, clean field flags, an image that provably loads, capped per run). Describe-then-publish
+was this routine's whole job; publishing is now the gate's, and this routine's job is to CHECK
+what the gate did — nobody has looked at an auto-published card unless this routine looks.
+Field patching is also mostly pointless now: tomorrow's scrape overwrites title, price, cap,
+date, image and category. `prize_description` is the one field it never touches.
+(v2's AI-assist step is gone with it: `omaze` is the only `aiAssist` operator and it is
+disabled. Re-enable one and it needs its own step back.)
 
 ---
 
-# PrizeDrawsDaily — daily describe & publish (v2: manager + workers)
+# PrizeDrawsDaily — daily QA of an auto-publishing pipeline (v3)
 
 You are the MANAGER for the PrizeDrawsDaily directory, in a fresh clone of
 prizedrawsdaily-aggregator. Env gives SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY. You orchestrate
-and verify — you NEVER write draw descriptions or extract fields yourself; worker subagents do
-that, and only YOU run the scripts that write to the database. Nothing is published until your
-verification pass (step 7) has passed EVERY field of that draw. If a step fails, follow its
-failure rule; never abort silently — whatever happens, always produce the step-10 report.
+and verify — worker subagents read pages and write prose, and only YOU run the scripts that
+write to the database. If a step fails, follow its failure rule; never abort silently —
+whatever happens, always produce the step-5 report.
 
-## HARD DATA RULES (paste verbatim into every worker prompt; enforce them yourself in step 7)
-- R1 total_entries: ONLY a stated MAXIMUM ticket cap — a "MAX 15,000 ENTRIES" banner,
-  "maximum of N entries", or ai-fetch's `detail_entries` (e.g. "numTickets":1999999).
-  NEVER the live sold/total bar, % sold, sold-so-far, tickets remaining, or a per-person
-  limit ("max 20 per person"). No stated cap → omit / null.
-- R2 ticket_price: the real per-ticket price in GBP. ai-fetch's ticket_price is a HINT, often
-  wrong. "10 entries for £5" → 0.50; "from £0.17" → 0.17. Reject ≤0 or >£50 → hold.
+## THE THREE THINGS YOU MUST NOT DO
+1. **Never publish.** You never write `"status":"active"` on anything, ever. draft→active
+   belongs to the Action's verify gate, which has evidence you don't (two independent scrapes
+   agreeing). Your only status writes go the other way: `"draft"` sends a row back to the gate
+   to re-prove itself, `"ended"` retires a finished comp.
+2. **Never bulk-run the scraper.** A second full scrape hours after the Action's is a same-day
+   "second observation" and collapses the one-day wait the whole gate rests on. To diagnose ONE
+   operator: `AUTO_PUBLISH=false ONLY=<slug> DRY_RUN=true bun run.mjs`. Spell out
+   `AUTO_PUBLISH=false` every single time even though it is now the default — belt and braces
+   on the one env var that can put rows on the public site.
+3. **Never patch a scraper-owned field except with page evidence** (step 2). Title, price, cap,
+   date, image and category are rewritten by tomorrow's scrape, so a patch without evidence
+   lasts a day and teaches you nothing: fix the parser, not the row. Report the pattern instead.
+
+## HARD DATA RULES (the standard you verify AGAINST; paste verbatim into every worker prompt)
+- R1 total_entries: ONLY a stated MAXIMUM ticket cap — a "MAX 15,000 ENTRIES" banner or
+  "maximum of N entries". NEVER the sold/total bar, % sold, tickets remaining, "N in stock", or
+  a per-person limit. A cap does not move between days; a counter does.
+- R2 ticket_price: the real per-ticket price in GBP. "10 entries for £5" → 0.50; "from £0.17" →
+  0.17. Anything outside (0, £50] is wrong, not unusual.
 - R3 draw_date: absolute FUTURE UK time with offset (Europe/London: +01:00 Apr–Oct, +00:00
-  otherwise), e.g. "2026-07-04T22:00:00+01:00". Resolve "Today/Tomorrow, 22:00" against
-  today's date; prefer ai-fetch `detail_draw`, else the matching FUTURE `iso_dates` entry.
-  Past, unparseable, or >90 days away → hold/skip.
-- R4 grand_prize: the ACTUAL prize, ≤12 words, never a slogan or game name. "DAILY DRAW –
-  PRIZE EVERYTIME" → "£50 Site Credit + Instant Wins". Never a marketing stat ("over
-  £500,000 given away"). "£3,000 MAIN PRIZE" in the copy beats the title.
+  otherwise), e.g. "2026-07-04T22:00:00+01:00". The DAY is what must match — operators nudge the
+  clock time (8:45pm vs 9pm) and that is not a mismatch.
+- R4 grand_prize: the ACTUAL prize, ≤12 words, never a slogan, game name or marketing stat
+  ("over £500,000 given away"). "£3,000 MAIN PRIZE" in the copy beats the title.
 - R5 category: exactly one of car-draws, cash-prizes, house-draws, tech-giveaways, luxury,
-  collectibles (luxury exists — watches/Rolex/holidays/hot tubs/golf gear). Traps: a £300k
-  cash pot is cash-prizes NOT house-draws; Warhammer/Pokémon/LEGO/graded cards/Funko =
-  collectibles; "Van Gogh" is not a van.
-- R6 prize_value / total_prize_value: leave alone. draw-insert derives total_prize_value
-  itself; only PATCH a value the page states explicitly, otherwise never set either.
-- R7 prize_description: 2–3 sentences, British English, ORIGINAL wording; must mention the
-  prize, ticket price, and close date; no emojis/hashtags; no two descriptions in the run
-  may be near-duplicates; anything reading like the template frames ("Win X in this UK
-  prize draw. Tickets start from…") counts as lazy → rewrite.
+  collectibles. Traps: a £300k cash pot is cash-prizes NOT house-draws; Warhammer/Pokémon/LEGO/
+  graded cards/Funko = collectibles; "Van Gogh" is not a van.
+- R6 prize_value / total_prize_value: NEVER invent either. total_prize_value is derived
+  (price × cap); prize_value stays null unless the page states a figure outright.
+- R7 prize_description: 2–3 sentences, British English, ORIGINAL wording; mentions the prize,
+  the ticket price and the close date. This is YMYL money content: no invented values, odds,
+  winners or charity claims; no manufactured urgency ("hurry", "almost gone", "last chance");
+  no emojis or hashtags; say entry is 18+ where entry is mentioned. No two descriptions in a run
+  may be near-duplicates, and anything reading like the template frames ("Win X in this UK prize
+  draw. Tickets start from…") counts as lazy → rewrite.
 
 ## STEPS
 
-0. **Setup.** `bun install`. If bun is missing: `curl -fsSL https://bun.sh/install | bash`,
-   add to PATH, retry. If SUPABASE_SERVICE_ROLE_KEY is unset, stop and report — nothing else works.
+0. **Setup.** `bun install`. If bun is missing: `curl -fsSL https://bun.sh/install | bash`, add
+   to PATH, retry. If SUPABASE_SERVICE_ROLE_KEY is unset, stop and report — nothing else works.
    Do NOT run `bun test` (CI owns tests; a data run can't act on failures).
 
 1. **Ended sweep.** `STATUS=active,draft DRY_RUN=false bun ended-sweep.mjs`
    Marks finished comps (not-purchasable / "finished" text) as status=ended so no dead comp is
-   live or wastes worker time. Failure: retry once, then continue and note in the report.
+   live. Failure: retry once, then continue and note it in the report.
 
-2. **Scrape standard operators.**
-   `DRY_RUN=false METHODS=woo,shopify PUBLISH_STATUS=draft bun run.mjs 2>&1 | tee /tmp/scrape.log`
-   Keep the final "Aggregator health report" (totals, per-operator table, Silent operators
-   line) for steps 9–10. Render operators are the GitHub Action's job — do not scrape them.
-   Failure: retry once; if it still fails, continue with existing drafts and report it.
-
-3. **Deterministic QA fixes.** `DRY_RUN=false bun qa-fix.mjs`
-   Grounds total_entries/category for woo drafts in the operator's own API before any AI
-   touches them. Failure: continue (verification still catches everything) and note it.
-
-4. **AI-assist extraction (workers).** `bun manager/ai-fetch.mjs > /tmp/ai-draws.json`
-   (progress prints on stderr). Split `draws` into batches of ~8–10 and spawn one subagent per
-   batch IN PARALLEL (≤5 at once). Each worker prompt contains ONLY: the HARD DATA RULES, today's
-   date + UK offset, and its own draws' JSON. Workers must return, per draw, either an
-   insert-ready object exactly in this shape —
-   {"operator_slug":"…","title":"…","grand_prize":"…","category":"car-draws","ticket_price":0.17,
-    "total_entries":1999999,"draw_date":"2026-07-04T22:00:00+01:00","image_url":"…",
-    "entry_url":"…","prize_description":"…"}
-   (omit total_entries when no cap is stated) — or {"skip":"<reason>"} — plus one evidence line
-   per field ("price: 'from £0.17' hint; date: detail_draw 04/07/2026 10:00pm"). Workers do NOT
-   insert. Sanity-check each object against R1–R7 (curl the entry_url if anything is doubtful),
-   then insert each as draft: `bun manager/draw-insert.mjs '<json>'`. It skips/refreshes safely.
-   Failure: a worker that errors or returns malformed output → respawn fresh once; ai-fetch
-   itself failing → skip step, report.
-
-5. **Fetch drafts.** `LIMIT=300 bun manager/drafts-fetch.mjs > /tmp/drafts.json`
-   Output = { categories: {slug: uuid}, count, draws:[…] }. Keep the categories map.
-   Failure: retry once; if it fails, abort publishing (report scrape results only).
-
-6. **Describe (workers).** Split drafts into batches of 10–15 by operator where possible.
-   Spawn one subagent per batch in parallel (≤5 at once). Each worker prompt contains ONLY:
-   the HARD DATA RULES, the categories slug→uuid map, today's date + UK offset, and its own
-   draft rows' JSON. Workers may fetch entry_url pages (curl with a browser User-Agent) to
-   confirm facts. Workers return per draw:
-   {"id":"…","action":"publish"|"hold","hold_reason":null|"…",
-    "patch":{"prize_description":"…", plus ONLY corrected fields from: grand_prize,
-             category_id, ticket_price, draw_date, total_entries, title},
-    "evidence":"one line per changed/confirmed field naming its source"}
-   Workers NEVER run draw-update. Failure: malformed output → one fresh respawn, else hold batch.
-
-7. **Manager verification — every field of every draft.** For each worker result check, yourself:
-   ticket_price in (0, 50]; draw_date future UK ISO with offset, ≤90d; total_entries is a
-   stated cap or null (R1); grand_prize real and ≤12 words (R4); category_id is one of the 6
-   uuids and plausible (R5); image_url answers `curl -sI` with 200/3xx image; description meets
-   R7 and is not a near-duplicate of any other in the run. Independently re-fetch the live page
-   whenever ANY numeric/date field was changed by a worker, for EVERY ai-assist draw, and for
-   at least 2 random draws per batch even when clean:
+2. **Spot-check 10 auto-published draws — THE CORE STEP.**
+   Pool = rows the gate flipped live in the last 24h. Best source is the Action run's log/step
+   summary (`🔎 publish verification: N published`, and a `✅ … (verified — publishing)` line
+   per row). If you cannot read it, sample the DB — a recently-created row that is already
+   active is one the gate published, because every first sighting lands as draft:
+   `curl -s -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+     "$SUPABASE_URL/rest/v1/draws?status=eq.active&order=created_at.desc&limit=60&select=id,title,ticket_price,total_entries,draw_date,image_url,entry_url,operator:operators(slug),category:categories(slug)"`
+   Pick **10 at RANDOM across as many operators as possible** — not the first 10, which would
+   check one operator all week. For each, prove the row against the operator's own page:
    `curl -sL --max-time 20 -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124" "<entry_url>"`
    — for woo operators prefer the clean source:
    `curl -s -A "Mozilla/5.0" "<operator base>/wp-json/wc/store/v1/products?slug=<last URL segment>"`
-   (some operators need the query form: `<base>/?rest_route=/wc/store/v1/products&slug=<segment>`).
-   If the fetch is bot-blocked (403/challenge) and the field came from the deterministic
-   scraper, trust it; if it came from a worker and can't be confirmed, hold the draw.
-   KILL RULE: if any draw in a batch has a wrong field or a lazy/templated/duplicate
-   description, DISCARD that worker's entire batch output and respawn a FRESH worker on the
-   same batch with one line stating what was wrong. Max 2 redos per batch; still bad → hold
-   those draws with reason "worker output unreliable: <field>". Count every redo.
+   (some need the query form: `<base>/?rest_route=/wc/store/v1/products&slug=<segment>`).
+   Check five things: **title** (entity/emoji/whitespace churn and an appended " - AUTO DRAW"
+   are not mismatches), **ticket_price** (R2), **draw DAY** (R3), **image_url** loads
+   (`curl -sI` → 2xx and an image content-type), **entry_url** loads (2xx/3xx and is still the
+   competition, not a 404 or "competition not found"). Verdict per draw: PASS, or
+   FAIL(<field>: row says X, page says Y).
+   - Bot-blocked (403/challenge) with nothing else suspicious is NOT a fail: mark it UNVERIFIED
+     and draw a replacement so the sample is still 10 checked draws.
+   - FAIL → patch the ONE proven-wrong field from the page:
+     `bun manager/draw-update.mjs <id> '{"ticket_price":2.5}'`. If the page can't be read
+     cleanly, or more than one field is wrong, send the row back to the gate instead:
+     `bun manager/draw-update.mjs <id> '{"status":"draft"}'` — it is not lost, it is just off
+     the site until two scrapes agree on it again.
+   - KILL RULE: two or more failures on the SAME field or the SAME operator is a parser bug, not
+     bad luck. Send every affected row of that operator back to draft, quote a verbatim example
+     in the report, and comment it on the tripwire issue (step 4).
+   Log the pass-rate as **X/10**. If it is below 9/10, say so LOUDLY at the top of the report and
+   recommend holding `AUTO_PUBLISH_MAX` at 50 — the cap is only raised 50 → 200 after three
+   consecutive clean days. Failure of the step itself: report the partial sample honestly and
+   never a made-up pass-rate.
 
-8. **Publish / hold.** Only after a draw fully passes step 7, publish with ONE call so no
-   half-QA'd draw is ever live:
-   `bun manager/draw-update.mjs <id> '{"prize_description":"…","status":"active"}'`
-   (fold corrected fields into the same JSON, e.g. "category_id":"<uuid>","grand_prize":"…",
-   "draw_date":"…","ticket_price":2.5,"total_entries":4999).
-   Held draws: apply safe fixes but keep status draft — '{"prize_description":"…"}'.
-   A past-dated draft whose page says finished → '{"status":"ended"}'.
-   A failed draw-update → retry once, then leave draft and report. If you run low on time or
-   context mid-step, stop publishing — anything already active has passed; report the rest as held.
+3. **Enrichment — descriptions on live draws (workers).** The gate requires ≥20 characters, so
+   what you will find is the deterministic template, not emptiness. Fetch live rows and pick the
+   ones whose `prize_description` is missing, under ~60 characters, or reads like the template:
+   `…/rest/v1/draws?status=eq.active&order=created_at.desc&limit=120&select=id,title,grand_prize,ticket_price,total_entries,draw_date,entry_url,prize_description,operator:operators(slug),category:categories(slug)`
+   Split into batches of 10–15 and spawn one subagent per batch in parallel (≤5 at once). Each
+   worker prompt contains ONLY: the HARD DATA RULES, today's date + UK offset, and its own rows'
+   JSON. Workers may fetch entry_url to confirm facts, and return per row
+   `{"id":"…","prize_description":"…","evidence":"one line naming the source of every fact used"}`.
+   Workers NEVER run a script. You verify each against R7 yourself (facts match the row, no
+   invented value, not a near-duplicate of anything else in the run) and patch **descriptions
+   only**: `bun manager/draw-update.mjs <id> '{"prize_description":"…"}'`.
+   KILL RULE: if any description in a batch is lazy, templated, duplicated or contains a fact
+   the row doesn't support, DISCARD that worker's whole batch and respawn a fresh worker once
+   with one line saying what was wrong; still bad → skip those rows and count them.
+   Target 20–40 rows a day — quality over count; stop early if time or context runs short.
 
-9. **Coverage audit.** `bun manager/coverage-report.mjs` (or `JSON=true …` for machine output).
-   It cross-references all DB operators × operators.json × live counts and buckets them:
-   missing-config / never-scraped / stalled / quiet / disabled, plus totals and drafts waiting.
-   Escalate each missing-config, never-scraped, and stalled operator WITH EVIDENCE: check its
-   listing with `curl -s -o /dev/null -w "%{http_code}" -A "Mozilla/5.0" "<base>"` and report
-   "slug (method): live 0, listing HTTP 403, last insert 12d ago" — not vague notes.
-   If the script is missing/fails: derive silent operators from step 2's health report, say the
-   audit was degraded, and continue.
+4. **Tripwire triage.** `gh issue list --label tripwire --state open` (skip if `gh` isn't
+   authenticated). Get today's state yourself with `bun manager/tripwire.mjs` — read-only
+   against the DB, writes `tripwire.md`, exits 1 only when something is genuinely broken
+   (scrape failed / active inventory under the floor / no new draw in 24h). For each open issue:
+   compare its body with today's state and comment a DIAGNOSIS with evidence (counts, the
+   failing operator, the Action run URL) — never "still broken". Close it when today's run is
+   green and the condition it names has cleared. Warnings (below target, drafts past their draw
+   date, a category under its floor, a stalled operator) are not issues to close — they are the
+   growth to-do list; name the top one in the report.
 
-10. **Report — exactly this template:**
-    ## PDD daily run — <YYYY-MM-DD>
-    **Counts:** scraped N · refreshed N · AI-inserted N · described N · verified N ·
-    published N · held N · worker batches redone N
-    **Held drafts (every one, with reason):**
-    - <operator>/<title> — <reason>
-    **Category spread of published:** car N · cash N · house N · tech N · luxury N · collectibles N
-    **Coverage deltas:** <operator>: live N (prev M) — only operators that moved
-    **Silent / stalled / never-scraped operators (with evidence):**
-    - <slug> (<method>) — <evidence>
-    **New failure patterns:** <anything R1–R7 didn't anticipate, verbatim example — or "none">
+5. **Report — exactly this template:**
+   ## PDD daily QA — <YYYY-MM-DD>
+   **Published by the gate (last 24h):** N (from the Action summary — say "unavailable" if you
+   could not read it, never guess)
+   **Spot-check:** X/10 passed · N unverified (bot-blocked) · N fields fixed · N sent back to draft
+   - <operator>/<title> — FAIL <field>: row said X, page says Y → <what you did>
+   **Enrichment:** N descriptions rewritten (of M live draws that needed one) · N batches redone
+   **Tripwire:** <green | red: reason> · open issues: <#n commented / #n closed / none> ·
+   top warning: <…>
+   **Parser bugs to fix (verbatim example each):** <… or "none">
+   **Cap recommendation:** hold AUTO_PUBLISH_MAX at 50 | raise to 200 (<n>th consecutive clean day)
 
 ## FALLBACK — no subagent tool available
-If you cannot spawn subagents, do the same pipeline single-agent in TWO STRICT PASSES:
-pass 1 = extraction (step 4) + drafting descriptions (step 6) with nothing published;
-pass 2 = a fresh verification of every field of every draft per step 7, re-fetching pages anew
-(do not trust pass-1 notes), then steps 8–10. The publish gate is identical.
+Do the same pipeline single-agent, and cut scope rather than rigour: step 2 in full (it is the
+reason this routine exists), then as many step-3 descriptions as fit, writing and verifying them
+in TWO STRICT PASSES — pass 1 writes, pass 2 re-checks every fact against the row and the page
+without trusting pass-1 notes. Steps 1, 4 and 5 are unchanged. The bar for a patch is identical.

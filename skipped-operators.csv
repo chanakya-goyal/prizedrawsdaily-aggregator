@@ -28,4 +28,5 @@ Make me a Winner,https://makemeawinner.co.uk,Empty shell,Near-empty page (727b);
 Nitrous Competitions,https://www.nitrouscompetitions.com,Empty shell,Near-empty page (45b); no findable draws,n
 Phatlads,https://phatlads.com,Empty shell,Empty page (0b); no findable draws,n
 Good Life Plus,https://goodlifeplus.co.uk,Non-ticket model,Membership/subscription model; no per-ticket price or entry cap; gate rejects,n
-BOTB,https://www.botb.com,Needs aiAssist,Bespoke spot-the-ball; deterministic entries misread (year as count) — needs Claude verification,n
+BOTB,https://www.botb.com,Not a capped raffle,Spot-the-ball skill comp — its API reports MaxEntries:0 for most comps and entry URLs are category pages not per-comp slugs; all 21 scraped drafts had ticket_price £9.99 (subscription price) and 9 had total_entries 2026 (year misread as count) — deleted and operator disabled 2026-08-19,n
+Infinity Draws,https://infinitydraws.co.uk,Dead host,No TCP connection at all (not a block) — disabled 2026-08-19,n

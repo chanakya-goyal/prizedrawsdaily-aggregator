@@ -40,7 +40,7 @@
     },
     "luxury": {
       "name": "Luxury", "visualWeight": 1.0, "theme": "luxury",
-      "seoKeyword": "UK luxury watch competitions", "hashtags": ["#luxury", "#ukraffle"],
+      "seoKeyword": "UK luxury competitions", "hashtags": ["#luxury", "#ukraffle"],
       "hook": "WIN LUXURY", "particles": { "type": "golddust", "count": 26 },
       "valueLineMin": 10000, "audioMood": "elegant"
     },

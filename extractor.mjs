@@ -7,6 +7,10 @@ import { fetchHtml, renderVia } from "./lib/fetcher.mjs";
 
 export { CATEGORIES, UA, WINDOW_DAYS, normalizeUkDate };
 import { detectZap, parseZapRefresh, mergeZap, fetchZapRefresh } from "./lib/zap.mjs";
+import { isPurchasable, hasAvailableVariant, permalinkKey } from "./lib/liveness.mjs";
+import { raffleEngineOperator } from "./lib/adapters/raffle-engine.mjs";
+import { hydraOperator } from "./lib/adapters/hydra.mjs";
+import { inertiaOperator } from "./lib/adapters/inertia.mjs";
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Bounded-concurrency map — runs the per-product page fetches in parallel (with a ceiling so
@@ -121,19 +125,86 @@ export async function renderOperator(ctx, op, perOp = 6) {
   return draws.filter(Boolean);
 }
 
-export async function wooOperator(op, perOp = 6) {
+// A per-run cap must bound how many NEW competitions we take, never whether we re-read one we
+// have already published: a row we cannot re-read cannot be corrected or expired, and it was
+// exactly this that left 18 golf-star rows on a NULL ticket cap and 33 gaming-giveaways rows on
+// a stale prize pool with nothing able to reach them. So: every already-known item survives the
+// cap, and the remaining budget goes to new ones.
+export function partitionKnownFirst(items, urlOf, knownUrls, cap) {
+  const known = [], fresh = [];
+  for (const it of items) (knownUrls.has(permalinkKey(urlOf(it))) ? known : fresh).push(it);
+  return { products: [...known, ...fresh.slice(0, Math.max(0, cap - known.length))], known, fresh };
+}
+
+// ---- Woo pagination -------------------------------------------------------
+// The Store API caps per_page at 100, so depth needs ?page=N. But paging to the END is not
+// an option: these catalogues are ARCHIVES, not inventories — capital-competitions returns
+// 18,616 products and gaming-giveaways 9,894, nearly all of them finished comps. Since each
+// kept product also costs one HTML fetch, "paginate everything" is tens of thousands of
+// requests for a few dozen live draws.
+//
+// `after=` (a documented Store API filter) bounds it server-side instead: at after=90d,
+// gaming-giveaways drops from 9,894 products to ~195. Combined with a live-row target, every
+// operator finishes in 1-4 pages.
+export const WOO_PER_PAGE = 100; // API maximum
+
+export function wooPageUrl(op, { page, after }) {
+  const qs = `per_page=${WOO_PER_PAGE}&orderby=date&order=desc&page=${page}${after ? `&after=${encodeURIComponent(after)}` : ""}`;
+  return op.apiStyle === "rest_route"
+    ? `${op.base}/?rest_route=/wc/store/v1/products&${qs}`
+    : `${op.base}/wp-json/wc/store/v1/products?${qs}`;
+}
+
+// Stop when the operator has no more pages, or we already hold what we came for. Pure so the
+// loop's exit conditions are testable without the network.
+export function shouldStopPaging({ returned, liveSoFar, target, page, maxPages, emptyStreak }) {
+  if (returned < WOO_PER_PAGE) return "last page";
+  if (liveSoFar >= target) return "target reached";
+  if (page >= maxPages) return "page cap";
+  // Products are newest-first, so once two whole pages contain nothing purchasable we are
+  // deep in the archive and everything below is older still.
+  if (emptyStreak >= 2) return "two pages with no live products";
+  return null;
+}
+
+export async function wooOperator(op, perOp = 6, { knownUrls = new Set() } = {}) {
   // Some hosts 500/404 the pretty /wp-json/ route but still serve the Store API via the
   // ?rest_route= query form (flex-competitions, thewatchdraws, redhotraffles).
-  const apiUrl = op.apiStyle === "rest_route"
-    ? `${op.base}/?rest_route=/wc/store/v1/products&per_page=${perOp + 2}&orderby=date`
-    : `${op.base}/wp-json/wc/store/v1/products?per_page=${perOp + 2}&orderby=date`;
-  const r = await fetchHtml(apiUrl, op);
-  if (!r.ok) { console.log(`  woo API ${r.status} for ${op.base}`); return []; }
-  let body = null; try { body = JSON.parse(r.text); } catch { /* non-JSON → no products */ }
-  // is_purchasable===false = a FINISHED competition (you can't buy tickets) — never ingest it as a
-  // live draw. (is_in_stock stays true after a draw closes, so is_purchasable is the right flag.)
-  const products = (Array.isArray(body) ? body : []).filter((p) => p.is_purchasable !== false).slice(0, perOp);
+  const target = Number(op.maxLive || perOp);
+  const maxPages = Number(op.maxPages || process.env.WOO_MAX_PAGES || 5);
+  const lookbackDays = Number(op.lookbackDays || process.env.WOO_LOOKBACK_DAYS || 90);
+  const after = new Date(Date.now() - lookbackDays * 864e5).toISOString().replace(/\.\d+Z$/, "");
+
+  const collected = [];
+  let emptyStreak = 0, pagesRead = 0;
+  for (let page = 1; page <= maxPages; page++) {
+    const r = await fetchHtml(wooPageUrl(op, { page, after }), op);
+    // Page 1 failing is an operator problem worth reporting; a later page failing just ends
+    // the walk with what we already have.
+    if (!r.ok) { if (page === 1) { console.log(`  woo API ${r.status} for ${op.base}`); return []; } break; }
+    let arr = null; try { arr = JSON.parse(r.text); } catch { /* non-JSON → stop */ }
+    if (!Array.isArray(arr) || arr.length === 0) break;
+    pagesRead = page;
+    const live = arr.filter(isPurchasable);
+    emptyStreak = live.length === 0 ? emptyStreak + 1 : 0;
+    collected.push(...live);
+    const stop = shouldStopPaging({ returned: arr.length, liveSoFar: collected.length, target, page, maxPages, emptyStreak });
+    if (stop) { if (page > 1) console.log(`  paged ${pagesRead}×${WOO_PER_PAGE} (${stop})`); break; }
+  }
+  // `collected` is already purchasable-only (filtered per page above, type-safely — the API
+  // returns the NUMBER 0 as well as `false`; see lib/liveness.mjs).
+  //
+  // `maxLive` caps what we INGEST, never what we RE-CHECK. Slicing the whole list stranded
+  // every row that fell outside the window: gaming-giveaways runs 81 live comps against a cap
+  // of 40, and 33 of its published rows were left carrying a prize pool that no longer matched
+  // price x entries, with nothing able to reach them. A row we already have on the site must be
+  // re-read every run so it can be corrected or expired — the cap exists to stop one operator
+  // flooding the listings, not to blind us to what we've already published.
+  const { products, known } = partitionKnownFirst(collected, (p) => p.permalink, knownUrls, target);
   if (!products.length) { console.log(`  woo API returned no purchasable products`); return []; }
+  if (collected.length > products.length) {
+    console.log(`  ${products.length} of ${collected.length} live (maxLive ${target}; ${known.length} already published, always re-checked)`);
+  }
   let sawZap = false;
   const pairs = await pMap(products, FETCH_CONCURRENCY, async (p) => {
     try {
@@ -166,12 +237,28 @@ export async function wooOperator(op, perOp = 6) {
   return kept.map((x) => x.draw);
 }
 
-export async function shopifyOperator(op, perOp = 6) {
-  const r = await fetchHtml(`${op.base}/products.json?limit=${perOp + 4}`, op);
+export const SHOPIFY_FEED_LIMIT = 250; // products.json maximum
+
+export async function shopifyOperator(op, perOp = 6, { knownUrls = new Set() } = {}) {
+  // Fetch the FULL feed, not `perOp + 4`. The known/fresh partition below can only re-check a
+  // published row if that row is in the response at all, so a feed bounded by the per-run cap
+  // made the partition inert for any operator with more live products than the cap — exactly
+  // the operators the partition exists for. The feed is one cheap JSON request either way;
+  // `perOp` still bounds how many NEW products we take.
+  const r = await fetchHtml(`${op.base}/products.json?limit=${SHOPIFY_FEED_LIMIT}`, op);
   if (!r.ok) { console.log(`  shopify API ${r.status} for ${op.base}`); return []; }
   let body = null; try { body = JSON.parse(r.text); } catch { /* non-JSON → no products */ }
-  const products = (Array.isArray(body?.products) ? body.products : []).slice(0, perOp);
-  if (!products.length) { console.log(`  shopify API returned no products`); return []; }
+  // Shopify has no is_purchasable equivalent — an available variant is the signal, and until
+  // now nothing filtered on it at all, so sold-out/finished comps were ingested as live and
+  // every one of them also burned a product-page fetch. (The LIST feed carries `available`;
+  // the single-product /products/<handle>.json endpoint omits it — read it here, not there.)
+  const all = Array.isArray(body?.products) ? body.products : [];
+  const live = all.filter(hasAvailableVariant);
+  // Same rule as woo: the cap bounds new ingestion, never the re-check of a published row.
+  const urlOf = (p) => `${op.base.replace(/\/+$/, "")}/products/${p.handle}`;
+  const { products } = partitionKnownFirst(live, urlOf, knownUrls, perOp);
+  if (!products.length) { console.log(`  shopify API returned no available products (of ${all.length})`); return []; }
+  if (all.length !== products.length) console.log(`  shopify: ${products.length} of ${live.length} available (${all.length} listed)`);
   const draws = await pMap(products, FETCH_CONCURRENCY, async (p) => {
     try {
       const url = `${op.base}/products/${p.handle}`;
@@ -189,14 +276,46 @@ export async function shopifyOperator(op, perOp = 6) {
   return draws.filter(Boolean);
 }
 
-export function dedupe(draws) {
-  const norm = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 45);
+// JSON-API operators. `apiStyle` picks the platform parser; each returns the same shape
+// fieldsFromHtml does, so the gate, dedupe, flush and re-host stages see no difference.
+// These beat the browser path on every axis: complete catalogues instead of a link cap,
+// exact operator-published numbers instead of regex inference, and no Chromium.
+const API_ADAPTERS = {
+  "raffle-engine": raffleEngineOperator, // 7Days Performance, UKCC
+  hydra: hydraOperator,                  // Dream Car Giveaways
+  inertia: inertiaOperator,              // Dream Big Competitions (compengine.io)
+};
+
+export async function apiOperator(op, perOp = 300) {
+  const fn = API_ADAPTERS[op.apiStyle];
+  if (!fn) { console.log(`  unknown apiStyle '${op.apiStyle}' — skipping`); return []; }
+  return fn(op, perOp);
+}
+
+// Collapse the SAME competition appearing twice in one scrape (a listing that links a draw
+// from both a carousel and a grid).
+//
+// ⚠️ This used to key on the first 45 alphanumeric characters of the TITLE, which silently
+// destroyed real inventory: operators run many concurrent competitions with identical names.
+// At the-car-competition — a CAR operator — 100 live products collapsed to 34, losing 66,
+// including five separate live "Win £250 Site Credit" comps at /250sc-5 … /250sc-9.
+// Lengthening the prefix fixes none of them, because the titles are genuinely identical.
+//
+// entry_url is the actual identity of a draw — it is already what run.mjs dedupes against
+// across runs — so key on that, normalised for trailing-slash/query/case churn. Distinct
+// URLs are distinct competitions, full stop.
+export function dedupe(draws, { onDrop } = {}) {
   const score = (x) => (x.total_entries > 0 ? 2 : 0) + (x.draw_date ? 1 : 0) + (x.ticket_price > 0 ? 1 : 0);
   const best = new Map();
   for (const d of draws) {
-    const k = norm(d.title);
+    // Fall back to the title only when there is no URL to key on — a row with neither is
+    // unusable anyway and the gate will drop it.
+    const k = d.entry_url ? permalinkKey(d.entry_url) : (d.title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     if (!k) continue;
-    if (!best.has(k) || score(d) > score(best.get(k))) best.set(k, d);
+    const prev = best.get(k);
+    if (!prev) { best.set(k, d); continue; }
+    if (onDrop) onDrop(d, prev);
+    if (score(d) > score(prev)) best.set(k, d);
   }
   return [...best.values()];
 }

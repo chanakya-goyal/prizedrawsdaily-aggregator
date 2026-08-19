@@ -1,17 +1,19 @@
 // PrizeDrawsDaily aggregator — KEYLESS orchestrator (no LLM).
 //   DRY_RUN=true (default) prints; DRY_RUN=false inserts (needs SUPABASE_SERVICE_ROLE_KEY).
-// Operators come from operators.json. Two feeders share this code via METHODS:
-//   METHODS=render            → the GitHub Action's browser feeder
-//   METHODS=woo,shopify       → the cowork routine's JSON-API scrape
-// Both deterministically fill fields (lib/parse.mjs), gate them (gate.mjs), attach a
-// template description (lib/describe.mjs) and insert as 'draft'. The cowork/Claude routine
-// then rewrites descriptions, validates, and publishes.
+// Operators come from operators.json; METHODS selects which of them run (the daily Action
+// sweeps them all: api,render,woo,shopify).
+// Fields are filled deterministically (lib/parse.mjs), gated (gate.mjs), given a template
+// description (lib/describe.mjs) and inserted as 'draft'. A draft goes live only when a LATER
+// run re-reads the same URL and agrees with it (lib/verify.mjs) — publishing is this script's
+// job now, not the cowork routine's, which QAs the result and rewrites descriptions.
 import { chromium } from "playwright";
-import { renderOperator, wooOperator, shopifyOperator, dedupe, makeContext } from "./extractor.mjs";
+import { renderOperator, wooOperator, shopifyOperator, apiOperator, dedupe, makeContext } from "./extractor.mjs";
 import { gate } from "./gate.mjs";
 import { templateDescription } from "./lib/describe.mjs";
-import { fieldFlags, buildHealthReport, writeStepSummary } from "./lib/manager.mjs";
+import { fieldFlags, buildHealthReport, writeStepSummary, checkImage } from "./lib/manager.mjs";
 import { rehostImage } from "./lib/rehost.mjs";
+import { verifyAgainstStored, summarise, relistDecision, correctionDecision } from "./lib/verify.mjs";
+import { permalinkKey } from "./lib/liveness.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -26,6 +28,25 @@ const PER_OP = Number(process.env.PER_OP || 5);             // render: per-op ca
 const PER_OP_API = Number(process.env.PER_OP_API || 60);
 const BATCHES = Number(process.env.BATCHES || 1);            // no LLM quota → full coverage daily
 const MAX_PAGES = Number(process.env.MAX_DRAWS || 2000);    // backstop on pages read per run (raised with PER_OP_API)
+// Auto-publish a draft the moment a second independent scrape agrees with it (lib/verify.mjs).
+// New rows are never published on first sighting — PUBLISH_STATUS still governs those.
+// OPT-IN, not opt-out: only AUTO_PUBLISH="true" turns it on, and the daily Action is the one
+// place that sets it. A default of ON would mean every other caller — a local shell holding
+// the service key, the cowork routine's own scrape, a one-off `ONLY=x bun run.mjs` — silently
+// publishes to the live site as a side effect of a debugging run, and doubles as the "second
+// independent observation" for rows the Action inserted hours earlier. The verdicts are still
+// computed and reported when it is off; they just aren't acted on.
+const AUTO_PUBLISH = process.env.AUTO_PUBLISH === "true";
+// Ceiling on how many rows one run may publish. A scoring mistake is then bounded to this
+// many rows for at most a day, rather than the whole backlog at once.
+const AUTO_PUBLISH_MAX = Number(process.env.AUTO_PUBLISH_MAX || 200);
+// Correcting a LIVE row is a different risk to publishing a draft: it is a single-observation
+// write onto something the public is already seeing, with no agreement test available. Quality
+// is guarded per-row by correctionDecision, but quantity needs its own ceiling — a parser
+// regression that passes fieldFlags could otherwise rewrite the whole live catalogue in one
+// run. CORRECT_LIVE=false stops corrections entirely without touching publishing.
+const CORRECT_LIVE = process.env.CORRECT_LIVE !== "false";
+const CORRECT_MAX = Number(process.env.CORRECT_MAX || 100);
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
 const METHODS = process.env.METHODS ? new Set(process.env.METHODS.split(",").map((s) => s.trim())) : null;
 const READ_KEY = SERVICE_KEY || ANON_KEY;
@@ -93,9 +114,13 @@ const cats = await sbGet("categories?select=id,slug");
 const catMap = Object.fromEntries(cats.map((c) => [c.slug, c.id]));
 const dbOps = await sbGet("operators?select=id,slug");
 const opMap = Object.fromEntries(dbOps.map((o) => [o.slug, o.id]));
-const existing = await sbGetAll("draws?select=id,entry_url,slug,status");
+// The field values come back too, not just identity: publish verification compares this
+// stored observation against today's fresh scrape (see lib/verify.mjs).
+const existing = await sbGetAll("draws?select=id,entry_url,slug,status,title,ticket_price,total_entries,total_prize_value,draw_date,image_url,prize_description");
 const byUrl = new Map(existing.filter((d) => d.entry_url).map((d) => [d.entry_url, d]));
 const takenSlugs = new Set(existing.map((d) => d.slug));
+// Canonical keys of every draw we already hold, so a capped operator still re-reads them.
+const knownUrls = new Set(existing.filter((d) => d.entry_url).map((d) => permalinkKey(d.entry_url)));
 console.log(`loaded ${cats.length} cats, ${dbOps.length} operators, ${existing.length} existing draws\n`);
 
 const needsBrowser = operators.some((o) => o.method === "render");
@@ -105,7 +130,8 @@ const ctx = browser ? await makeContext(browser) : null;
 const toInsert = [];
 const toUpdate = [];
 const counts = [];
-let pages = 0, skipped = 0;
+const verdicts = [];
+let pages = 0, skipped = 0, autoPublished = 0, relisted = 0, correctedLive = 0;
 
 // Incremental flush: re-host + write pending rows every few operators so a job-timeout
 // kill loses only the tail, never the sweep (the 2026-08-14 90-min cancel lost a full
@@ -124,15 +150,27 @@ async function flush() {
   // Re-host every image onto our own Storage BEFORE writing, so the site never hotlinks a
   // third-party host (which breaks under Cloudflare bot protection — the root cause of
   // operator images silently breaking). A fetch miss keeps the original URL, never blocks.
-  for (const item of [...toInsert, ...toUpdate]) {
-    const drawSlug = item.row.slug || item.slug;
-    if (!item.row.image_url || !drawSlug) continue;
-    try {
-      const res = await raced(rehostImage(item.row.image_url, item.opSlug, drawSlug, sbCreds), 90_000, "re-host");
-      if (res.changed) { item.row.image_url = res.url; rehosted++; }
-      else if (res.via === "miss") { missed++; console.log(`  ⚠️ image unreachable, kept origin: ${drawSlug.slice(0, 44)}`); }
-    } catch (e) { missed++; console.log(`  ! re-host failed ${drawSlug.slice(0, 40)}: ${(e.message || "").slice(0, 60)}`); }
-  }
+  // Re-hosting was SEQUENTIAL with a 90s cap per image, so one flush of 55 images could
+  // occupy 82 minutes — most of the Action's 130-minute deadline — and a live run was
+  // observed making no DB writes at all for 20 minutes while it ground through Dream Car
+  // images that weserv cannot proxy. These fetches are independent and IO-bound, so run them
+  // concurrently and give each a much tighter budget: a slow image is not worth waiting for
+  // when the fallback (keep the origin URL) is already graceful and costs nothing.
+  const REHOST_CONCURRENCY = Number(process.env.REHOST_CONCURRENCY || 6);
+  const REHOST_TIMEOUT_MS = Number(process.env.REHOST_TIMEOUT_MS || 30_000);
+  const queue = [...toInsert, ...toUpdate].filter((it) => it.row.image_url && (it.row.slug || it.slug));
+  let qi = 0;
+  await Promise.all(Array.from({ length: Math.min(REHOST_CONCURRENCY, queue.length) }, async () => {
+    while (qi < queue.length) {
+      const item = queue[qi++];
+      const drawSlug = item.row.slug || item.slug;
+      try {
+        const res = await raced(rehostImage(item.row.image_url, item.opSlug, drawSlug, sbCreds), REHOST_TIMEOUT_MS, "re-host");
+        if (res.changed) { item.row.image_url = res.url; rehosted++; }
+        else if (res.via === "miss") { missed++; console.log(`  ⚠️ image unreachable, kept origin: ${drawSlug.slice(0, 44)}`); }
+      } catch (e) { missed++; console.log(`  ! re-host failed ${drawSlug.slice(0, 40)}: ${(e.message || "").slice(0, 60)}`); }
+    }
+  }));
   liveInserted += toInsert.filter((x) => x.row.status === "active").length;
   let flushed = 0;
   for (let i = 0; i < toInsert.length; i += 50) {
@@ -149,6 +187,24 @@ async function flush() {
     }
   }
   inserted += flushed;
+  // Publish gate, final step. The image is checked HERE rather than at verdict time because
+  // re-hosting above has just rewritten image_url to our own storage — checking the operator's
+  // original URL would test the wrong thing. Anything that isn't a clean 2xx stays draft and
+  // gets another chance tomorrow; we never publish a card we can't prove renders.
+  const candidates = toUpdate.filter((u) => u.candidate);
+  if (candidates.length) {
+    const checks = await Promise.all(candidates.map(async (u) => {
+      if (autoPublished >= AUTO_PUBLISH_MAX) return { u, ok: false, why: "run publish cap reached" };
+      try {
+        const img = await raced(checkImage(u.row.image_url), 15_000, "image check");
+        return { u, ok: img.ok === true, why: `image ${img.reason}` };
+      } catch { return { u, ok: false, why: "image check timed out" }; }
+    }));
+    for (const { u, ok, why } of checks) {
+      if (ok && autoPublished < AUTO_PUBLISH_MAX) { u.row.status = "active"; autoPublished++; }
+      else console.log(`  ⏸ held back at publish: ${u.slug.slice(0, 44)} — ${why}`);
+    }
+  }
   let refreshed = 0;
   for (const u of toUpdate) { try { await raced(sbUpdate(u.id, u.row), 60_000, "update"); refreshed++; } catch (e) { console.log(`  ! update failed: ${(e.message || "").slice(0, 70)}`); } }
   updated += refreshed;
@@ -173,13 +229,20 @@ for (const op of operators) {
   counts.push(c);
   let draws = [];
   try {
-    if (op.method === "woo") draws = await withBudget(wooOperator(op, PER_OP_API), OP_BUDGET_MS);
-    else if (op.method === "shopify") draws = await withBudget(shopifyOperator(op, PER_OP_API), OP_BUDGET_MS);
+    if (op.method === "api") draws = await withBudget(apiOperator(op, PER_OP_API), OP_BUDGET_MS);
+    // knownUrls: rows we already hold must be re-read every run even when the operator is
+    // capped, or a published draw outside the cap can never be corrected or expired.
+    else if (op.method === "woo") draws = await withBudget(wooOperator(op, PER_OP_API, { knownUrls }), OP_BUDGET_MS);
+    else if (op.method === "shopify") draws = await withBudget(shopifyOperator(op, PER_OP_API, { knownUrls }), OP_BUDGET_MS);
     else draws = await withBudget(renderOperator(ctx, op, PER_OP), OP_BUDGET_MS);
   } catch (e) { console.log(`  FAILED: ${(e.message || "").slice(0, 80)}`); continue; }
   pages += draws.length;
   c.scraped = draws.length;
-  draws = dedupe(draws);
+  // Report collapses. This was silent for months while it was destroying two thirds of a car
+  // operator's inventory — a drop counter is what would have surfaced it.
+  let dropped = 0;
+  draws = dedupe(draws, { onDrop: () => { dropped++; } });
+  if (dropped) console.log(`  ⧉ ${dropped} duplicate URL(s) collapsed`);
   for (const raw of draws) {
     const { pass, stage, reasons, draw: d } = gate(raw, now);
     if (!pass) { skipped++; console.log(`  ⏭  ${(raw.title || "?").slice(0, 40)} — ${stage}: ${reasons.join(", ")}`); continue; }
@@ -188,15 +251,84 @@ for (const op of operators) {
     if (ex) {
       // Existing draw: refresh data on a DRAFT row (self-heals earlier wrong fields like
       // the ticket price); never touch a published/ended row.
+      // An ended row whose competition has been RELISTED for a later draw comes back as a
+      // draft; without this the URL is retired permanently, which silently loses every
+      // recurring competition (and every sold-out-awaiting-draw comp ended-sweep closed).
+      if (ex.status === "ended") {
+        const { revive } = relistDecision(ex, d, now);
+        if (!revive) { skipped++; continue; }
+        byUrl.delete(d.entry_url);
+        toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: false, row: {
+          category_id: catMap[d.category] || null, title: d.title, grand_prize: d.grand_prize,
+          image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
+          total_prize_value: tpv, draw_date: d.draw_date, status: "draft",
+        } });
+        relisted++; c.inserted++; c.heldDraft++;
+        console.log(`  ↩️ ${d.title.slice(0, 44)} — relisted for ${String(d.draw_date).slice(0, 10)}, back as draft`);
+        continue;
+      }
+      // A LIVE row used to be frozen the moment it was published — never re-read, never
+      // corrected. That was tolerable while publishing was a human decision on a small
+      // queue; it is not now that rows publish automatically, because an operator dropping
+      // a ticket price or moving a draw date would leave the wrong number on the public site
+      // indefinitely. Correct the FIELDS in place and leave `status` alone: a data change is
+      // not a reason to yank a live draw off the site, and a comp that has actually finished
+      // is ended-sweep's job. This is a single-observation write onto a PUBLISHED row, so
+      // correctionDecision() holds it to the deterministic half of the publish bar: a flagged
+      // read never overwrites values the site is already showing (lib/verify.mjs).
+      if (ex.status === "active") {
+        if (!CORRECT_LIVE) { skipped++; continue; }
+        const c = correctionDecision(ex, d, { now });
+        if (!c.correct) {
+          skipped++;
+          // Silent when there's simply nothing to correct; loud when a flagged read was
+          // REFUSED, because that is the parser breaking on a row the public can see.
+          if (c.flags.length && c.fields.length) console.log(`  🚫 ${d.title.slice(0, 40)} — live row left alone: ${c.reason.slice(0, 90)}`);
+          continue;
+        }
+        if (correctedLive >= CORRECT_MAX) { skipped++; console.log(`  ⏸ correction cap ${CORRECT_MAX} reached — ${d.title.slice(0, 40)} left for the next run`); continue; }
+        byUrl.delete(d.entry_url);
+        // Patch only what actually moved. A pool-only drift is arithmetic on values we already
+        // agree with, so rewriting title/category/date as well would be unforced risk on a row
+        // the public can see.
+        const row = { total_prize_value: tpv };
+        if (c.fields.some((f) => f !== "total_prize_value")) {
+          Object.assign(row, {
+            title: d.title, grand_prize: d.grand_prize,
+            ticket_price: d.ticket_price, total_entries: d.total_entries, draw_date: d.draw_date,
+          });
+          // Only ever move a live row to a category we actually resolved. `catMap[...] || null`
+          // would blank the category whenever the fresh read had none, dropping the draw out of
+          // its category page as a side effect of a price correction.
+          if (catMap[d.category]) row.category_id = catMap[d.category];
+        }
+        // image_url is deliberately NOT patched. It isn't one of the compared fields, so it is
+        // never the reason we are here, and the stored value is a proven-reachable URL on our
+        // own storage. Overwriting it with the operator's origin would trade that for a
+        // third-party hotlink — and the flush-time image proof only runs on publish candidates,
+        // so nothing downstream would catch it. Image repair belongs to backfill-images.mjs.
+        toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: false, row });
+        correctedLive++;
+        console.log(`  🔄 ${d.title.slice(0, 40)} — live row corrected: ${c.fields.join(", ")}`);
+        continue;
+      }
       if (ex.status !== "draft") { skipped++; continue; }
       byUrl.delete(d.entry_url);
-      toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, row: {
+      // This is the SECOND independent observation of a row we already hold. If it agrees
+      // with what's stored, that draft has been read twice, on different days, by separate
+      // fetches — enough to publish it. The image check is async and runs in flush(), so the
+      // verdict is provisional here and only rows that also pass it go live.
+      const verdict = verifyAgainstStored(ex, d, { now, imageOk: true });
+      const candidate = AUTO_PUBLISH && verdict.publish;
+      verdicts.push(verdict);
+      toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate, row: {
         category_id: catMap[d.category] || null, title: d.title, grand_prize: d.grand_prize,
         image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
         total_prize_value: tpv, draw_date: d.draw_date,
       } });
-      c.inserted++; c.heldDraft++;
-      console.log(`  ♻️ ${d.title.slice(0, 44)} | £${d.ticket_price}×${d.total_entries} (refreshed draft)`);
+      c.inserted++;
+      if (candidate) { c.published++; console.log(`  ✅ ${d.title.slice(0, 44)} | £${d.ticket_price}×${d.total_entries} (verified — publishing)`); }
+      else { c.heldDraft++; console.log(`  ♻️ ${d.title.slice(0, 44)} | £${d.ticket_price}×${d.total_entries} (held: ${verdict.reasons.slice(0, 2).join("; ").slice(0, 80) || "auto-publish off"})`); }
       continue;
     }
     if (!d.description) d.description = templateDescription(d);
@@ -224,12 +356,23 @@ for (const op of operators) {
 if (browser) await browser.close();
 await flush();
 
-console.log(`\n\n==== ${totalNew} new, ${totalRefreshed} refreshed (${pages} pages read, ${skipped} skipped) ====`);
+console.log(`\n\n==== ${totalNew} new, ${totalRefreshed} refreshed${relisted ? `, ${relisted} relisted` : ""}${correctedLive ? `, ${correctedLive} live rows corrected` : ""} (${pages} pages read, ${skipped} skipped) ====`);
 if (DRY_RUN) {
   console.log("(dry run — nothing written)");
 } else {
   console.log(`🖼  re-hosted ${rehosted} image(s) to Storage${missed ? `, ${missed} kept origin (unreachable)` : ""}`);
   console.log(`✅ inserted ${inserted} (${liveInserted} live, ${inserted - liveInserted} draft) · refreshed ${updated} drafts${insertSkipped ? ` · ⏭ ${insertSkipped} skipped (duplicate/conflict)` : ""}`);
+}
+// Publish verification report — always printed, in dry runs too, because the hold reasons are
+// the parser's to-do list: "total_entries → likely a stock counter" names a specific bug.
+if (verdicts.length) {
+  const s = summarise(verdicts);
+  // In a dry run flush() returns before the image check, so report the verdict-level count
+  // as "would publish" rather than claiming rows went live.
+  console.log(DRY_RUN
+    ? `\n🔎 publish verification: ${s.published} would publish, ${s.held} held (of ${verdicts.length} re-observed drafts)`
+    : `\n🔎 publish verification: ${autoPublished} published, ${verdicts.length - autoPublished} held (${AUTO_PUBLISH ? `cap ${AUTO_PUBLISH_MAX}` : "AUTO_PUBLISH=false"})`);
+  for (const [reason, n] of Object.entries(s.heldReasons)) console.log(`     ${String(n).padStart(4)} × ${reason}`);
 }
 
 await writeStepSummary(buildHealthReport({ counts, expected: expectedSlugs }));

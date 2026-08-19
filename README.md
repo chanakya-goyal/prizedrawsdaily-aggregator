@@ -2,20 +2,38 @@
 
 Collects live UK prize-draw listings from operator websites and feeds them into the
 PrizeDrawsDaily Supabase. **No LLM in the scraper** — extraction is fully deterministic.
-The only AI is Claude, run by a separate **cowork routine** that writes descriptions and
-publishes (see `manager/PROMPT.md`).
+Publishing is deterministic too (two agreeing observations — see below). The only AI is Claude,
+run by a separate **cowork routine** that QAs what was published and writes descriptions (see
+`manager/PROMPT.md`); it never publishes.
 
-## Architecture (render-feeder hybrid)
+## Architecture
 
-Two feeders write `draft` rows into Supabase via the **same** code (`lib/parse.mjs` +
-`gate.mjs`); the cowork routine then describes/QA's/publishes **all** drafts.
+The daily GitHub Action runs the full sweep (`METHODS=api,render,woo,shopify`) through one
+code path (`lib/parse.mjs` + `gate.mjs`), inserts new rows as `draft`, then auto-expires
+finished comps and reports. The cowork routine (`manager/PROMPT.md`) layers Claude on top the
+next morning: it spot-checks published rows against the operators' own pages and improves
+descriptions — the one field the scraper never overwrites.
 
-- **GitHub Action (`METHODS=render`)** — browser-only feeder: renders the `render`-method
-  operators with Playwright (with a try-harder pass for soft JS challenges), extracts
-  fields, gates them, inserts drafts. No AI, no API key.
-- **Cowork routine (`METHODS=woo,shopify`)** — scrapes the JSON-API operators (plain
-  `fetch`, no browser), inserts drafts, then runs Claude to write descriptions, validate
-  every field, and publish clean rows (`draft → active`).
+### Publishing: agreement between two independent observations
+
+A first sighting is **never** published. A draft goes live only when a **later run re-scrapes
+the same URL and agrees** with what was stored — same ticket price, same cap, same UK draw
+day, matching title, clean `fieldFlags`, and an image that provably loads (`lib/verify.mjs`).
+Two separate fetches, parsed separately, on different days, reaching the same answer. This
+costs no extra requests, because the daily run already re-scrapes everything.
+
+Anything that disagrees stays `draft` with the reason recorded, so the hold list doubles as
+the parser's to-do list. A `total_entries` that moves between runs, for example, is not a cap
+at all — it's a stock counter — and that row will correctly never publish.
+
+Publishing is **opt-in**: only `AUTO_PUBLISH=true` acts on the verdicts, and the daily Action
+is the only place that sets it — every other invocation (local shell, cowork routine, a one-off
+`ONLY=…` run) computes and reports the same verdicts but **publishes** nothing. Note that is
+specifically about `draft → active`: such a run still inserts new drafts, refreshes existing
+ones, corrects live rows and expires finished comps. **`DRY_RUN=true` is the only mode that
+writes nothing at all.** Dropping `AUTO_PUBLISH` from the workflow restores fully human-gated
+publishing with no code change;
+`AUTO_PUBLISH_MAX` bounds how many rows a single run can make live.
 
 ## How extraction works (no LLM)
 
@@ -64,6 +82,29 @@ SUPABASE_SERVICE_ROLE_KEY=... DRY_RUN=false METHODS=render bun run.mjs
 `operators.json` is the source of truth — one declarative entry per operator
 (`name`, `slug`, `base`, `method`, plus optional `listing`, `drawMatch`, `exclude`,
 `selectors`, `patterns`, `category`, `enabled`). To exclude one, set `"enabled": false`.
+
+### Methods
+
+| `method` | How it reads the operator |
+|---|---|
+| `woo` | WooCommerce Store API, paginated (`per_page=100` + `after=<lookbackDays>`) |
+| `shopify` | `products.json`, filtered to products with an available variant |
+| `render` | Headless Chromium — the expensive fallback for sites with no usable feed |
+| `api` | A platform-specific JSON adapter in `lib/adapters/`, chosen by `apiStyle` |
+
+`method: "api"` is preferred wherever it exists: complete catalogues instead of a link cap,
+the operator's own published numbers instead of regex inference, and no browser.
+
+| `apiStyle` | Operators | Endpoint |
+|---|---|---|
+| `raffle-engine` | 7Days Performance, UKCC (identical platform) | `{base}/api/v2/raffle-draws/GBP` |
+| `hydra` | Dream Car Giveaways | `https://api.dreamcargiveaways.co.uk/competitions` |
+| `inertia` | Dream Big Competitions | `data-page` attribute on the listing page |
+
+Depth/balance fields: `maxLive` (ceiling on how many live comps we list for one operator —
+stops a 300-comp collectibles operator crowding out everything else), `maxPages`,
+`lookbackDays`. `apiStyle: "rest_route"` remains the woo sub-variant for hosts that 500 the
+pretty `/wp-json/` route.
 
 Optional per-operator acquisition fields (default absent = plain keyless fetch):
 

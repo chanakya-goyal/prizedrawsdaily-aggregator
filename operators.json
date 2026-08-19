@@ -3,9 +3,10 @@
   "name": "7Days Performance",
   "slug": "seven-days-perf",
   "base": "https://7daysperformance.co.uk",
-  "method": "render",
-  "listing": "https://7daysperformance.co.uk/current-competitions",
-  "drawMatch": "/product/[a-z0-9]"
+  "method": "api",
+  "apiStyle": "raffle-engine",
+  "drawPath": "/product/{slug}",
+  "note": "Angular SPA — every HTML path returns the same shell, so the old render config was capped at ~10 of 56 live comps. Public keyless JSON: /api/v2/raffle-draws/GBP."
  },
  {
   "name": "All Star Prizes",
@@ -35,7 +36,9 @@
   "name": "Capital Competitions Carp / Catch",
   "slug": "capital-competitions-carp-catch",
   "base": "https://competitions.online",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 40,
+  "note": "carp/fishing flood — capped for balance."
  },
  {
   "name": "Carpatic Giveaways",
@@ -60,24 +63,26 @@
   "name": "Daydream Draws",
   "slug": "daydream-draws",
   "base": "https://daydreamdraws.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "fetcher": "flaresolverr",
+  "note": "Cloudflare 403 on the plain Store API fetch (server: cloudflare, cf-ray present) — verified 2026-08-19."
  },
  {
   "name": "Dream Big Draws",
   "slug": "dream-big-draws",
   "base": "https://dreambigdraws.com",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 40,
+  "note": "Pokemon/collectibles flood — capped for balance."
  },
  {
   "name": "Dream Car Giveaways",
   "slug": "dream-car-giveaways",
   "base": "https://dreamcargiveaways.co.uk",
-  "method": "render",
-  "drawMatch": "/competitions/[a-z0-9][a-z0-9-]+/?$",
-  "exclude": [
-   "/competitions/(cars|cash|tech|instant-wins|instant-cash)/?$"
-  ],
-  "aiAssist": true
+  "method": "api",
+  "apiStyle": "hydra",
+  "listApi": "https://api.dreamcargiveaways.co.uk/competitions",
+  "note": "Pure car operator that was excluded from the daily run entirely by the aiAssist filter. Public API Platform (Hydra JSON-LD) needs no AI and no browser. regularPrice is in PENCE."
  },
  {
   "name": "DreamTech Competitions",
@@ -115,7 +120,9 @@
   "name": "Gaming Giveaways",
   "slug": "gaming-giveaways",
   "base": "https://www.gaminggiveaways.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 40,
+  "note": "collectibles/instant-win flood — capped for balance."
  },
  {
   "name": "Historia Prize Draw",
@@ -157,7 +164,9 @@
   "name": "Pawsome Comps",
   "slug": "pawsome-comps",
   "base": "https://pawsomecomps.com",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 40,
+  "note": "high-volume small comps — capped for balance."
  },
  {
   "name": "Planetofdreams",
@@ -202,7 +211,9 @@
   "name": "Redline Competitions",
   "slug": "redline-competitions",
   "base": "https://redline-competitions.com",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 100,
+  "note": "car operator."
  },
  {
   "name": "Rendalls Competitions",
@@ -223,13 +234,17 @@
   "name": "Scouse Competitions",
   "slug": "scouse-competitions",
   "base": "https://scousecompetitions.com",
-  "method": "woo"
+  "method": "woo",
+  "fetcher": "flaresolverr",
+  "note": "Cloudflare 403 on the plain Store API fetch (server: cloudflare, cf-ray present) — verified 2026-08-19."
  },
  {
   "name": "Storm Competitions ",
   "slug": "storm-competitions",
   "base": "https://www.stormcompetitions.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 100,
+  "note": "car/mixed operator."
  },
  {
   "name": "Supreemlife",
@@ -247,7 +262,9 @@
   "name": "The Car Competition",
   "slug": "the-car-competition",
   "base": "https://www.thecarcompetition.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 150,
+  "note": "253 live comps measured 2026-08-19 — a car operator, the site's weakest category."
  },
  {
   "name": "The Giveaway Guys",
@@ -271,16 +288,18 @@
   "name": "UKCC",
   "slug": "ukcc",
   "base": "https://ukcc.co.uk",
-  "method": "render",
-  "listing": "https://ukcc.co.uk/all-comps",
-  "drawMatch": "/competition/[a-z0-9]",
-  "wait": 6000
+  "method": "api",
+  "apiStyle": "raffle-engine",
+  "drawPath": "/competition/{slug}",
+  "note": "Same platform as 7Days Performance — identical API and schema, only the public URL shape differs."
  },
  {
   "name": "Waffle Competitions",
   "slug": "waffle-competitions",
   "base": "https://wafflecompetitions.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 40,
+  "note": "325 live, overwhelmingly micro-raffles — capped so one operator can't flood the listings."
  },
  {
   "name": "Winner Winner Competitions",
@@ -402,7 +421,9 @@
   "name": "Bee The Winner",
   "slug": "bee-the-winner",
   "base": "https://beethewinner.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "fetcher": "flaresolverr",
+  "note": "HTTP 403 from Apache (no Cloudflare) — a WAF/UA block rather than a JS challenge, so FlareSolverr's real browser may or may not clear it. Worth one attempt; if it stays silent this needs a different approach, not more retries."
  },
  {
   "name": "Croc Comps",
@@ -426,13 +447,17 @@
   "name": "Golf Star Competitions",
   "slug": "golf-star-competitions",
   "base": "https://golfstarcompetitions.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 110,
+  "note": "77+ live comps measured; the cap must exceed the live catalogue or the tail is never re-observed — 18 rows sat live with a NULL total_entries because they fell outside it."
  },
  {
   "name": "Infinity Draws",
   "slug": "infinity-draws",
   "base": "https://infinitydraws.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "enabled": false,
+  "disabledReason": "Host does not resolve/connect at all (not a block — no TCP). Dead site; re-enable only if it comes back. Verified 2026-08-19."
  },
  {
   "name": "Max Competitions",
@@ -480,7 +505,9 @@
   "name": "Universal Competitions",
   "slug": "universal-competitions",
   "base": "https://universal-competitions.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "maxLive": 100,
+  "note": "108 live measured; currently contributes nothing."
  },
  {
   "name": "Win A Bundle",
@@ -524,7 +551,9 @@
   "slug": "botb",
   "base": "https://www.botb.com",
   "method": "render",
-  "wait": 6000
+  "wait": 6000,
+  "enabled": false,
+  "disabledReason": "Spot-the-ball skill competition, not a capped raffle — structurally cannot supply our required fields. Its own API (/umbraco/00000002/appv2/getactivecompetitions) reports MaxEntries:0 for most comps and its entry URLs are category pages (/prizes/cars), not per-competition slugs. Every one of the 21 drafts it produced was wrong: ticket_price £9.99 (the subscription price) on all of them despite titles saying 5p/15p/£1.29, six titled with raw URL slugs (ASubscriberComp…), and nine with total_entries 2026 — the year misparsed as a ticket count. Deleted 2026-08-19."
  },
  {
   "name": "Ignite Comps",
@@ -607,5 +636,14 @@
   "drawMatch": "/products/[a-z0-9][a-z0-9-]+/?$",
   "aiAssist": true,
   "enabled": false
+ },
+ {
+  "name": "Dream Big Competitions",
+  "slug": "dream-big-competitions",
+  "base": "https://dreambigcompetitions.com",
+  "method": "api",
+  "apiStyle": "inertia",
+  "listing": "https://dreambigcompetitions.com/competitions",
+  "note": "Laravel + Inertia (compengine.io whitelabel) — full page state is JSON in the #app data-page attribute. JDM-leaning car operator."
  }
 ]
