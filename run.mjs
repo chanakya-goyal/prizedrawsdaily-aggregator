@@ -136,15 +136,27 @@ async function flush() {
   // Re-host every image onto our own Storage BEFORE writing, so the site never hotlinks a
   // third-party host (which breaks under Cloudflare bot protection — the root cause of
   // operator images silently breaking). A fetch miss keeps the original URL, never blocks.
-  for (const item of [...toInsert, ...toUpdate]) {
-    const drawSlug = item.row.slug || item.slug;
-    if (!item.row.image_url || !drawSlug) continue;
-    try {
-      const res = await raced(rehostImage(item.row.image_url, item.opSlug, drawSlug, sbCreds), 90_000, "re-host");
-      if (res.changed) { item.row.image_url = res.url; rehosted++; }
-      else if (res.via === "miss") { missed++; console.log(`  ⚠️ image unreachable, kept origin: ${drawSlug.slice(0, 44)}`); }
-    } catch (e) { missed++; console.log(`  ! re-host failed ${drawSlug.slice(0, 40)}: ${(e.message || "").slice(0, 60)}`); }
-  }
+  // Re-hosting was SEQUENTIAL with a 90s cap per image, so one flush of 55 images could
+  // occupy 82 minutes — most of the Action's 130-minute deadline — and a live run was
+  // observed making no DB writes at all for 20 minutes while it ground through Dream Car
+  // images that weserv cannot proxy. These fetches are independent and IO-bound, so run them
+  // concurrently and give each a much tighter budget: a slow image is not worth waiting for
+  // when the fallback (keep the origin URL) is already graceful and costs nothing.
+  const REHOST_CONCURRENCY = Number(process.env.REHOST_CONCURRENCY || 6);
+  const REHOST_TIMEOUT_MS = Number(process.env.REHOST_TIMEOUT_MS || 30_000);
+  const queue = [...toInsert, ...toUpdate].filter((it) => it.row.image_url && (it.row.slug || it.slug));
+  let qi = 0;
+  await Promise.all(Array.from({ length: Math.min(REHOST_CONCURRENCY, queue.length) }, async () => {
+    while (qi < queue.length) {
+      const item = queue[qi++];
+      const drawSlug = item.row.slug || item.slug;
+      try {
+        const res = await raced(rehostImage(item.row.image_url, item.opSlug, drawSlug, sbCreds), REHOST_TIMEOUT_MS, "re-host");
+        if (res.changed) { item.row.image_url = res.url; rehosted++; }
+        else if (res.via === "miss") { missed++; console.log(`  ⚠️ image unreachable, kept origin: ${drawSlug.slice(0, 44)}`); }
+      } catch (e) { missed++; console.log(`  ! re-host failed ${drawSlug.slice(0, 40)}: ${(e.message || "").slice(0, 60)}`); }
+    }
+  }));
   liveInserted += toInsert.filter((x) => x.row.status === "active").length;
   let flushed = 0;
   for (let i = 0; i < toInsert.length; i += 50) {
