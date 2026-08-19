@@ -210,7 +210,11 @@ for (const op of operators) {
   } catch (e) { console.log(`  FAILED: ${(e.message || "").slice(0, 80)}`); continue; }
   pages += draws.length;
   c.scraped = draws.length;
-  draws = dedupe(draws);
+  // Report collapses. This was silent for months while it was destroying two thirds of a car
+  // operator's inventory — a drop counter is what would have surfaced it.
+  let dropped = 0;
+  draws = dedupe(draws, { onDrop: () => { dropped++; } });
+  if (dropped) console.log(`  ⧉ ${dropped} duplicate URL(s) collapsed`);
   for (const raw of draws) {
     const { pass, stage, reasons, draw: d } = gate(raw, now);
     if (!pass) { skipped++; console.log(`  ⏭  ${(raw.title || "?").slice(0, 40)} — ${stage}: ${reasons.join(", ")}`); continue; }

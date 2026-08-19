@@ -7,7 +7,7 @@ import { fetchHtml, renderVia } from "./lib/fetcher.mjs";
 
 export { CATEGORIES, UA, WINDOW_DAYS, normalizeUkDate };
 import { detectZap, parseZapRefresh, mergeZap, fetchZapRefresh } from "./lib/zap.mjs";
-import { isPurchasable, hasAvailableVariant } from "./lib/liveness.mjs";
+import { isPurchasable, hasAvailableVariant, permalinkKey } from "./lib/liveness.mjs";
 import { raffleEngineOperator } from "./lib/adapters/raffle-engine.mjs";
 import { hydraOperator } from "./lib/adapters/hydra.mjs";
 import { inertiaOperator } from "./lib/adapters/inertia.mjs";
@@ -217,14 +217,30 @@ export async function apiOperator(op, perOp = 300) {
   return fn(op, perOp);
 }
 
-export function dedupe(draws) {
-  const norm = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 45);
+// Collapse the SAME competition appearing twice in one scrape (a listing that links a draw
+// from both a carousel and a grid).
+//
+// ⚠️ This used to key on the first 45 alphanumeric characters of the TITLE, which silently
+// destroyed real inventory: operators run many concurrent competitions with identical names.
+// At the-car-competition — a CAR operator — 100 live products collapsed to 34, losing 66,
+// including five separate live "Win £250 Site Credit" comps at /250sc-5 … /250sc-9.
+// Lengthening the prefix fixes none of them, because the titles are genuinely identical.
+//
+// entry_url is the actual identity of a draw — it is already what run.mjs dedupes against
+// across runs — so key on that, normalised for trailing-slash/query/case churn. Distinct
+// URLs are distinct competitions, full stop.
+export function dedupe(draws, { onDrop } = {}) {
   const score = (x) => (x.total_entries > 0 ? 2 : 0) + (x.draw_date ? 1 : 0) + (x.ticket_price > 0 ? 1 : 0);
   const best = new Map();
   for (const d of draws) {
-    const k = norm(d.title);
+    // Fall back to the title only when there is no URL to key on — a row with neither is
+    // unusable anyway and the gate will drop it.
+    const k = d.entry_url ? permalinkKey(d.entry_url) : (d.title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     if (!k) continue;
-    if (!best.has(k) || score(d) > score(best.get(k))) best.set(k, d);
+    const prev = best.get(k);
+    if (!prev) { best.set(k, d); continue; }
+    if (onDrop) onDrop(d, prev);
+    if (score(d) > score(prev)) best.set(k, d);
   }
   return [...best.values()];
 }
