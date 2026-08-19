@@ -109,7 +109,7 @@ const dbOps = await sbGet("operators?select=id,slug");
 const opMap = Object.fromEntries(dbOps.map((o) => [o.slug, o.id]));
 // The field values come back too, not just identity: publish verification compares this
 // stored observation against today's fresh scrape (see lib/verify.mjs).
-const existing = await sbGetAll("draws?select=id,entry_url,slug,status,title,ticket_price,total_entries,draw_date,image_url,prize_description");
+const existing = await sbGetAll("draws?select=id,entry_url,slug,status,title,ticket_price,total_entries,total_prize_value,draw_date,image_url,prize_description");
 const byUrl = new Map(existing.filter((d) => d.entry_url).map((d) => [d.entry_url, d]));
 const takenSlugs = new Set(existing.map((d) => d.slug));
 // Canonical keys of every draw we already hold, so a capped operator still re-reads them.
@@ -275,7 +275,7 @@ for (const op of operators) {
           skipped++;
           // Silent when there's simply nothing to correct; loud when a flagged read was
           // REFUSED, because that is the parser breaking on a row the public can see.
-          if (c.flags.length) console.log(`  🚫 ${d.title.slice(0, 40)} — live row left alone: ${c.reason.slice(0, 90)}`);
+          if (c.flags.length && c.fields.length) console.log(`  🚫 ${d.title.slice(0, 40)} — live row left alone: ${c.reason.slice(0, 90)}`);
           continue;
         }
         byUrl.delete(d.entry_url);

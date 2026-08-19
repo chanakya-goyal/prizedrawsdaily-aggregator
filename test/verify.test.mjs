@@ -248,3 +248,37 @@ describe("relistDecision — recurring competitions must be able to come back", 
     expect(relistDecision(null, null, NOW2).revive).toBe(false);
   });
 });
+
+describe("correctionDecision — a stale derived pool must self-heal", () => {
+  const NOW3 = new Date("2026-08-19T10:00:00Z");
+  const live = {
+    status: "active", title: "£250 Amazon Voucher + Instant Wins #41", grand_prize: "£250 Amazon Voucher",
+    category: "cash-prizes", ticket_price: 0.99, total_entries: 3400, total_prize_value: 3229.38,
+    draw_date: "2026-09-01T20:00:00+01:00",
+    image_url: "https://kkuuwksgyypicnblwubs.supabase.co/x.webp",
+    entry_url: "https://x.co.uk/product/a", prize_description: "A description over twenty characters long.",
+  };
+  const fresh = { ...live, total_prize_value: undefined, description: live.prize_description };
+
+  // The inputs agree with today's scrape, so comparing them alone never notices; the row was
+  // simply written when one of them was wrong. 33 live rows sat like this.
+  test("a pool that disagrees with price × entries is corrected even when both inputs agree", () => {
+    const c = correctionDecision(live, fresh, { now: NOW3 });
+    expect(c.correct).toBe(true);
+    expect(c.fields).toContain("total_prize_value");
+    expect(c.drift.total_prize_value[1]).toBe(3366);
+  });
+
+  test("a pool that already matches is left alone", () => {
+    const c = correctionDecision({ ...live, total_prize_value: 3366 }, fresh, { now: NOW3 });
+    expect(c.correct).toBe(false);
+    expect(c.reason).toBe("no drift");
+  });
+
+  test("a flagged fresh read is refused rather than written over a proven row", () => {
+    const broken = { ...fresh, ticket_price: 0.99, total_entries: 3400, image_url: "not-a-url" };
+    const c = correctionDecision(live, broken, { now: NOW3 });
+    expect(c.correct).toBe(false);
+    expect(c.reason).toContain("flagged");
+  });
+});
