@@ -433,7 +433,9 @@ describe("fieldsFromHtml — woo with API stock + categories (BigBeastie / You C
       descriptionText: "Astra Militarum: Bundle #6\nBundle Includes: Battleforce Astra Militarum Platoon, Ciaphas Cain, Centaur RSV, Hippogriff AFV.",
       apiCategories: ["Auto Draw", "Warhammer"], apiStock: 99,
     });
-    expect(d.total_entries).toBe(99);
+    // The API stock count is tickets REMAINING, not a cap — no longer accepted as one, so with
+    // no cap stated anywhere this draw correctly has none and requiredGate will drop it.
+    expect(d.total_entries).toBe(null);
     expect(d.category).toBe("collectibles");
   });
   test("a clean labelled cap in the API description beats the API stock count", () => {
@@ -447,7 +449,7 @@ describe("fieldsFromHtml — woo with API stock + categories (BigBeastie / You C
     });
     expect(d.total_entries).toBe(5000); // labelled cap, not the 4000 remaining-stock
   });
-  test("the neighbour-comp leak is gone: a bare page count never overrides the API stock", () => {
+  test("a neighbour comp's ticket count is never adopted as this draw's cap", () => {
     // page text carries OTHER comps' bare counts ("14,993 Tickets", "199,952 in stock") but THIS
     // comp's cap is the API stock — the noisy whole-page grab must not win.
     const html = `<html><body><h1>£222 End Prize + Instant Wins</h1>
@@ -459,7 +461,10 @@ describe("fieldsFromHtml — woo with API stock + categories (BigBeastie / You C
       descriptionText: "£222 End Prize + Instant Wins. Instant wins throughout!",
       apiCategories: ["Live Draws"], apiStock: 2385,
     });
-    expect(d.total_entries).toBe(2385); // its own stock, not a neighbour's 199,952 / 14,993
+    // The API stock count no longer supplies a cap, so what this test really guards is the
+    // guarantee that matters: a NEIGHBOUR comp's count must never become this draw's cap.
+    expect(d.total_entries).not.toBe(199952);
+    expect(d.total_entries).not.toBe(14993);
   });
 });
 
@@ -509,5 +514,36 @@ describe("categoryEvidence — bare 'golf' must not mean a car", () => {
   test("no evidence returns null rather than the cash fallback", () => {
     expect(categoryEvidence({ title: "Trampoline & Enclosure", grand_prize: "Trampoline" })).toBe(null);
     expect(inferCategory({ title: "Trampoline & Enclosure", grand_prize: "Trampoline" })).toBe("cash-prizes");
+  });
+});
+
+describe("total_entries must be a CAP, never the stock counter", () => {
+  // WooCommerce's stock_availability.text ("998,574 in stock") is tickets REMAINING. It was
+  // being accepted as total_entries on the theory that it approximates the cap on a
+  // freshly-listed comp — true only at zero sales. In practice it fell every day:
+  //   1p Gaming Comp   1,382,267 -> 1,381,767
+  //   Flash Cash          998,574 ->   998,291
+  // The site renders total_entries as the ticket allocation AND derives
+  // total_prize_value = price x entries from it, so this published a wrong, drifting number.
+  // Woo exposes no cap field and no sold count, so the real cap is unrecoverable here.
+  const html = "<html><body><h1>Win a BMW</h1><p>Great prize</p></body></html>";
+  const op = { slug: "x", base: "https://x.co.uk", method: "woo" };
+
+  test("a stock count is NOT accepted as the cap", () => {
+    const d = fieldsFromHtml({ html, url: "https://x.co.uk/product/a", op, knownTitle: "Win a BMW", knownPrice: 1, apiStock: 998574 });
+    expect(d.total_entries).toBe(null);
+  });
+
+  test("a real cap stated on the page still wins", () => {
+    const withCap = "<html><body><h1>Win a BMW</h1><p>Total Entries: 999999</p></body></html>";
+    const d = fieldsFromHtml({ html: withCap, url: "https://x.co.uk/product/a", op, knownTitle: "Win a BMW", knownPrice: 1, apiStock: 998574 });
+    expect(d.total_entries).toBe(999999);
+  });
+
+  test("dropping the cap is preferred over publishing a wrong one", () => {
+    // No cap anywhere -> null -> requiredGate drops the row. That is the intended outcome:
+    // a draw with no real ticket allocation is not listed.
+    const d = fieldsFromHtml({ html, url: "https://x.co.uk/product/a", op, knownTitle: "Win a BMW", knownPrice: 1, apiStock: 42 });
+    expect(d.total_entries).toBe(null);
   });
 });
