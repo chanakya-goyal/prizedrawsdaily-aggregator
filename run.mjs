@@ -12,7 +12,7 @@ import { gate } from "./gate.mjs";
 import { templateDescription } from "./lib/describe.mjs";
 import { fieldFlags, buildHealthReport, writeStepSummary, checkImage } from "./lib/manager.mjs";
 import { rehostImage } from "./lib/rehost.mjs";
-import { verifyAgainstStored, summarise } from "./lib/verify.mjs";
+import { verifyAgainstStored, summarise, relistDecision } from "./lib/verify.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -117,7 +117,7 @@ const toInsert = [];
 const toUpdate = [];
 const counts = [];
 const verdicts = [];
-let pages = 0, skipped = 0, autoPublished = 0;
+let pages = 0, skipped = 0, autoPublished = 0, relisted = 0;
 
 // Incremental flush: re-host + write pending rows every few operators so a job-timeout
 // kill loses only the tail, never the sweep (the 2026-08-14 90-min cancel lost a full
@@ -235,6 +235,22 @@ for (const op of operators) {
     if (ex) {
       // Existing draw: refresh data on a DRAFT row (self-heals earlier wrong fields like
       // the ticket price); never touch a published/ended row.
+      // An ended row whose competition has been RELISTED for a later draw comes back as a
+      // draft; without this the URL is retired permanently, which silently loses every
+      // recurring competition (and every sold-out-awaiting-draw comp ended-sweep closed).
+      if (ex.status === "ended") {
+        const { revive } = relistDecision(ex, d, now);
+        if (!revive) { skipped++; continue; }
+        byUrl.delete(d.entry_url);
+        toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: false, row: {
+          category_id: catMap[d.category] || null, title: d.title, grand_prize: d.grand_prize,
+          image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
+          total_prize_value: tpv, draw_date: d.draw_date, status: "draft",
+        } });
+        relisted++; c.inserted++; c.heldDraft++;
+        console.log(`  ↩️ ${d.title.slice(0, 44)} — relisted for ${String(d.draw_date).slice(0, 10)}, back as draft`);
+        continue;
+      }
       if (ex.status !== "draft") { skipped++; continue; }
       byUrl.delete(d.entry_url);
       // This is the SECOND independent observation of a row we already hold. If it agrees
@@ -279,7 +295,7 @@ for (const op of operators) {
 if (browser) await browser.close();
 await flush();
 
-console.log(`\n\n==== ${totalNew} new, ${totalRefreshed} refreshed (${pages} pages read, ${skipped} skipped) ====`);
+console.log(`\n\n==== ${totalNew} new, ${totalRefreshed} refreshed${relisted ? `, ${relisted} relisted` : ""} (${pages} pages read, ${skipped} skipped) ====`);
 if (DRY_RUN) {
   console.log("(dry run — nothing written)");
 } else {

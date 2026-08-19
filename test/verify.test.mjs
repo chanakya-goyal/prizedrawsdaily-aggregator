@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { verifyAgainstStored, ukDayKey, summarise } from "../lib/verify.mjs";
+import { verifyAgainstStored, ukDayKey, summarise, relistDecision } from "../lib/verify.mjs";
 
 const NOW = new Date("2026-08-19T10:00:00Z");
 const SOON = "2026-08-30T20:00:00+01:00";
@@ -141,5 +141,44 @@ describe("summarise", () => {
     expect(s.held).toBe(2);
     expect(s.heldReasons["ticket_price"]).toBe(2);
     expect(s.heldReasons["image not confirmed"]).toBe(1);
+  });
+});
+
+describe("relistDecision — recurring competitions must be able to come back", () => {
+  const NOW2 = new Date("2026-08-19T10:00:00Z");
+  const ended = (drawDate) => ({ status: "ended", draw_date: drawDate });
+
+  // Operators relist the SAME product URL for the next round, and ended-sweep closes a comp
+  // as soon as it stops being purchasable — which is also what sold-out-awaiting-draw looks
+  // like. run.mjs refuses to re-insert a seen entry_url, so both were permanent losses.
+  test("an ended draw relisted for a later date revives", () => {
+    const r = relistDecision(ended("2026-08-10T20:00:00+01:00"), { draw_date: "2026-08-26T20:00:00+01:00" }, NOW2);
+    expect(r.revive).toBe(true);
+  });
+
+  test("a still-future stored draw is not a relist — it just sold out", () => {
+    const r = relistDecision(ended("2026-08-25T20:00:00+01:00"), { draw_date: "2026-08-26T20:00:00+01:00" }, NOW2);
+    expect(r.revive).toBe(false);
+    expect(r.reason).toContain("has not run yet");
+  });
+
+  test("a fresh date in the past never revives", () => {
+    expect(relistDecision(ended("2026-08-10T20:00:00+01:00"), { draw_date: "2026-08-12T20:00:00+01:00" }, NOW2).revive).toBe(false);
+  });
+
+  test("the same date again is a stale read, not a new round", () => {
+    expect(relistDecision(ended("2026-08-10T20:00:00+01:00"), { draw_date: "2026-08-10T20:00:00+01:00" }, NOW2).revive).toBe(false);
+  });
+
+  test("active and draft rows are untouched by this path", () => {
+    for (const status of ["active", "draft"]) {
+      expect(relistDecision({ status, draw_date: "2026-08-10T20:00:00+01:00" }, { draw_date: "2026-08-26T20:00:00+01:00" }, NOW2).revive).toBe(false);
+    }
+  });
+
+  test("missing dates on either side are safe", () => {
+    expect(relistDecision(ended(null), { draw_date: "2026-08-26T20:00:00+01:00" }, NOW2).revive).toBe(false);
+    expect(relistDecision(ended("2026-08-10T20:00:00+01:00"), { draw_date: null }, NOW2).revive).toBe(false);
+    expect(relistDecision(null, null, NOW2).revive).toBe(false);
   });
 });
