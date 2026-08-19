@@ -2,7 +2,7 @@ import { test, expect, describe } from "bun:test";
 import {
   extractEntries, extractDate, inferCategory, extractPrice, mapOperatorCategory,
   parseJsonLd, findProductLd, pickTitleImage, load, textOf, fieldsFromHtml, normalizeUkDate,
-  isGenericTitle, cleanPrizeLine, extractGrandPrize, extractPrizeSection,
+  isGenericTitle, cleanPrizeLine, extractGrandPrize, extractPrizeSection, categoryEvidence,
 } from "../lib/parse.mjs";
 
 describe("extractEntries — veto-first, conservative", () => {
@@ -471,5 +471,43 @@ describe("fieldsFromHtml — Podium render path uses the operator entries patter
       <p>Draw will take place on 19th July 2026 at 8pm.</p></body></html>`;
     const d = fieldsFromHtml({ html, url: "https://podiumprize.co.uk/competitions/wild-west-bingo", op, knownImage: "https://cdn.test/w.jpg" });
     expect(d.total_entries).toBe(66000);
+  });
+});
+
+describe("categoryEvidence — bare 'golf' must not mean a car", () => {
+  // CAT_RULES lists cars before luxury and the car regex carried a bare `golf` for the VW
+  // Golf. On a site with a dedicated golf operator (the largest by live inventory) that made
+  // every box of golf balls read as a car draw, and once the category check started trusting
+  // these rules it flagged the lot.
+  // The requirement is that golf equipment is never claimed as a CAR. Reading as luxury is
+  // ideal; returning null ("no evidence") is equally safe, because the category check only
+  // fires on a positive match naming a different category.
+  test("golf equipment is never claimed as a car", () => {
+    for (const t of [
+      "WIN 12 DOZEN TAYLORMADE SPEEDSOFT INK GOLF BALLS",
+      "WIN A WINNER'S CHOICE CUSTOM FIT DRIVER",
+      "WIN A MOTOCADDY M7 REMOTE TROLLEY",
+      "AUTO-DRAW: WIN A J LINDEBERG FLARE STAND BAG!",
+      "WIN A CUSTOM FIT SET OF WEDGES",
+    ]) expect(categoryEvidence({ title: t, grand_prize: t })).not.toBe("car-draws");
+  });
+
+  test("explicit golf vocabulary reads as luxury", () => {
+    for (const t of [
+      "WIN 12 DOZEN TAYLORMADE SPEEDSOFT INK GOLF BALLS",
+      "WIN A MOTOCADDY M7 REMOTE TROLLEY",
+      "WIN A CALLAWAY GOLF BAG",
+    ]) expect(categoryEvidence({ title: t, grand_prize: t })).toBe("luxury");
+  });
+
+  test("an actual VW Golf still reads as a car", () => {
+    for (const t of ["Win a VW Golf R", "Win this Volkswagen Golf GTI", "Golf GTI Clubsport"]) {
+      expect(categoryEvidence({ title: t, grand_prize: t })).toBe("car-draws");
+    }
+  });
+
+  test("no evidence returns null rather than the cash fallback", () => {
+    expect(categoryEvidence({ title: "Trampoline & Enclosure", grand_prize: "Trampoline" })).toBe(null);
+    expect(inferCategory({ title: "Trampoline & Enclosure", grand_prize: "Trampoline" })).toBe("cash-prizes");
   });
 });
