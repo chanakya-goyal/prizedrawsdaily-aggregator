@@ -448,8 +448,8 @@
   "slug": "golf-star-competitions",
   "base": "https://golfstarcompetitions.co.uk",
   "method": "woo",
-  "maxLive": 60,
-  "note": "already the largest live contributor; hold at the default."
+  "maxLive": 110,
+  "note": "77+ live comps measured; the cap must exceed the live catalogue or the tail is never re-observed — 18 rows sat live with a NULL total_entries because they fell outside it."
  },
  {
   "name": "Infinity Draws",

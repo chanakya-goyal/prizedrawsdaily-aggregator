@@ -29,9 +29,13 @@ const BATCHES = Number(process.env.BATCHES || 1);            // no LLM quota →
 const MAX_PAGES = Number(process.env.MAX_DRAWS || 2000);    // backstop on pages read per run (raised with PER_OP_API)
 // Auto-publish a draft the moment a second independent scrape agrees with it (lib/verify.mjs).
 // New rows are never published on first sighting — PUBLISH_STATUS still governs those.
-// AUTO_PUBLISH=false reverts to the old behaviour (everything waits for human review) with
-// no code change: the verdicts are still computed and reported, just not acted on.
-const AUTO_PUBLISH = process.env.AUTO_PUBLISH !== "false";
+// OPT-IN, not opt-out: only AUTO_PUBLISH="true" turns it on, and the daily Action is the one
+// place that sets it. A default of ON would mean every other caller — a local shell holding
+// the service key, the cowork routine's own scrape, a one-off `ONLY=x bun run.mjs` — silently
+// publishes to the live site as a side effect of a debugging run, and doubles as the "second
+// independent observation" for rows the Action inserted hours earlier. The verdicts are still
+// computed and reported when it is off; they just aren't acted on.
+const AUTO_PUBLISH = process.env.AUTO_PUBLISH === "true";
 // Ceiling on how many rows one run may publish. A scoring mistake is then bounded to this
 // many rows for at most a day, rather than the whole backlog at once.
 const AUTO_PUBLISH_MAX = Number(process.env.AUTO_PUBLISH_MAX || 200);
