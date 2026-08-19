@@ -1,11 +1,11 @@
 // PrizeDrawsDaily aggregator — KEYLESS orchestrator (no LLM).
 //   DRY_RUN=true (default) prints; DRY_RUN=false inserts (needs SUPABASE_SERVICE_ROLE_KEY).
-// Operators come from operators.json. Two feeders share this code via METHODS:
-//   METHODS=render            → the GitHub Action's browser feeder
-//   METHODS=woo,shopify       → the cowork routine's JSON-API scrape
-// Both deterministically fill fields (lib/parse.mjs), gate them (gate.mjs), attach a
-// template description (lib/describe.mjs) and insert as 'draft'. The cowork/Claude routine
-// then rewrites descriptions, validates, and publishes.
+// Operators come from operators.json; METHODS selects which of them run (the daily Action
+// sweeps them all: api,render,woo,shopify).
+// Fields are filled deterministically (lib/parse.mjs), gated (gate.mjs), given a template
+// description (lib/describe.mjs) and inserted as 'draft'. A draft goes live only when a LATER
+// run re-reads the same URL and agrees with it (lib/verify.mjs) — publishing is this script's
+// job now, not the cowork routine's, which QAs the result and rewrites descriptions.
 import { chromium } from "playwright";
 import { renderOperator, wooOperator, shopifyOperator, apiOperator, dedupe, makeContext } from "./extractor.mjs";
 import { gate } from "./gate.mjs";

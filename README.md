@@ -2,15 +2,17 @@
 
 Collects live UK prize-draw listings from operator websites and feeds them into the
 PrizeDrawsDaily Supabase. **No LLM in the scraper** — extraction is fully deterministic.
-The only AI is Claude, run by a separate **cowork routine** that writes descriptions and
-publishes (see `manager/PROMPT.md`).
+Publishing is deterministic too (two agreeing observations — see below). The only AI is Claude,
+run by a separate **cowork routine** that QAs what was published and writes descriptions (see
+`manager/PROMPT.md`); it never publishes.
 
 ## Architecture
 
 The daily GitHub Action runs the full sweep (`METHODS=api,render,woo,shopify`) through one
 code path (`lib/parse.mjs` + `gate.mjs`), inserts new rows as `draft`, then auto-expires
-finished comps and reports. The cowork routine (`manager/PROMPT.md`) layers Claude on top for
-descriptions and editorial judgement.
+finished comps and reports. The cowork routine (`manager/PROMPT.md`) layers Claude on top the
+next morning: it spot-checks published rows against the operators' own pages and improves
+descriptions — the one field the scraper never overwrites.
 
 ### Publishing: agreement between two independent observations
 
