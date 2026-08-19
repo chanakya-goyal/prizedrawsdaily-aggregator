@@ -13,6 +13,7 @@ import { templateDescription } from "./lib/describe.mjs";
 import { fieldFlags, buildHealthReport, writeStepSummary, checkImage } from "./lib/manager.mjs";
 import { rehostImage } from "./lib/rehost.mjs";
 import { verifyAgainstStored, summarise, relistDecision, correctionDecision } from "./lib/verify.mjs";
+import { permalinkKey } from "./lib/liveness.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -111,6 +112,8 @@ const opMap = Object.fromEntries(dbOps.map((o) => [o.slug, o.id]));
 const existing = await sbGetAll("draws?select=id,entry_url,slug,status,title,ticket_price,total_entries,draw_date,image_url,prize_description");
 const byUrl = new Map(existing.filter((d) => d.entry_url).map((d) => [d.entry_url, d]));
 const takenSlugs = new Set(existing.map((d) => d.slug));
+// Canonical keys of every draw we already hold, so a capped operator still re-reads them.
+const knownUrls = new Set(existing.filter((d) => d.entry_url).map((d) => permalinkKey(d.entry_url)));
 console.log(`loaded ${cats.length} cats, ${dbOps.length} operators, ${existing.length} existing draws\n`);
 
 const needsBrowser = operators.some((o) => o.method === "render");
@@ -220,8 +223,10 @@ for (const op of operators) {
   let draws = [];
   try {
     if (op.method === "api") draws = await withBudget(apiOperator(op, PER_OP_API), OP_BUDGET_MS);
-    else if (op.method === "woo") draws = await withBudget(wooOperator(op, PER_OP_API), OP_BUDGET_MS);
-    else if (op.method === "shopify") draws = await withBudget(shopifyOperator(op, PER_OP_API), OP_BUDGET_MS);
+    // knownUrls: rows we already hold must be re-read every run even when the operator is
+    // capped, or a published draw outside the cap can never be corrected or expired.
+    else if (op.method === "woo") draws = await withBudget(wooOperator(op, PER_OP_API, { knownUrls }), OP_BUDGET_MS);
+    else if (op.method === "shopify") draws = await withBudget(shopifyOperator(op, PER_OP_API, { knownUrls }), OP_BUDGET_MS);
     else draws = await withBudget(renderOperator(ctx, op, PER_OP), OP_BUDGET_MS);
   } catch (e) { console.log(`  FAILED: ${(e.message || "").slice(0, 80)}`); continue; }
   pages += draws.length;

@@ -156,7 +156,7 @@ export function shouldStopPaging({ returned, liveSoFar, target, page, maxPages, 
   return null;
 }
 
-export async function wooOperator(op, perOp = 6) {
+export async function wooOperator(op, perOp = 6, { knownUrls = new Set() } = {}) {
   // Some hosts 500/404 the pretty /wp-json/ route but still serve the Store API via the
   // ?rest_route= query form (flex-competitions, thewatchdraws, redhotraffles).
   const target = Number(op.maxLive || perOp);
@@ -181,12 +181,21 @@ export async function wooOperator(op, perOp = 6) {
     if (stop) { if (page > 1) console.log(`  paged ${pagesRead}×${WOO_PER_PAGE} (${stop})`); break; }
   }
   // `collected` is already purchasable-only (filtered per page above, type-safely — the API
-  // returns the NUMBER 0 as well as `false`; see lib/liveness.mjs). `maxLive` is the ceiling
-  // on how much of one operator's catalogue we list, so a 600-comp collectibles operator
-  // can't crowd out everything else on the site.
-  const products = collected.slice(0, target);
+  // returns the NUMBER 0 as well as `false`; see lib/liveness.mjs).
+  //
+  // `maxLive` caps what we INGEST, never what we RE-CHECK. Slicing the whole list stranded
+  // every row that fell outside the window: gaming-giveaways runs 81 live comps against a cap
+  // of 40, and 33 of its published rows were left carrying a prize pool that no longer matched
+  // price x entries, with nothing able to reach them. A row we already have on the site must be
+  // re-read every run so it can be corrected or expired — the cap exists to stop one operator
+  // flooding the listings, not to blind us to what we've already published.
+  const known = collected.filter((p) => knownUrls.has(permalinkKey(p.permalink)));
+  const fresh = collected.filter((p) => !knownUrls.has(permalinkKey(p.permalink)));
+  const products = [...known, ...fresh.slice(0, Math.max(0, target - known.length))];
   if (!products.length) { console.log(`  woo API returned no purchasable products`); return []; }
-  if (collected.length > products.length) console.log(`  capped at maxLive ${target} (${collected.length} live upstream)`);
+  if (collected.length > products.length) {
+    console.log(`  ${products.length} of ${collected.length} live (maxLive ${target}; ${known.length} already published, always re-checked)`);
+  }
   let sawZap = false;
   const pairs = await pMap(products, FETCH_CONCURRENCY, async (p) => {
     try {
@@ -219,7 +228,7 @@ export async function wooOperator(op, perOp = 6) {
   return kept.map((x) => x.draw);
 }
 
-export async function shopifyOperator(op, perOp = 6) {
+export async function shopifyOperator(op, perOp = 6, { knownUrls = new Set() } = {}) {
   const r = await fetchHtml(`${op.base}/products.json?limit=${perOp + 4}`, op);
   if (!r.ok) { console.log(`  shopify API ${r.status} for ${op.base}`); return []; }
   let body = null; try { body = JSON.parse(r.text); } catch { /* non-JSON → no products */ }
@@ -228,9 +237,14 @@ export async function shopifyOperator(op, perOp = 6) {
   // every one of them also burned a product-page fetch. (The LIST feed carries `available`;
   // the single-product /products/<handle>.json endpoint omits it — read it here, not there.)
   const all = Array.isArray(body?.products) ? body.products : [];
-  const products = all.filter(hasAvailableVariant).slice(0, perOp);
+  const live = all.filter(hasAvailableVariant);
+  // Same rule as woo: the cap bounds new ingestion, never the re-check of a published row.
+  const urlOf = (p) => permalinkKey(`${op.base.replace(/\/+$/, "")}/products/${p.handle}`);
+  const knownP = live.filter((p) => knownUrls.has(urlOf(p)));
+  const freshP = live.filter((p) => !knownUrls.has(urlOf(p)));
+  const products = [...knownP, ...freshP.slice(0, Math.max(0, perOp - knownP.length))];
   if (!products.length) { console.log(`  shopify API returned no available products (of ${all.length})`); return []; }
-  if (all.length !== products.length) console.log(`  shopify: ${products.length} available of ${all.length} listed`);
+  if (all.length !== products.length) console.log(`  shopify: ${products.length} of ${live.length} available (${all.length} listed)`);
   const draws = await pMap(products, FETCH_CONCURRENCY, async (p) => {
     try {
       const url = `${op.base}/products/${p.handle}`;
