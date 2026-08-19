@@ -100,7 +100,9 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SCRAPE_OUTCOME: ${{ steps.scrape.outcome }}
-          TRIPWIRE_FLOOR: "350"
+          TRIPWIRE_FLOOR: "150" # BROKEN level — reds the run
+          TRIPWIRE_TARGET: "350" # growth target — reported, stays green
+          TRIPWIRE_MIN_FRESH: "1" # zero new draws in 24h means the scrape produced nothing
           GH_TOKEN: ${{ github.token }}
         run: |
           if ! bun manager/tripwire.mjs; then
