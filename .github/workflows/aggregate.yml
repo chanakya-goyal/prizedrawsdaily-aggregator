@@ -69,8 +69,14 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           FLARESOLVERR_URL: http://localhost:8191/v1 # Cloudflare solver for flaresolverr operators
           DRY_RUN: "false"
-          METHODS: "render,woo,shopify" # full daily sweep across every operator
-          PUBLISH_STATUS: "draft" # land as draft; review/vision QA publishes (no unverified auto-publish)
+          METHODS: "api,render,woo,shopify" # full daily sweep across every operator
+          PUBLISH_STATUS: "draft" # a FIRST sighting always lands as draft — never auto-published
+          # A draft goes live once a SECOND independent scrape agrees with it (lib/verify.mjs):
+          # same price, same cap, same UK draw day, clean field flags, image provably loads.
+          # Anything else stays draft with a reason. AUTO_PUBLISH=false reverts to fully
+          # human-gated publishing without a code change.
+          AUTO_PUBLISH: "true"
+          AUTO_PUBLISH_MAX: "200" # bounds a scoring mistake to 200 rows for at most a day
           PER_OP: "15" # render per-op cap (raised from 5 for Operation 1000 depth)
           PER_OP_API: "60" # woo/shopify per-op cap (cheap JSON → whole live catalogue)
           BATCHES: "1"
@@ -103,6 +109,8 @@ jobs:
           TRIPWIRE_FLOOR: "150" # BROKEN level — reds the run
           TRIPWIRE_TARGET: "350" # growth target — reported, stays green
           TRIPWIRE_MIN_FRESH: "1" # zero new draws in 24h means the scrape produced nothing
+          TRIPWIRE_CATEGORY_FLOORS: '{"car-draws":10}' # total inventory hides a category collapsing
+          TRIPWIRE_QUIET_DAYS: "5" # has live draws but added none in 5d = parser broke under us
           GH_TOKEN: ${{ github.token }}
         run: |
           if ! bun manager/tripwire.mjs; then
