@@ -282,3 +282,35 @@ describe("correctionDecision — a stale derived pool must self-heal", () => {
     expect(c.reason).toContain("flagged");
   });
 });
+
+describe("correctionDecision — a pool-only drift must not rewrite the whole row", () => {
+  const NOW4 = new Date("2026-08-19T10:00:00Z");
+  const base4 = {
+    status: "active", title: "Win This 2025 BMW M2", grand_prize: "2025 BMW M2", category: "car-draws",
+    ticket_price: 0.99, total_entries: 20000, total_prize_value: 19800,
+    draw_date: "2026-09-01T20:00:00+01:00",
+    image_url: "https://kkuuwksgyypicnblwubs.supabase.co/x.webp",
+    entry_url: "https://x.co.uk/product/a", prize_description: "A description over twenty characters long.",
+  };
+  const fresh4 = { ...base4, description: base4.prize_description };
+
+  // run.mjs patches only `total_prize_value` when that is the sole field in `fields` — the
+  // caller relies on this being exact, so pin it.
+  test("a stale pool is reported as the ONLY changed field", () => {
+    const c = correctionDecision({ ...base4, total_prize_value: 17000 }, fresh4, { now: NOW4 });
+    expect(c.correct).toBe(true);
+    expect(c.fields).toEqual(["total_prize_value"]);
+  });
+
+  test("a real price change reports the input field too, so the full patch applies", () => {
+    const c = correctionDecision(base4, { ...fresh4, ticket_price: 1.99 }, { now: NOW4 });
+    expect(c.correct).toBe(true);
+    expect(c.fields).toContain("ticket_price");
+    expect(c.fields.some((f) => f !== "total_prize_value")).toBe(true);
+  });
+
+  test("a missing stored pool is not invented as drift", () => {
+    const c = correctionDecision({ ...base4, total_prize_value: null }, fresh4, { now: NOW4 });
+    expect(c.fields).not.toContain("total_prize_value");
+  });
+});

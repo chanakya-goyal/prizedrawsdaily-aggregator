@@ -28,8 +28,11 @@ at all — it's a stock counter — and that row will correctly never publish.
 
 Publishing is **opt-in**: only `AUTO_PUBLISH=true` acts on the verdicts, and the daily Action
 is the only place that sets it — every other invocation (local shell, cowork routine, a one-off
-`ONLY=…` run) computes and reports the same verdicts but writes nothing live. Dropping that one
-env var from the workflow restores fully human-gated publishing with no code change;
+`ONLY=…` run) computes and reports the same verdicts but **publishes** nothing. Note that is
+specifically about `draft → active`: such a run still inserts new drafts, refreshes existing
+ones, corrects live rows and expires finished comps. **`DRY_RUN=true` is the only mode that
+writes nothing at all.** Dropping `AUTO_PUBLISH` from the workflow restores fully human-gated
+publishing with no code change;
 `AUTO_PUBLISH_MAX` bounds how many rows a single run can make live.
 
 ## How extraction works (no LLM)

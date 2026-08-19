@@ -40,6 +40,13 @@ const AUTO_PUBLISH = process.env.AUTO_PUBLISH === "true";
 // Ceiling on how many rows one run may publish. A scoring mistake is then bounded to this
 // many rows for at most a day, rather than the whole backlog at once.
 const AUTO_PUBLISH_MAX = Number(process.env.AUTO_PUBLISH_MAX || 200);
+// Correcting a LIVE row is a different risk to publishing a draft: it is a single-observation
+// write onto something the public is already seeing, with no agreement test available. Quality
+// is guarded per-row by correctionDecision, but quantity needs its own ceiling — a parser
+// regression that passes fieldFlags could otherwise rewrite the whole live catalogue in one
+// run. CORRECT_LIVE=false stops corrections entirely without touching publishing.
+const CORRECT_LIVE = process.env.CORRECT_LIVE !== "false";
+const CORRECT_MAX = Number(process.env.CORRECT_MAX || 100);
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
 const METHODS = process.env.METHODS ? new Set(process.env.METHODS.split(",").map((s) => s.trim())) : null;
 const READ_KEY = SERVICE_KEY || ANON_KEY;
@@ -270,6 +277,7 @@ for (const op of operators) {
       // correctionDecision() holds it to the deterministic half of the publish bar: a flagged
       // read never overwrites values the site is already showing (lib/verify.mjs).
       if (ex.status === "active") {
+        if (!CORRECT_LIVE) { skipped++; continue; }
         const c = correctionDecision(ex, d, { now });
         if (!c.correct) {
           skipped++;
@@ -278,12 +286,28 @@ for (const op of operators) {
           if (c.flags.length && c.fields.length) console.log(`  🚫 ${d.title.slice(0, 40)} — live row left alone: ${c.reason.slice(0, 90)}`);
           continue;
         }
+        if (correctedLive >= CORRECT_MAX) { skipped++; console.log(`  ⏸ correction cap ${CORRECT_MAX} reached — ${d.title.slice(0, 40)} left for the next run`); continue; }
         byUrl.delete(d.entry_url);
-        toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: false, row: {
-          category_id: catMap[d.category] || null, title: d.title, grand_prize: d.grand_prize,
-          image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
-          total_prize_value: tpv, draw_date: d.draw_date,
-        } });
+        // Patch only what actually moved. A pool-only drift is arithmetic on values we already
+        // agree with, so rewriting title/category/date as well would be unforced risk on a row
+        // the public can see.
+        const row = { total_prize_value: tpv };
+        if (c.fields.some((f) => f !== "total_prize_value")) {
+          Object.assign(row, {
+            title: d.title, grand_prize: d.grand_prize,
+            ticket_price: d.ticket_price, total_entries: d.total_entries, draw_date: d.draw_date,
+          });
+          // Only ever move a live row to a category we actually resolved. `catMap[...] || null`
+          // would blank the category whenever the fresh read had none, dropping the draw out of
+          // its category page as a side effect of a price correction.
+          if (catMap[d.category]) row.category_id = catMap[d.category];
+        }
+        // image_url is deliberately NOT patched. It isn't one of the compared fields, so it is
+        // never the reason we are here, and the stored value is a proven-reachable URL on our
+        // own storage. Overwriting it with the operator's origin would trade that for a
+        // third-party hotlink — and the flush-time image proof only runs on publish candidates,
+        // so nothing downstream would catch it. Image repair belongs to backfill-images.mjs.
+        toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: false, row });
         correctedLive++;
         console.log(`  🔄 ${d.title.slice(0, 40)} — live row corrected: ${c.fields.join(", ")}`);
         continue;

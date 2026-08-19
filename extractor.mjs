@@ -125,6 +125,17 @@ export async function renderOperator(ctx, op, perOp = 6) {
   return draws.filter(Boolean);
 }
 
+// A per-run cap must bound how many NEW competitions we take, never whether we re-read one we
+// have already published: a row we cannot re-read cannot be corrected or expired, and it was
+// exactly this that left 18 golf-star rows on a NULL ticket cap and 33 gaming-giveaways rows on
+// a stale prize pool with nothing able to reach them. So: every already-known item survives the
+// cap, and the remaining budget goes to new ones.
+export function partitionKnownFirst(items, urlOf, knownUrls, cap) {
+  const known = [], fresh = [];
+  for (const it of items) (knownUrls.has(permalinkKey(urlOf(it))) ? known : fresh).push(it);
+  return { products: [...known, ...fresh.slice(0, Math.max(0, cap - known.length))], known, fresh };
+}
+
 // ---- Woo pagination -------------------------------------------------------
 // The Store API caps per_page at 100, so depth needs ?page=N. But paging to the END is not
 // an option: these catalogues are ARCHIVES, not inventories — capital-competitions returns
@@ -189,9 +200,7 @@ export async function wooOperator(op, perOp = 6, { knownUrls = new Set() } = {})
   // price x entries, with nothing able to reach them. A row we already have on the site must be
   // re-read every run so it can be corrected or expired — the cap exists to stop one operator
   // flooding the listings, not to blind us to what we've already published.
-  const known = collected.filter((p) => knownUrls.has(permalinkKey(p.permalink)));
-  const fresh = collected.filter((p) => !knownUrls.has(permalinkKey(p.permalink)));
-  const products = [...known, ...fresh.slice(0, Math.max(0, target - known.length))];
+  const { products, known } = partitionKnownFirst(collected, (p) => p.permalink, knownUrls, target);
   if (!products.length) { console.log(`  woo API returned no purchasable products`); return []; }
   if (collected.length > products.length) {
     console.log(`  ${products.length} of ${collected.length} live (maxLive ${target}; ${known.length} already published, always re-checked)`);
@@ -228,8 +237,15 @@ export async function wooOperator(op, perOp = 6, { knownUrls = new Set() } = {})
   return kept.map((x) => x.draw);
 }
 
+export const SHOPIFY_FEED_LIMIT = 250; // products.json maximum
+
 export async function shopifyOperator(op, perOp = 6, { knownUrls = new Set() } = {}) {
-  const r = await fetchHtml(`${op.base}/products.json?limit=${perOp + 4}`, op);
+  // Fetch the FULL feed, not `perOp + 4`. The known/fresh partition below can only re-check a
+  // published row if that row is in the response at all, so a feed bounded by the per-run cap
+  // made the partition inert for any operator with more live products than the cap — exactly
+  // the operators the partition exists for. The feed is one cheap JSON request either way;
+  // `perOp` still bounds how many NEW products we take.
+  const r = await fetchHtml(`${op.base}/products.json?limit=${SHOPIFY_FEED_LIMIT}`, op);
   if (!r.ok) { console.log(`  shopify API ${r.status} for ${op.base}`); return []; }
   let body = null; try { body = JSON.parse(r.text); } catch { /* non-JSON → no products */ }
   // Shopify has no is_purchasable equivalent — an available variant is the signal, and until
@@ -239,10 +255,8 @@ export async function shopifyOperator(op, perOp = 6, { knownUrls = new Set() } =
   const all = Array.isArray(body?.products) ? body.products : [];
   const live = all.filter(hasAvailableVariant);
   // Same rule as woo: the cap bounds new ingestion, never the re-check of a published row.
-  const urlOf = (p) => permalinkKey(`${op.base.replace(/\/+$/, "")}/products/${p.handle}`);
-  const knownP = live.filter((p) => knownUrls.has(urlOf(p)));
-  const freshP = live.filter((p) => !knownUrls.has(urlOf(p)));
-  const products = [...knownP, ...freshP.slice(0, Math.max(0, perOp - knownP.length))];
+  const urlOf = (p) => `${op.base.replace(/\/+$/, "")}/products/${p.handle}`;
+  const { products } = partitionKnownFirst(live, urlOf, knownUrls, perOp);
   if (!products.length) { console.log(`  shopify API returned no available products (of ${all.length})`); return []; }
   if (all.length !== products.length) console.log(`  shopify: ${products.length} of ${live.length} available (${all.length} listed)`);
   const draws = await pMap(products, FETCH_CONCURRENCY, async (p) => {
