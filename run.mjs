@@ -117,7 +117,7 @@ const toInsert = [];
 const toUpdate = [];
 const counts = [];
 const verdicts = [];
-let pages = 0, skipped = 0, autoPublished = 0, relisted = 0;
+let pages = 0, skipped = 0, autoPublished = 0, relisted = 0, correctedLive = 0;
 
 // Incremental flush: re-host + write pending rows every few operators so a job-timeout
 // kill loses only the tail, never the sweep (the 2026-08-14 90-min cancel lost a full
@@ -251,6 +251,26 @@ for (const op of operators) {
         console.log(`  ↩️ ${d.title.slice(0, 44)} — relisted for ${String(d.draw_date).slice(0, 10)}, back as draft`);
         continue;
       }
+      // A LIVE row used to be frozen the moment it was published — never re-read, never
+      // corrected. That was tolerable while publishing was a human decision on a small
+      // queue; it is not now that rows publish automatically, because an operator dropping
+      // a ticket price or moving a draw date would leave the wrong number on the public site
+      // indefinitely. Correct the FIELDS in place and leave `status` alone: a data change is
+      // not a reason to yank a live draw off the site, and a comp that has actually finished
+      // is ended-sweep's job.
+      if (ex.status === "active") {
+        const v = verifyAgainstStored(ex, d, { now, imageOk: true });
+        if (!v.hasDrift) { skipped++; continue; }
+        byUrl.delete(d.entry_url);
+        toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: false, row: {
+          category_id: catMap[d.category] || null, title: d.title, grand_prize: d.grand_prize,
+          image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
+          total_prize_value: tpv, draw_date: d.draw_date,
+        } });
+        correctedLive++;
+        console.log(`  🔄 ${d.title.slice(0, 40)} — live row corrected: ${Object.keys(v.drift).join(", ")}`);
+        continue;
+      }
       if (ex.status !== "draft") { skipped++; continue; }
       byUrl.delete(d.entry_url);
       // This is the SECOND independent observation of a row we already hold. If it agrees
@@ -295,7 +315,7 @@ for (const op of operators) {
 if (browser) await browser.close();
 await flush();
 
-console.log(`\n\n==== ${totalNew} new, ${totalRefreshed} refreshed${relisted ? `, ${relisted} relisted` : ""} (${pages} pages read, ${skipped} skipped) ====`);
+console.log(`\n\n==== ${totalNew} new, ${totalRefreshed} refreshed${relisted ? `, ${relisted} relisted` : ""}${correctedLive ? `, ${correctedLive} live rows corrected` : ""} (${pages} pages read, ${skipped} skipped) ====`);
 if (DRY_RUN) {
   console.log("(dry run — nothing written)");
 } else {
