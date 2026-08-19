@@ -68,3 +68,43 @@ describe("evaluateTripwire — targets and watch signals (green)", () => {
     expect(evaluateTripwire({ ...ok, expiredDrafts: 0 }).warnings).toEqual([]);
   });
 });
+
+describe("evaluateTripwire — per-category and per-operator signals", () => {
+  // A total-inventory check cannot see cars collapsing while cash grows: the site sat at
+  // 5 live car draws against 86 cash-prizes and the aggregate looked healthy throughout.
+  test("a category under its floor warns without tripping", () => {
+    const r = evaluateTripwire({ ...ok, byCategory: { "car-draws": 5, "cash-prizes": 86 }, categoryFloors: { "car-draws": 10 } });
+    expect(r.tripped).toBe(false);
+    expect(r.warnings.join(" ")).toContain("5 live car-draws");
+  });
+  test("a category at or above its floor is quiet", () => {
+    const r = evaluateTripwire({ ...ok, byCategory: { "car-draws": 40 }, categoryFloors: { "car-draws": 10 } });
+    expect(r.warnings.join(" ")).not.toContain("car-draws");
+  });
+  test("a category missing entirely counts as zero", () => {
+    const r = evaluateTripwire({ ...ok, byCategory: {}, categoryFloors: { "house-draws": 2 } });
+    expect(r.warnings.join(" ")).toContain("only 0 live house-draws");
+  });
+
+  // "Silent operator" was only ever a log line, so operators stayed dark for months. The
+  // actionable signal is inventory-but-no-new-rows: the parser broke under us.
+  test("an operator with inventory but no new rows warns by name", () => {
+    const r = evaluateTripwire({ ...ok, stalledOperators: [{ slug: "seven-days-perf", live: 12, daysQuiet: 5 }] });
+    expect(r.tripped).toBe(false);
+    expect(r.warnings.join(" ")).toContain("seven-days-perf");
+    expect(r.warnings.join(" ")).toContain("12 live");
+  });
+  test("no stalled operators produces no warnings", () => {
+    expect(evaluateTripwire({ ...ok, stalledOperators: [] }).warnings).toEqual([]);
+  });
+  test("these signals never turn the run red on their own", () => {
+    const r = evaluateTripwire({
+      ...ok,
+      byCategory: { "car-draws": 0 }, categoryFloors: { "car-draws": 10 },
+      stalledOperators: [{ slug: "x", live: 9, daysQuiet: 5 }],
+      expiredDrafts: 40,
+    });
+    expect(r.tripped).toBe(false);
+    expect(r.warnings.length).toBe(3);
+  });
+});
