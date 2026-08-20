@@ -109,6 +109,39 @@ async function originImage(entryUrl) {
   return img ? { img, why: null } : { img: null, why: "no og:image" };
 }
 
+// Woo keeps the image on the product RECORD long after a comp closes, and the
+// Store API can be queried by slug — which returns sold-out and ended products
+// that the listing feed (wooOperator) no longer includes. This is the only
+// source that reaches an ended woo draw, and it recovers ~37% of them.
+// Three route shapes: some hosts 500/404 the pretty /wp-json/ path but still
+// answer the ?rest_route= query form (twd-competitions, red-hot-raffles).
+async function wooProductImage(entryUrl) {
+  let base, pslug;
+  try {
+    const u = new URL(entryUrl);
+    base = u.origin;
+    pslug = u.pathname.replace(/\/+$/, "").split("/").pop();
+  } catch { return null; }
+  if (!base || !pslug) return null;
+
+  const routes = [
+    `${base}/wp-json/wc/store/v1/products?slug=${encodeURIComponent(pslug)}`,
+    `${base}/wp-json/wc/store/products?slug=${encodeURIComponent(pslug)}`,
+    `${base}/?rest_route=/wc/store/v1/products&slug=${encodeURIComponent(pslug)}`,
+  ];
+  for (const url of routes) {
+    try {
+      const r = await fetch(url, { headers: { "user-agent": UA, accept: "application/json" }, signal: AbortSignal.timeout(20000) });
+      if (!r.ok) continue;
+      const j = await r.json();
+      const p = Array.isArray(j) ? j[0] : j;
+      const src = p?.images?.[0]?.src || p?.image?.src || null;
+      if (src && /^https?:/i.test(src)) return src;
+    } catch { /* try the next route shape */ }
+  }
+  return null;
+}
+
 // Last resort for ended draws: the operator has taken the product page down (or
 // walls it), but the Internet Archive may hold a snapshot from when the draw was
 // live. We read og:image out of the snapshot and then re-host from whatever URL
@@ -182,6 +215,11 @@ async function repair(d) {
   let img = API_IMAGES.get(normUrl(d.entry_url)) || null;
   let why = null;
   if (!img) ({ img, why } = await originImage(d.entry_url));
+  // Woo's per-slug product record — reaches ENDED draws the listing feed drops
+  if (!img) {
+    const w = await wooProductImage(d.entry_url);
+    if (w) { img = w; why = null; }
+  }
   // then the archive, for pages the operator has removed or walls off
   if (!img && WAYBACK) {
     const w = await waybackImage(d.entry_url);
