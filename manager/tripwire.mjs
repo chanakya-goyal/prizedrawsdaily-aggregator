@@ -14,7 +14,7 @@
 // every single day (measured 24-136 new rows/day across Aug 2026), so a day with ZERO new
 // rows means the scrape ran but produced nothing — the exact shape of the Aug outage, and
 // invisible to a total-inventory check because auto-expire drains inventory only slowly.
-const SB = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
+const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 export function evaluateTripwire({
@@ -28,6 +28,10 @@ export function evaluateTripwire({
   byCategory = null,     // { "car-draws": 12, … } live counts
   categoryFloors = null, // { "car-draws": 10, … }
   stalledOperators = null, // [{ slug, live, daysQuiet }] — has inventory, produces nothing
+  storageBytes = null,     // total bytes across all buckets (public.storage_usage RPC)
+  storageQuotaBytes = 1073741824, // free plan = 1 GB
+  storageWarnPct = 70,
+  storageRedPct = 90,
 }) {
   const reasons = [];   // → exit 1, opens/comments the tripwire issue
   const warnings = [];  // → reported in tripwire.md, run stays green
@@ -64,6 +68,31 @@ export function evaluateTripwire({
     warnings.push(`${op.slug} has ${op.live} live draw(s) but has added nothing in ${op.daysQuiet}d — parser may have broken`);
   }
 
+  // Storage is the one quota that takes the WHOLE PROJECT down, not just the scrape:
+  // on 2026-08-19 the org was restricted with exceed_storage_size_quota and every
+  // service — REST included — returned HTTP 402, so the site served empty pages.
+  // Two properties make it uniquely unforgiving and justify going red well before 100%:
+  //   1. Supabase bills the AVERAGE over the billing period, so a late fix cannot
+  //      rescue the current cycle — the 2026-08-19 compression pass dropped live usage
+  //      to 0.5 GB hours before the restriction fired anyway.
+  //   2. Reducing usage does not lift a restriction. Only a plan upgrade or the next
+  //      cycle's refill does. Overshooting costs weeks, not hours.
+  if (storageBytes != null && storageQuotaBytes > 0) {
+    const pct = (storageBytes / storageQuotaBytes) * 100;
+    const gb = (b) => (b / 1073741824).toFixed(2);
+    if (pct >= storageRedPct) {
+      reasons.push(
+        `storage at ${gb(storageBytes)} GB of ${gb(storageQuotaBytes)} GB (${pct.toFixed(0)}%) — ` +
+        `past the ${storageRedPct}% red line; at 100% every service 402s and the site goes down`
+      );
+    } else if (pct >= storageWarnPct) {
+      warnings.push(
+        `storage at ${gb(storageBytes)} GB of ${gb(storageQuotaBytes)} GB (${pct.toFixed(0)}%) — ` +
+        `over the ${storageWarnPct}% warn line; act this billing cycle, a late fix cannot lower the period average`
+      );
+    }
+  }
+
   return { tripped: reasons.length > 0, reasons, warnings };
 }
 
@@ -91,6 +120,25 @@ async function rows(query) {
 
 const tally = (list, key) => list.reduce((acc, r) => { const k = key(r); if (k) acc[k] = (acc[k] || 0) + 1; return acc; }, {});
 
+// Total bytes across all buckets, via the public.storage_usage() RPC.
+// storage.objects isn't exposed through PostgREST, and walking the Storage API
+// costs one call per operator folder — this is a single query. Returns null on
+// any failure so a missing signal never reds the run by itself.
+async function storageBytes() {
+  try {
+    const r = await fetch(`${SB}/rest/v1/rpc/storage_usage`, {
+      method: "POST",
+      headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
+      body: "{}",
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (!Array.isArray(j)) return null;
+    return j.reduce((sum, b) => sum + Number(b.bytes || 0), 0);
+  } catch { return null; }
+}
+
 if (import.meta.path === Bun.main) {
   const floor = Number(process.env.TRIPWIRE_FLOOR || 150);
   const target = Number(process.env.TRIPWIRE_TARGET || 350);
@@ -103,12 +151,13 @@ if (import.meta.path === Bun.main) {
   const quietSince = new Date(Date.now() - QUIET_DAYS * 864e5).toISOString();
   const CATEGORY_FLOORS = JSON.parse(process.env.TRIPWIRE_CATEGORY_FLOORS || '{"car-draws":10}');
 
-  const [activeCount, freshCount, expiredDrafts, liveRows, recentRows] = await Promise.all([
+  const [activeCount, freshCount, expiredDrafts, liveRows, recentRows, storeBytes] = await Promise.all([
     count("draws?select=id&status=eq.active"),
     count(`draws?select=id&created_at=gte.${since}`),
     count(`draws?select=id&status=eq.draft&draw_date=lt.${nowIso}`),
     rows("draws?select=operators(slug),categories(slug)&status=eq.active&limit=2000"),
     rows(`draws?select=operators(slug)&created_at=gte.${quietSince}&limit=2000`),
+    storageBytes(),
   ]);
 
   // An operator we deliberately switched off will always look "stalled" — warning about it
@@ -129,6 +178,10 @@ if (import.meta.path === Bun.main) {
   const { tripped, reasons, warnings } = evaluateTripwire({
     activeCount, floor, scrapeOutcome, freshCount, minFresh, target, expiredDrafts,
     byCategory, categoryFloors: CATEGORY_FLOORS, stalledOperators,
+    storageBytes: storeBytes,
+    storageQuotaBytes: Number(process.env.STORAGE_QUOTA_BYTES || 1073741824),
+    storageWarnPct: Number(process.env.STORAGE_WARN_PCT || 70),
+    storageRedPct: Number(process.env.STORAGE_RED_PCT || 90),
   });
 
   const body = [

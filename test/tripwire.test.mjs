@@ -108,3 +108,50 @@ describe("evaluateTripwire — per-category and per-operator signals", () => {
     expect(r.warnings.length).toBe(3);
   });
 });
+
+// Storage is the quota that took the whole project down on 2026-08-19 (402 on every
+// service, site served empty pages). It reds EARLY and deliberately: Supabase bills
+// the period average, and reducing usage does not lift a restriction — so overshooting
+// costs weeks. These tests pin the thresholds and the fail-open behaviour.
+describe("evaluateTripwire — storage budget", () => {
+  const GB = 1073741824;
+
+  test("comfortable usage is silent", () => {
+    const r = evaluateTripwire({ ...ok, storageBytes: 0.32 * GB });
+    expect(r.tripped).toBe(false);
+    expect(r.warnings.join(" ")).not.toContain("storage");
+  });
+
+  test("crossing the warn line warns but stays green", () => {
+    const r = evaluateTripwire({ ...ok, storageBytes: 0.75 * GB });
+    expect(r.tripped).toBe(false);
+    expect(r.warnings.join(" ")).toContain("storage at 0.75 GB");
+    expect(r.warnings.join(" ")).toContain("75%");
+  });
+
+  test("crossing the red line trips the run", () => {
+    const r = evaluateTripwire({ ...ok, storageBytes: 0.93 * GB });
+    expect(r.tripped).toBe(true);
+    expect(r.reasons.join(" ")).toContain("93%");
+    expect(r.reasons.join(" ")).toContain("site goes down");
+  });
+
+  // A telemetry call that fails must never be the thing that reds the daily run.
+  test("an unreadable storage figure is ignored entirely", () => {
+    const r = evaluateTripwire({ ...ok, storageBytes: null });
+    expect(r.tripped).toBe(false);
+    expect(r.warnings).toEqual([]);
+  });
+
+  test("thresholds are configurable", () => {
+    const r = evaluateTripwire({ ...ok, storageBytes: 0.5 * GB, storageRedPct: 40 });
+    expect(r.tripped).toBe(true);
+  });
+
+  // Guards the boundary: exactly at the line must fire, not sit one byte under it.
+  test("exactly on the warn line fires", () => {
+    const r = evaluateTripwire({ ...ok, storageBytes: 0.7 * GB });
+    expect(r.warnings.join(" ")).toContain("storage");
+    expect(r.tripped).toBe(false);
+  });
+});
