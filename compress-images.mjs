@@ -22,7 +22,7 @@
 // Safe to interrupt and re-run: shouldSkip() ignores anything already webp or already small.
 import { fetchWebp, shouldSkip, WEBP_W, WEBP_Q } from "./lib/compress.mjs";
 
-const URL_ = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
+const URL_ = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
 const BUCKET = process.env.BUCKET || "draw-images";

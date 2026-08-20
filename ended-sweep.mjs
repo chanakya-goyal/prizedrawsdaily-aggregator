@@ -9,7 +9,7 @@
 //   DRY_RUN=true (default) → report only.  DRY_RUN=false → set status='ended' on the finished ones.
 import { UA } from "./lib/parse.mjs";
 import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, FINISHED_RE } from "./lib/liveness.mjs";
-const URL = "https://kkuuwksgyypicnblwubs.supabase.co";
+const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
 // Which statuses to scan. Default 'draft' (queue cleanup); the daily cron passes 'active,draft'

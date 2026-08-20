@@ -6,7 +6,7 @@
 //
 //   DRY_RUN=true (default) → preview old→new.   DRY_RUN=false → apply PATCHes.
 // Needs SUPABASE_SERVICE_ROLE_KEY (the anon key cannot see/patch draft rows under RLS).
-const URL = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
+const URL = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
 if (!KEY) { console.error("need SUPABASE_SERVICE_ROLE_KEY (anon key can't read draft rows)"); process.exit(1); }
