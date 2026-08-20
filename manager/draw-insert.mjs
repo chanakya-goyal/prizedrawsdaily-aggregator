@@ -11,7 +11,7 @@ import { schemaGate } from "../gate.mjs";
 import { templateDescription } from "../lib/describe.mjs";
 import { rehostImage } from "../lib/rehost.mjs";
 
-const SB = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
+const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const STATUS = process.env.PUBLISH_STATUS || "draft";
 const WINDOW_DAYS = Number(process.env.AI_WINDOW_DAYS || 90); // premium draws have longer runways

@@ -1,7 +1,7 @@
 // Apply the grand-prize vision-QA results: PATCH grand_prize + category, and mark ended draws.
 // Conservative: low-confidence results are NOT auto-applied (listed for manual review instead).
 //   RESULTS=/path/to/results.json  DRY_RUN=true|false
-const URL = "https://kkuuwksgyypicnblwubs.supabase.co";
+const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
 const FILE = process.env.RESULTS;

@@ -15,7 +15,7 @@ import { renderPage, makeContext, pickDrawLinks, DRAW_RE, BAD_LINK, CATEGORY_TAI
 import { fetchHtml } from "./lib/fetcher.mjs";
 import { load, parseJsonLd, findProductLd } from "./lib/parse.mjs";
 
-const SB = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
+const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const ANON = process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
 const FLARESOLVERR_URL = process.env.FLARESOLVERR_URL || "";
 

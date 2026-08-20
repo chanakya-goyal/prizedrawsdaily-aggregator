@@ -5,7 +5,7 @@
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (required — write).
 import { rehostImage } from "../lib/rehost.mjs";
 
-const SB = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
+const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const [, , id, json] = process.argv;
 if (!KEY) { console.error("need SUPABASE_SERVICE_ROLE_KEY"); process.exit(1); }

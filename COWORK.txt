@@ -47,7 +47,7 @@ HOW TO SET UP THE COWORK ROUTINE (one time)
  1. Create a scheduled cowork routine pointing at the pdd-aggregator repo.
  2. In its setup: run `bun install`.
  3. Give it environment variables:
-        SUPABASE_URL                = https://kkuuwksgyypicnblwubs.supabase.co
+        SUPABASE_URL                = https://ilnegxrsalmzpljotgpe.supabase.co
         SUPABASE_SERVICE_ROLE_KEY   = <your Supabase service role key>
  4. Set its network access to FULL (so it can reach every operator site).
  5. Schedule: once daily, a bit AFTER the GitHub Action (e.g. 09:00 UK).

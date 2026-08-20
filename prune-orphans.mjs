@@ -6,7 +6,7 @@
 // succeeded but whose cleanup DELETE failed, images for draws that were deleted outright,
 // and objects left behind when a draw's `image_url` was later repointed somewhere else.
 // On 20 Aug 2026 that accumulation cost us the whole project: Supabase restricted
-// kkuuwksgyypicnblwubs with `exceed_storage_size_quota` and every API call — reads, writes,
+// ilnegxrsalmzpljotgpe with `exceed_storage_size_quota` and every API call — reads, writes,
 // even DELETEs — began returning 402. The site served an empty catalogue and broken images.
 //
 // WHAT THIS DELIBERATELY DOES NOT DO: it never deletes an image that any row still
@@ -20,7 +20,7 @@
 // Run it with DRY_RUN=true first, every time. Read the number. Then decide.
 import { listAllObjects, referencedPaths, classifyOrphans, PUBLIC_PREFIX } from "./lib/storage.mjs";
 
-const URL_ = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
+const URL_ = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
 const BUCKET = process.env.BUCKET || "draw-images";

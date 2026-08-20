@@ -3,7 +3,7 @@ import { renderSlides } from "./render.mjs";
 import { makeCutouts } from "./freehero.mjs";
 import { mkdir } from "node:fs/promises";
 
-const SUPABASE_URL = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
 
 const priceLabel = (p) => { const n = Number(p); if (!isFinite(n) || n <= 0) return null; return n < 1 ? `${Math.round(n * 100)}p` : (n % 1 === 0 ? `£${n}` : `£${n.toFixed(2)}`); };

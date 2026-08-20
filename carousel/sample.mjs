@@ -5,7 +5,7 @@ import { genHero } from "./aihero.mjs";
 import { mkdir } from "node:fs/promises";
 
 // Mirror run.mjs: hardcoded fallbacks for local reads (publishable/anon key is public).
-const SUPABASE_URL = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
 
 // ---- formatting helpers ----

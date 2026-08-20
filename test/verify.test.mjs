@@ -12,7 +12,7 @@ const base = {
   ticket_price: 0.99,
   total_entries: 20000,
   draw_date: SOON,
-  image_url: "https://kkuuwksgyypicnblwubs.supabase.co/storage/v1/object/public/draw-images/x/y.webp",
+  image_url: "https://ilnegxrsalmzpljotgpe.supabase.co/storage/v1/object/public/draw-images/x/y.webp",
   entry_url: "https://7daysperformance.co.uk/product/win-bmw-m2-210826",
   description: "A well formed description that is comfortably over twenty characters long.",
 };
@@ -255,7 +255,7 @@ describe("correctionDecision — a stale derived pool must self-heal", () => {
     status: "active", title: "£250 Amazon Voucher + Instant Wins #41", grand_prize: "£250 Amazon Voucher",
     category: "cash-prizes", ticket_price: 0.99, total_entries: 3400, total_prize_value: 3229.38,
     draw_date: "2026-09-01T20:00:00+01:00",
-    image_url: "https://kkuuwksgyypicnblwubs.supabase.co/x.webp",
+    image_url: "https://ilnegxrsalmzpljotgpe.supabase.co/x.webp",
     entry_url: "https://x.co.uk/product/a", prize_description: "A description over twenty characters long.",
   };
   const fresh = { ...live, total_prize_value: undefined, description: live.prize_description };
@@ -289,7 +289,7 @@ describe("correctionDecision — a pool-only drift must not rewrite the whole ro
     status: "active", title: "Win This 2025 BMW M2", grand_prize: "2025 BMW M2", category: "car-draws",
     ticket_price: 0.99, total_entries: 20000, total_prize_value: 19800,
     draw_date: "2026-09-01T20:00:00+01:00",
-    image_url: "https://kkuuwksgyypicnblwubs.supabase.co/x.webp",
+    image_url: "https://ilnegxrsalmzpljotgpe.supabase.co/x.webp",
     entry_url: "https://x.co.uk/product/a", prize_description: "A description over twenty characters long.",
   };
   const fresh4 = { ...base4, description: base4.prize_description };

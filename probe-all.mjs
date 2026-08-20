@@ -3,7 +3,7 @@
 // Uses NO LLM — pure fetch + headless render — so it costs nothing against the AI quota.
 import { chromium } from "playwright";
 
-const SB = "https://kkuuwksgyypicnblwubs.supabase.co";
+const SB = "https://ilnegxrsalmzpljotgpe.supabase.co";
 const ANON = "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
 

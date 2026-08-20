@@ -10,7 +10,7 @@
 //
 //   DRY_RUN=true (default) report old→new;  DRY_RUN=false apply PATCHes.  ONLY=slug to scope.
 import { UA } from "./lib/parse.mjs";
-const URL = "https://kkuuwksgyypicnblwubs.supabase.co";
+const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;

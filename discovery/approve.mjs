@@ -3,7 +3,7 @@
 //   DRY_RUN=true bun discovery/approve.mjs <slug> → prints both payloads, writes nothing
 // The DB row lands with review_status: null so the site renders the operator as UNVERIFIED —
 // the editorial review (cowork) is what earns the "verified" badge, never this script.
-const SB = process.env.SUPABASE_URL || "https://kkuuwksgyypicnblwubs.supabase.co";
+const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN === "true";
 

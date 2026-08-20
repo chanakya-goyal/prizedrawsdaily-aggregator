@@ -14,7 +14,7 @@ const posts = await tableExists("carousel_posts");
 const metrics = await tableExists("carousel_metrics");
 if (posts && metrics) { console.log("✓ carousel_posts + carousel_metrics exist. State layer ready."); process.exit(0); }
 console.log("✗ Missing state tables. ONE-TIME setup (~30s):");
-console.log("  1. Open https://supabase.com/dashboard/project/kkuuwksgyypicnblwubs/sql/new");
+console.log("  1. Open https://supabase.com/dashboard/project/ilnegxrsalmzpljotgpe/sql/new");
 console.log("  2. Paste and run the SQL below (also in carousel/state-schema.sql):\n");
 console.log(await Bun.file(new URL("./state-schema.sql", import.meta.url)).text());
 process.exit(1);
