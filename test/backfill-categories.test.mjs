@@ -26,8 +26,12 @@ describe("decideRuleFix", () => {
     const d = mk({ title: "Mando's Jungle Leaderboard", status: "ended" });
     expect(decideRuleFix(d, ops, cats)).toEqual({ action: "skip" });
   });
-  test("claude/manual source is never touched", () => {
+  test("claude source is never touched", () => {
     const d = mk({ title: "Win A 5g Gold Bar for Just 3p!", category_source: "claude" });
+    expect(decideRuleFix(d, ops, cats)).toEqual({ action: "skip" });
+  });
+  test("manual source is never touched", () => {
+    const d = mk({ title: "Win A 5g Gold Bar for Just 3p!", category_source: "manual" });
     expect(decideRuleFix(d, ops, cats)).toEqual({ action: "skip" });
   });
 });

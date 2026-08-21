@@ -2,7 +2,7 @@
 //   MODE=rules  [DRY_RUN=true|false]  — apply rule/pin verdicts + stamp category_source
 //   MODE=export                        — write backfill-unknowns.json (active rows Claude must judge)
 //   MODE=apply DECISIONS=<file> [DRY_RUN] — apply {id → category} judgments as category_source='claude'
-// Never touches status. Every write is logged old→new to backfill-log-<ts>.json.
+// Never touches status. Every category CHANGE is logged old→new to backfill-log-<ts>.json (stamps have no delta to revert).
 import { readFileSync, writeFileSync } from "fs";
 import { resolveCategory } from "./lib/parse.mjs";
 
@@ -42,6 +42,11 @@ async function patch(id, body) {
 
 if (import.meta.main) {
   const MODE = process.env.MODE || "rules";
+  const VALID_MODES = ["rules", "export", "apply"];
+  if (!VALID_MODES.includes(MODE)) {
+    console.error(`✗ unknown MODE '${MODE}' — expected one of: ${VALID_MODES.join(", ")}`);
+    process.exit(1);
+  }
   const opsRaw = JSON.parse(readFileSync(new URL("./operators.json", import.meta.url), "utf8"));
   const opsBySlug = Object.fromEntries((Array.isArray(opsRaw) ? opsRaw : opsRaw.operators).map((o) => [o.slug, o]));
   const cats = await fetchAll("categories?select=id,slug");
@@ -56,8 +61,8 @@ if (import.meta.main) {
     for (const d of draws) {
       const v = decideRuleFix(d, opsBySlug, catBySlug);
       if (v.action === "fix") {
-        log.push({ id: d.id, title: d.title, from: d.category_slug, to: v.category, source: v.source });
-        if (await patch(d.id, { category_id: catBySlug[v.category], category_source: v.source })) fixed++;
+        const ok = await patch(d.id, { category_id: catBySlug[v.category], category_source: v.source });
+        if (ok) { fixed++; log.push({ id: d.id, title: d.title, from: d.category_slug, to: v.category, source: v.source }); }
       } else if (v.action === "stamp") {
         if (await patch(d.id, { category_source: v.source })) stamped++;
       } else if (v.action === "export") exported++;
@@ -75,14 +80,20 @@ if (import.meta.main) {
 
   if (MODE === "apply") {
     const dec = JSON.parse(readFileSync(process.env.DECISIONS || "backfill-decisions.json", "utf8"));
-    let applied = 0, invalid = 0;
+    let applied = 0, invalid = 0, stale = 0;
     for (const { id, category } of dec) {
       if (!catBySlug[category]) { console.error(`  ✗ ${id}: '${category}' is not a slug — refused`); invalid++; continue; }
       const d = draws.find((x) => x.id === id);
-      log.push({ id, title: d?.title, from: d?.category_slug, to: category, source: "claude" });
-      if (await patch(id, { category_id: catBySlug[category], category_source: "claude" })) applied++;
+      // Guard against a stale backfill-decisions.json: rules mode may have re-run, or a human
+      // may have re-categorised, in the gap between export and apply. Re-validate the row's
+      // CURRENT state (not its state at export time) before writing — never trust the file alone.
+      if (!d) { console.error(`  ⚠ ${id}: not found in current row set — stale decision, skipped`); stale++; continue; }
+      if (["claude", "manual"].includes(d.category_source)) { console.error(`  ⚠ ${id}: already ${d.category_source}-stamped — stale decision, skipped`); stale++; continue; }
+      if (d.status === "ended") { console.error(`  ⚠ ${id}: row has ended — stale decision, skipped`); stale++; continue; }
+      const ok = await patch(id, { category_id: catBySlug[category], category_source: "claude" });
+      if (ok) { applied++; log.push({ id, title: d.title, from: d.category_slug, to: category, source: "claude" }); }
     }
-    console.log(`applied=${applied} invalid=${invalid}`);
+    console.log(`applied=${applied} invalid=${invalid} stale=${stale}`);
   }
 
   if (log.length && !DRY) {
