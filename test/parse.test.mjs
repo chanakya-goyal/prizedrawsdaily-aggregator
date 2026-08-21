@@ -31,6 +31,23 @@ describe("extractEntries — veto-first, conservative", () => {
   for (const [input, expected] of cases) {
     test(`"${input}" → ${expected}`, () => expect(extractEntries(input)).toBe(expected));
   }
+  // Tier 2 slash-form regression: the sold-count side required 2+ digits, so a brand-new
+  // comp scraped in its first hours ("SOLD: 2/1200") parsed null and was dropped by the
+  // required gate — the exact moment a new listing needs to be ingested. Found live on
+  // tartan-competitions-ltd, 2026-08-22.
+  test("single-digit sold count in a slash progress bar still yields the cap", () => {
+    expect(extractEntries("SOLD: 2/1200")).toBe(1200);
+  });
+  test("single-digit sold count, spaced slash form", () => {
+    expect(extractEntries("Sold 7 / 500")).toBe(500);
+  });
+  test("word form with a single-digit sold count still works", () => {
+    expect(extractEntries("sold: 2 of 1200")).toBe(1200);
+  });
+  test("a bare date-like fraction is NOT a cap", () => {
+    expect(extractEntries("Drawn live on 5/2026 — good luck!")).toBe(null);
+  });
+
   test("operator pattern override wins", () => {
     expect(extractEntries("there are 4321 spots in this comp", { entries: "(\\d+) spots" })).toBe(4321);
   });

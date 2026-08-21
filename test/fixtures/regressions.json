@@ -1,20 +1,116 @@
 [
-  { "title": "AUTO-DRAW: WIN AN OGIO FUNDAY CARRY BAG #5", "grand_prize": null, "expected_category": "sports-outdoors", "found": "2026-08-21 live audit: was cash-prizes via fallback" },
-  { "title": "SHOES QUICK DRAW INSTANT WIN COMPETITION! 350 INSTANT WINS OF A PAIR OF GOLF SHOES TO BE WON!", "grand_prize": null, "expected_category": "sports-outdoors", "found": "2026-08-21: 'instant win' read as cash" },
-  { "title": "WIN A WINNER’S CHOICE CUSTOM FIT SET OF WEDGES #93", "grand_prize": null, "expected_category": "sports-outdoors", "found": "2026-08-21 live audit" },
-  { "title": "SATURDAY SALE AUTO-DRAW: WIN A COBRA RAD-S DRIVER! #5", "grand_prize": null, "expected_category": "sports-outdoors", "found": "2026-08-21 live audit" },
-  { "title": "£100 site credit for 1p #77", "grand_prize": null, "expected_category": "cash-prizes", "found": "2026-08-21: fell through to fallback" },
-  { "title": "£75 SITE CREDIT!", "grand_prize": null, "expected_category": "cash-prizes", "found": "2026-08-21 live audit" },
-  { "title": "HOME SWEET INSTANT WINS – £250 MAIN PRIZE", "grand_prize": null, "expected_category": null, "found": "2026-08-21: 'home' false-positived house-draws" },
-  { "title": "Fruit Ninja", "grand_prize": null, "expected_category": null, "found": "2026-08-21: 'ninja' false-positived tech" },
-  { "title": "🥷 Rendalls Ninja Instant Win – Over £4,000 in Cash Prizes!", "grand_prize": null, "expected_category": "cash-prizes", "found": "2026-08-21: cash prizes named; ninja must not force tech" },
-  { "title": "Big BBQ Feast Package from Tunstall Meat company! serves 10!", "grand_prize": null, "expected_category": null, "found": "2026-08-21: food package — Claude territory, must not be cash" },
-  { "title": "Win a Shelby Cobra 427 Replica", "grand_prize": null, "expected_category": "car-draws", "found": "2026-08-21 review round 1: bare 'cobra' scoped to golf lines, AC/Shelby Cobra must stay a car" },
-  { "title": "Win This 4 Seat Rattan Garden Dining Set", "grand_prize": null, "expected_category": "home-garden", "found": "2026-08-21 review round 1: bare 'seat' scoped to SEAT car models, furniture 'seat' must not become a car" },
-  { "title": "Win a Ralph Lauren Polo Shirt Bundle", "grand_prize": null, "expected_category": null, "found": "2026-08-21 review round 1: bare 'polo' scoped to VW Polo models, a Polo shirt must not become a car" },
-  { "title": "SEAT Ibiza FR", "grand_prize": null, "expected_category": "car-draws", "found": "2026-08-21 review round 1: scoped 'seat' regex still catches a real SEAT model" },
-  { "title": "VW Polo GTI", "grand_prize": null, "expected_category": "car-draws", "found": "2026-08-21 review round 1: scoped 'polo' regex still catches a real VW Polo" },
-  { "title": "Win an Apple MacBook Air M3", "grand_prize": null, "expected_category": "tech-giveaways", "found": "2026-08-21 review round 1: MacBook M-chip neutralised before car's bare 'm3' token sees it" },
-  { "title": "BMW M3 Competition", "grand_prize": null, "expected_category": "car-draws", "found": "2026-08-21 review round 1: genuine BMW M3 must still read as a car after the MacBook M-chip neutraliser" },
-  { "title": "Weber Master-Touch BBQ", "grand_prize": null, "expected_category": "home-garden", "found": "2026-08-21 review round 1: unambiguous grill brand recovers coverage lost by dropping bare bbq" }
+ {
+  "title": "AUTO-DRAW: WIN AN OGIO FUNDAY CARRY BAG #5",
+  "grand_prize": null,
+  "expected_category": "sports-outdoors",
+  "found": "2026-08-21 live audit: was cash-prizes via fallback"
+ },
+ {
+  "title": "SHOES QUICK DRAW INSTANT WIN COMPETITION! 350 INSTANT WINS OF A PAIR OF GOLF SHOES TO BE WON!",
+  "grand_prize": null,
+  "expected_category": "sports-outdoors",
+  "found": "2026-08-21: 'instant win' read as cash"
+ },
+ {
+  "title": "WIN A WINNER’S CHOICE CUSTOM FIT SET OF WEDGES #93",
+  "grand_prize": null,
+  "expected_category": "sports-outdoors",
+  "found": "2026-08-21 live audit"
+ },
+ {
+  "title": "SATURDAY SALE AUTO-DRAW: WIN A COBRA RAD-S DRIVER! #5",
+  "grand_prize": null,
+  "expected_category": "sports-outdoors",
+  "found": "2026-08-21 live audit"
+ },
+ {
+  "title": "£100 site credit for 1p #77",
+  "grand_prize": null,
+  "expected_category": "cash-prizes",
+  "found": "2026-08-21: fell through to fallback"
+ },
+ {
+  "title": "£75 SITE CREDIT!",
+  "grand_prize": null,
+  "expected_category": "cash-prizes",
+  "found": "2026-08-21 live audit"
+ },
+ {
+  "title": "HOME SWEET INSTANT WINS – £250 MAIN PRIZE",
+  "grand_prize": null,
+  "expected_category": null,
+  "found": "2026-08-21: 'home' false-positived house-draws"
+ },
+ {
+  "title": "Fruit Ninja",
+  "grand_prize": null,
+  "expected_category": null,
+  "found": "2026-08-21: 'ninja' false-positived tech"
+ },
+ {
+  "title": "🥷 Rendalls Ninja Instant Win – Over £4,000 in Cash Prizes!",
+  "grand_prize": null,
+  "expected_category": "cash-prizes",
+  "found": "2026-08-21: cash prizes named; ninja must not force tech"
+ },
+ {
+  "title": "Big BBQ Feast Package from Tunstall Meat company! serves 10!",
+  "grand_prize": null,
+  "expected_category": null,
+  "found": "2026-08-21: food package — Claude territory, must not be cash"
+ },
+ {
+  "title": "Win a Shelby Cobra 427 Replica",
+  "grand_prize": null,
+  "expected_category": "car-draws",
+  "found": "2026-08-21 review round 1: bare 'cobra' scoped to golf lines, AC/Shelby Cobra must stay a car"
+ },
+ {
+  "title": "Win This 4 Seat Rattan Garden Dining Set",
+  "grand_prize": null,
+  "expected_category": "home-garden",
+  "found": "2026-08-21 review round 1: bare 'seat' scoped to SEAT car models, furniture 'seat' must not become a car"
+ },
+ {
+  "title": "Win a Ralph Lauren Polo Shirt Bundle",
+  "grand_prize": null,
+  "expected_category": null,
+  "found": "2026-08-21 review round 1: bare 'polo' scoped to VW Polo models, a Polo shirt must not become a car"
+ },
+ {
+  "title": "SEAT Ibiza FR",
+  "grand_prize": null,
+  "expected_category": "car-draws",
+  "found": "2026-08-21 review round 1: scoped 'seat' regex still catches a real SEAT model"
+ },
+ {
+  "title": "VW Polo GTI",
+  "grand_prize": null,
+  "expected_category": "car-draws",
+  "found": "2026-08-21 review round 1: scoped 'polo' regex still catches a real VW Polo"
+ },
+ {
+  "title": "Win an Apple MacBook Air M3",
+  "grand_prize": null,
+  "expected_category": "tech-giveaways",
+  "found": "2026-08-21 review round 1: MacBook M-chip neutralised before car's bare 'm3' token sees it"
+ },
+ {
+  "title": "BMW M3 Competition",
+  "grand_prize": null,
+  "expected_category": "car-draws",
+  "found": "2026-08-21 review round 1: genuine BMW M3 must still read as a car after the MacBook M-chip neutraliser"
+ },
+ {
+  "title": "Weber Master-Touch BBQ",
+  "grand_prize": null,
+  "expected_category": "home-garden",
+  "found": "2026-08-21 review round 1: unambiguous grill brand recovers coverage lost by dropping bare bbq"
+ },
+ {
+  "title": "£1500 in the Bank!",
+  "grand_prize": null,
+  "expected_category": "cash-prizes",
+  "found": "2026-08-22 tartan ingest: 'in the bank' is standard UK cash phrasing, was held as no-evidence"
+ }
 ]

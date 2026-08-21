@@ -258,7 +258,11 @@
   "name": "Tartan Competitions Ltd",
   "slug": "tartan-competitions-ltd",
   "base": "https://tartancompetitions.scot",
-  "method": "woo"
+  "method": "woo",
+  "selectors": {
+   "entries": ".progress-sold"
+  },
+  "note": "2026-08-22: selectors.entries scopes the cap to the product's OWN .progress-sold bar (the page also renders a related-comps grid whose bars would otherwise win). The single-digit sold-count bug that dropped brand-new comps is fixed in lib/parse.mjs tier 2, so no patterns override is needed."
  },
  {
   "name": "The Car Competition",
