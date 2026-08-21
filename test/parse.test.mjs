@@ -4,6 +4,7 @@ import {
   extractEntries, extractDate, inferCategory, extractPrice, mapOperatorCategory,
   parseJsonLd, findProductLd, pickTitleImage, load, textOf, fieldsFromHtml, normalizeUkDate,
   isGenericTitle, cleanPrizeLine, extractGrandPrize, extractPrizeSection, categoryEvidence,
+  CATEGORIES,
 } from "../lib/parse.mjs";
 
 describe("extractEntries — veto-first, conservative", () => {
@@ -617,4 +618,19 @@ describe("regression fixtures (auto-appended by audits)", () => {
     test(`[reg] "${r.title}" → ${r.expected_category}`, () =>
       expect(inferCategory({ title: r.title, grand_prize: r.grand_prize })).toBe(r.expected_category));
   }
+});
+
+// ---- Task 7 (2026-08-21): per-operator category pins — highest-precedence signal, so only
+// true single-vertical operators (confirmed by both the live draw evidence AND the name/site)
+// get pinned; see resolveCategory's `op.category` precedence in lib/parse.mjs ----
+
+describe("operators.json category pins", () => {
+  const ops = JSON.parse(readFileSync(new URL("../operators.json", import.meta.url), "utf8"));
+  const list = Array.isArray(ops) ? ops : ops.operators;
+  for (const o of list.filter((o) => o.category)) {
+    test(`${o.slug} pin '${o.category}' is a real slug`, () => expect(CATEGORIES.includes(o.category)).toBe(true));
+  }
+  test("golf-star-competitions is pinned sports-outdoors", () => {
+    expect(list.find((o) => o.slug === "golf-star-competitions")?.category).toBe("sports-outdoors");
+  });
 });
