@@ -54,9 +54,13 @@ describe("category flag — fires on contradiction, never on silence", () => {
   // THE BUG THIS REPLACES: the check demanded that the prize text corroborate its category,
   // and treated the absence of a keyword as proof the category was wrong. 241 of 400 drafts
   // were held that way, 211 of them for prizes our keyword lists simply do not describe.
+  // Task 6 (2026-08-21) gave the shared CAT_RULES a much longer home-garden/sports-outdoors
+  // keyword tail, so "a Dewalt tool kit" and "Trampoline & Enclosure" — the original examples
+  // here — now DO carry keyword evidence (home-garden) and are no longer unclassifiable; swapped
+  // for fresh examples that still match no keyword under the expanded rules.
   test("an unclassifiable prize is NOT flagged — silence is not contradiction", () => {
-    expect(catFlag(draw({ title: "Trampoline & Enclosure", grand_prize: "Trampoline" }))).toEqual([]);
-    expect(catFlag(draw({ title: "Win This Dewalt 2 Piece Brushless Power Tool Kit", grand_prize: "Dewalt kit", category: "tech-giveaways" }))).toEqual([]);
+    expect(catFlag(draw({ title: "The Ultimate Surprise Hamper Bundle", grand_prize: "Surprise Hamper" }))).toEqual([]);
+    expect(catFlag(draw({ title: "Win This Amazing Mystery Bundle #47", grand_prize: "Mystery Bundle", category: "tech-giveaways" }))).toEqual([]);
     expect(catFlag(draw({ title: "The £2 Million Summer Clear-Out #85!", grand_prize: "Summer Clear-Out" }))).toEqual([]);
   });
 
@@ -92,7 +96,28 @@ describe("category flag — fires on contradiction, never on silence", () => {
     }))).toEqual([]);
   });
 
-  test("a draw with no category set is not flagged", () => {
+  // Narrow claim: the CONTRADICTION check needs a category to contradict, so silence on that
+  // side is not a flag. The separate "no category evidence" hold is asserted below.
+  test("a draw with no category set is not flagged as contradicted", () => {
     expect(catFlag(draw({ title: "£500 CASH!", category: null }))).toEqual([]);
+  });
+});
+
+// No-guess publishing (2026-08-21): with the cash fallback deleted, `inferCategory` returns null
+// whenever nothing in the prize text says what the draw is. An uncategorised draw must not reach
+// the site, so it is held as a draft until the cowork Claude routine judges it — but once judged,
+// the very next scrape re-reads the same page, resolves null again (the rules still can't classify
+// it, which is why Claude was needed), and must NOT re-hold the row forever.
+describe("fieldFlags — category policy", () => {
+  const draw = { ticket_price: 1, total_entries: 1000, image_url: "https://x.com/i.jpg", entry_url: "https://x.com/d", description: "A perfectly reasonable description here.", title: "Some Mystery Prize Draw" };
+  test("null category → 'no category evidence' flag (draft-holding)", () => {
+    expect(fieldFlags({ ...draw, category: null })).toContain("no category evidence");
+  });
+  test("stored category neutralises the null flag", () => {
+    expect(fieldFlags({ ...draw, category: null }, { hasStoredCategory: true })).not.toContain("no category evidence");
+  });
+  test("valid category → no category flags", () => {
+    const flags = fieldFlags({ ...draw, category: "sports-outdoors", title: "Win a set of Cobra irons" });
+    expect(flags.filter((f) => /category/.test(f))).toEqual([]);
   });
 });

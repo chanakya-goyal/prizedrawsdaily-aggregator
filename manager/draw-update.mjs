@@ -2,6 +2,9 @@
 // Usage: bun manager/draw-update.mjs <id> '<json>'
 //   <json> = columns to set, e.g. '{"prize_description":"...","status":"active"}'
 //   To change category, pass {"category_id":"<uuid>"} (ids come from drafts-fetch output).
+//   When YOU judged that category rather than a rule deriving it, stamp the provenance too:
+//   {"category_id":"<uuid>","category_source":"claude"} — that is what stops the next scrape
+//   overwriting your judgment with a keyword guess (see run.mjs's category write paths).
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (required — write).
 import { rehostImage } from "../lib/rehost.mjs";
 
@@ -14,9 +17,20 @@ if (!id || !json) { console.error("usage: bun manager/draw-update.mjs <id> '<jso
 let body;
 try { body = JSON.parse(json); } catch (e) { console.error("invalid JSON:", e.message); process.exit(1); }
 
-const ALLOWED = new Set(["prize_description", "status", "category_id", "title", "grand_prize", "image_url", "draw_date", "ticket_price", "total_entries", "total_prize_value", "featured"]);
+const ALLOWED = new Set(["prize_description", "status", "category_id", "category_source", "title", "grand_prize", "image_url", "draw_date", "ticket_price", "total_entries", "total_prize_value", "featured"]);
 const bad = Object.keys(body).filter((k) => !ALLOWED.has(k));
 if (bad.length) { console.error("disallowed fields:", bad.join(", ")); process.exit(1); }
+
+// category_source is provenance, not data, and the value decides whether the daily scrape may
+// ever change this category again: 'rule' = machine-derived and re-checkable, 'claude' = judged
+// from the page, 'manual' = human — the last two are immune to rule verdicts in run.mjs. A typo
+// would therefore either strand a judgment as re-litigable or freeze a machine guess against
+// correction, and the DB CHECK constraint would reject it as an opaque 400. Validate it here.
+const CATEGORY_SOURCES = ["rule", "claude", "manual"];
+if ("category_source" in body && !CATEGORY_SOURCES.includes(body.category_source)) {
+  console.error(`category_source must be one of ${CATEGORY_SOURCES.join(", ")} — got ${JSON.stringify(body.category_source)}`);
+  process.exit(1);
+}
 
 // If a fresh image_url is being set, re-host it onto our own Storage first (same reason as
 // draw-insert: the live site proxies every image through weserv, which some hosts block).

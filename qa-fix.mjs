@@ -6,10 +6,10 @@
 //      → the true total is the page bar "sold/total" where sold + (API remaining) == total.
 //   2. grand_prize = the competition's game/marketing NAME instead of the prize.
 //      → read "£X MAIN PRIZE" / "N x £Y" / "£X end prize" from the product description.
-//   3. wrong category (e.g. "Van Gogh" → car). → fixCategory with the hardened rules below.
+//   3. wrong category (e.g. "Van Gogh" → car). → fixCategory, the canonical lib/parse.mjs rules.
 //
 //   DRY_RUN=true (default) report old→new;  DRY_RUN=false apply PATCHes.  ONLY=slug to scope.
-import { UA } from "./lib/parse.mjs";
+import { UA, categoryEvidence } from "./lib/parse.mjs";
 const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
@@ -23,21 +23,14 @@ const opBy = Object.fromEntries(ops.map((o) => [o.slug, o]));
 const slugFromUrl = (u) => (u || "").replace(/[#?].*$/, "").replace(/\/+$/, "").split("/").pop() || "";
 const clean = (h) => (h || "").replace(/<[^>]+>/g, " ").replace(/&#8211;|&#8217;|&pound;/g, (m) => ({ "&#8211;": "–", "&#8217;": "’", "&pound;": "£" }[m])).replace(/&[a-z]+;/g, " ").replace(/\s+/g, " ").trim();
 
-// ---- category (hardened: kill the "van gogh"→car bug; pokémon/graded → collectibles) ----
-const CAT = [
-  // collectibles: only UNAMBIGUOUS tokens — "booster" alone matches "odds booster", "ace 10"
-  // alone matches non-card titles, so require the card-specific forms.
-  ["collectibles", /\b(lego|warhammer|age of sigmar|sigmar|astra militarum|space marines?|necrons?|tyranids?|horus heresy|kill team|games workshop|citadel|lorcana|magic the gathering|\bmtg\b|yu-?gi-?oh|pok[eé]mon|pikachu|charizard|tcg|trading cards?|graded card|psa ?10|gem ?mint|booster box|booster pack|elite trainer box|funko|first edition|sealed (?:box|case|booster))\b/i],
-  ["house-draws", /\b(house|home(?! ?bargains)|flat|apartment|bungalow|property|villa|mortgage|lodge|cabin|caravan)\b/i],
-  ["car-draws", /\b(car|bmw|audi|mercedes|merc|amg|porsche|ford|focus|fiesta|fiat|volkswagen|vw|golf gti|polo|gtr|tesla|ferrari|lamborghini|lambo|range ?rover|land ?rover|defender|nissan|toyota|supra|honda civic|jaguar|bentley|aston ?martin|mclaren|maserati|vauxhall|corsa|astra|peugeot|renault|kia|hyundai|mazda|seat|skoda|suzuki|volvo|citroen|dacia|mini cooper|supercar|hypercar|motorbike|motorcycle|campervan|transit van)\b/i],
-  ["tech-giveaways", /\b(iphone|ipad|macbook|imac|apple ?watch|laptop|ps5|ps4|playstation|xbox|nintendo|console|oled|qled|gpu|rtx|gaming pc|airpods|samsung galaxy|pixel|smartphone|tablet|drone|dyson|vacuum|air ?fryer|ninja|shark|nespresso|fridge|freezer|washing machine|dishwasher|soundbar|headphones|earbuds|monitor|smartwatch|garmin|gopro|projector|robot vacuum|alexa|echo|meta quest|vr headset|tool|drill|toolkit)\b/i],
-  ["luxury", /\b(rolex|omega|tudor|breitling|tag ?heuer|cartier|watch|jewellery|jewelry|diamond|gold (?:bar|bullion|coin)|silver (?:bar|coin)|designer|holiday|getaway|cruise|hot ?tub|lay-?z-?spa|jacuzzi|spa|champagne|prosecco|whisky|whiskey|handbag|chanel|gucci|louis vuitton|prada|fishing|tackle|carp|golf|ping|taylormade|callaway|titleist)\b/i],
-  ["cash-prizes", /\b(cash|money|jackpot|tax[- ]?free|instant win|site credit|gift card|voucher|£\d)\b/i],
-];
+// ---- category ----
+// Review round 1 (2026-08-21): this used to be a second, independently-drifting copy of the
+// classifier — 6 slugs only, golf/fishing under luxury, tools under tech-giveaways — exactly
+// the stale design Task 6 fixed in lib/parse.mjs. Import the canonical rules instead of
+// forking them again, so this repair script can never re-label what the live scraper just
+// learned not to (golf gear ≠ luxury, tools ≠ tech, and the 2 new categories exist here too).
 function fixCategory(title, gp, url) {
-  const hay = `${title || ""} ${gp || ""} ${url || ""}`.replace(/van gogh/ig, "vangogh"); // neutralise "van"
-  for (const [c, rx] of CAT) if (rx.test(hay)) return c;
-  return null;
+  return categoryEvidence({ title, grand_prize: gp, url });
 }
 
 // ---- total entries: the page bar "sold/total" confirmed by API remaining; veto per-person ----

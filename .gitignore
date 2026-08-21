@@ -42,5 +42,12 @@ discovery/queue.json
 discovery/QUEUE.md
 tripwire.md
 
+# manager/patrol local run output (regenerated each run; not source of truth)
+patrol-worklist.json
+backfill-unknowns.json
+backfill-decisions.json
+backfill-log-*.json
+discovery/onboard-*.json
+
 # migration snapshots — hold the OLD project service key, needed 15 Sep
 *.pre-migration.bak

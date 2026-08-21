@@ -10,13 +10,18 @@ const draws = Array.isArray(args) ? args : []
 // `mkdir -p`s it before writing, so it works in any cowork/local run.
 const SCRATCH = '/tmp/pdd-vision'
 
+// Mirrors CATEGORIES in lib/parse.mjs (8 slugs, Task 6 2026-08-21). This file runs inside the
+// cowork agent sandbox (bare `agent`/`parallel`/`log`/`args` globals, no module graph), so it
+// can't statically import lib/parse.mjs — keep this array in sync by hand when CATEGORIES changes.
+const CATEGORIES = ['car-draws', 'cash-prizes', 'house-draws', 'tech-giveaways', 'luxury', 'collectibles', 'sports-outdoors', 'home-garden']
+
 const SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
     id: { type: 'string' },
     grand_prize: { type: 'string', description: 'the real MAIN/headline prize a winner receives — never the competition\'s game name' },
-    category: { type: 'string', enum: ['car-draws', 'cash-prizes', 'house-draws', 'tech-giveaways', 'luxury', 'collectibles'] },
+    category: { type: 'string', enum: CATEGORIES },
     is_live: { type: 'boolean', description: 'is the competition still open to enter?' },
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
     evidence: { type: 'string', description: 'one line: what in the description/image proves the prize' },
@@ -50,8 +55,8 @@ DECIDE the grand_prize = the single real MAIN/headline prize a winner receives:
 - "2 x £250 Main Prizes" → "2 × £250 Cash". A comp with both instant + a fixed end/main prize → name the MAIN/END draw prize (mention the instant only if it is the clear headline).
 - A physical-item comp (PS5, PING irons, graded Pikachu card, Range Rover) → the item itself (the stored title may already be right — confirm it).
 - Site-credit prizes → "£X Site Credit".
-category (pick one): car-draws | cash-prizes | house-draws | tech-giveaways | luxury | collectibles.
-  Pokémon/graded cards/LEGO/Warhammer = collectibles; watches/jewellery/gold/spa/holidays/golf gear/fishing = luxury; consoles/phones/appliances/tools/VR = tech-giveaways; a vehicle = car-draws; property/lodge = house-draws; cash/site-credit/instant-win money = cash-prizes.
+category (pick one): car-draws | cash-prizes | house-draws | tech-giveaways | luxury | collectibles | sports-outdoors | home-garden.
+  Pokémon/graded cards/LEGO/Warhammer = collectibles; watches/jewellery/designer/holidays/bullion = luxury; golf gear/fishing/bikes = sports-outdoors; tools/garden/hot tubs = home-garden; consoles/phones/appliances/VR = tech-giveaways; a vehicle = car-draws; property/lodge = house-draws; cash/site-credit/instant-win money = cash-prizes.
 is_live = is the comp still purchasable / not showing "finished"?
 
 Ground every answer in what you actually read/saw. If genuinely unsure, set confidence "low" and put your best read in grand_prize. Return the StructuredOutput object.`

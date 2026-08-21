@@ -1,0 +1,25 @@
+name: CI
+
+# Every push and PR runs the scraper test suite (test/, via `bun run test:scraper`). The
+# self-improving loop depends on this: audit-caught mistakes append fixtures to
+# test/fixtures/regressions.json, and this job is what makes them permanent.
+# carousel/tests/* is deliberately excluded here: it's environment-bound local tooling (a
+# hardcoded macOS ffmpeg path) exercised by the daily carousel runbook, not CI.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run test:scraper

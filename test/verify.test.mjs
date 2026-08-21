@@ -118,6 +118,28 @@ describe("verifyAgainstStored — fieldFlags still apply", () => {
   });
 });
 
+// No-guess publishing: an uncategorised draw is held as a draft until the cowork Claude routine
+// stamps it. The next day's scrape re-reads the same page and resolves null AGAIN — the rules
+// still can't classify it, which is why Claude had to. The stored row is the record of that
+// decision, so the publish bar has to consult it or the stamp can never take effect.
+describe("verifyAgainstStored — a stamped category survives a fresh null read", () => {
+  test("a draft the DB has a category for publishes even when today's scrape can't re-derive one", () => {
+    const v = verifyAgainstStored(
+      { ...stored, category_id: "11111111-1111-1111-1111-111111111111" },
+      { ...base, category: null },
+      { now: NOW, imageOk: true },
+    );
+    expect(v.publish).toBe(true);
+    expect(v.reasons).toEqual([]);
+  });
+
+  test("an unstamped draft with no category is held, and the hold names the missing evidence", () => {
+    const v = verifyAgainstStored(stored, { ...base, category: null }, { now: NOW, imageOk: true });
+    expect(v.publish).toBe(false);
+    expect(v.reasons).toContain("no category evidence");
+  });
+});
+
 // Correcting a LIVE row is the only write that lands on the public site from ONE observation,
 // so it gets no agreement test — which makes fieldFlags the only thing between a one-day
 // misparse and a wrong price on a published card.

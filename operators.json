@@ -24,7 +24,8 @@
   "name": "Brick Prize Draws",
   "slug": "brick-prize-draws",
   "base": "https://brickprizedraws.com",
-  "method": "shopify"
+  "method": "shopify",
+  "category": "collectibles"
  },
  {
   "name": "Bright Competitions",
@@ -51,7 +52,8 @@
   "name": "Collie Competitions",
   "slug": "collie-competitions",
   "base": "https://colliecompetitions.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "category": "collectibles"
  },
  {
   "name": "Cosmetic Competitions Ltd",
@@ -449,7 +451,8 @@
   "base": "https://golfstarcompetitions.co.uk",
   "method": "woo",
   "maxLive": 110,
-  "note": "77+ live comps measured; the cap must exceed the live catalogue or the tail is never re-observed — 18 rows sat live with a NULL total_entries because they fell outside it."
+  "note": "77+ live comps measured; the cap must exceed the live catalogue or the tail is never re-observed — 18 rows sat live with a NULL total_entries because they fell outside it.",
+  "category": "sports-outdoors"
  },
  {
   "name": "Infinity Draws",

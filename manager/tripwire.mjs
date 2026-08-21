@@ -1,5 +1,7 @@
 // Tripwire: exits 1 (and writes tripwire.md) when the daily pipeline is BROKEN. The Aug 2026
 // outage (carousel tests skipping the scrape for 10+ days) is exactly what this catches.
+// tripwire.md also carries an "Operator scoreboard" section (never trips the run — advisory
+// only, see that block below) for the Sunday patrol's curation pass.
 // Usage (CI): SCRAPE_OUTCOME=${{ steps.scrape.outcome }} bun manager/tripwire.mjs
 //
 // WHY THERE ARE TWO THRESHOLDS: the original single `floor` conflated "the site is broken"
@@ -107,14 +109,32 @@ async function count(query) {
   } catch { return null; } // a count we can't read must not itself break the run
 }
 
-async function rows(query) {
+async function rows(query, { all = false } = {}) {
   try {
-    const r = await fetch(`${SB}/rest/v1/${query}`, {
-      headers: { apikey: KEY, Authorization: `Bearer ${KEY}` },
-      signal: AbortSignal.timeout(30000),
-    });
-    const j = await r.json();
-    return Array.isArray(j) ? j : [];
+    if (!all) {
+      const r = await fetch(`${SB}/rest/v1/${query}`, {
+        headers: { apikey: KEY, Authorization: `Bearer ${KEY}` },
+        signal: AbortSignal.timeout(30000),
+      });
+      const j = await r.json();
+      return Array.isArray(j) ? j : [];
+    }
+    // `all: true` pages via Range headers instead of trusting a `limit=` query param — this
+    // project hard-caps every REST response at 1000 rows regardless of `limit=` (confirmed
+    // 2026-08-21: a 60-day draws window alone is 2800 rows), so a query expected to exceed
+    // that must page through it explicitly or silently lose rows past the cap.
+    const out = [];
+    for (let from = 0; ; from += 1000) {
+      const r = await fetch(`${SB}/rest/v1/${query}`, {
+        headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, Range: `${from}-${from + 999}` },
+        signal: AbortSignal.timeout(30000),
+      });
+      const page = await r.json();
+      if (!Array.isArray(page)) break; // an error body (bad column, etc.) — fail open, keep what we have
+      out.push(...page);
+      if (page.length < 1000) break;
+    }
+    return out;
   } catch { return []; } // no data → those alarms simply don't fire; never break the run
 }
 
@@ -151,13 +171,27 @@ if (import.meta.path === Bun.main) {
   const quietSince = new Date(Date.now() - QUIET_DAYS * 864e5).toISOString();
   const CATEGORY_FLOORS = JSON.parse(process.env.TRIPWIRE_CATEGORY_FLOORS || '{"car-draws":10}');
 
-  const [activeCount, freshCount, expiredDrafts, liveRows, recentRows, storeBytes] = await Promise.all([
+  const [activeCount, freshCount, expiredDrafts, liveRows, recentRows, storeBytes, operatorRoster, historyRows, blockedDraftsCount] = await Promise.all([
     count("draws?select=id&status=eq.active"),
     count(`draws?select=id&created_at=gte.${since}`),
     count(`draws?select=id&status=eq.draft&draw_date=lt.${nowIso}`),
     rows("draws?select=operators(slug),categories(slug)&status=eq.active&limit=2000"),
     rows(`draws?select=operators(slug)&created_at=gte.${quietSince}&limit=2000`),
     storageBytes(),
+    // Operator scoreboard (below): the DB `operators` table is the authoritative roster (99
+    // rows measured 2026-08-21) — NOT operators.json (94: a scraper-config subset. A handful of
+    // DB operators, e.g. Raffle House / Elite Competitions, are demand-side placeholders never
+    // yet wired into the scraper, so they'd be invisible if the roster came from the local file).
+    rows("operators?select=slug,name,rating"),
+    // Full draw history (unfiltered by status or time), paged via `all: true` — powers the
+    // scoreboard's "added 30d"/"newest" columns. Needs real pagination, not just a wider
+    // `limit=`: the 60-day window alone is 2800 rows against this project's 1000-row hard cap
+    // (measured 2026-08-21), so a single request would silently corrupt exactly the two numbers
+    // this section exists to report, right around the 60-day PRUNE boundary that matters most.
+    rows("draws?select=created_at,operators(slug)", { all: true }),
+    // Category coverage: rows the scraper refused to guess at all (step 2b's pool, same filter
+    // it uses) — a single cheap count request, not the drafts themselves.
+    count("draws?select=id&status=eq.draft&category_id=is.null"),
   ]);
 
   // An operator we deliberately switched off will always look "stalled" — warning about it
@@ -168,12 +202,76 @@ if (import.meta.path === Bun.main) {
   );
 
   const byCategory = tally(liveRows, (r) => r.categories?.slug);
+  // Optional — only exists after a Sunday patrol run (S1). Read-only, and its coverage line
+  // below is silently omitted when the file is missing (no patrol has run yet, or it's a
+  // weekday checkout with no worklist committed).
+  const patrol = await Bun.file("patrol-worklist.json").json().catch(() => null);
   const liveByOp = tally(liveRows, (r) => r.operators?.slug);
   const recentByOp = tally(recentRows, (r) => r.operators?.slug);
   const stalledOperators = Object.entries(liveByOp)
     .filter(([slug, live]) => live >= 3 && !recentByOp[slug] && !disabled.has(slug))
     .map(([slug, live]) => ({ slug, live, daysQuiet: QUIET_DAYS }))
     .sort((a, b) => b.live - a.live);
+
+  // Operator scoreboard (weekly patrol §7 — curation sprint's data source, not its verdict).
+  // "added 30d"/"newest" come from `historyRows` (ALL statuses — a row that later ended still
+  // counts as evidence the operator is alive); "live" reuses `liveByOp` above, no extra fetch.
+  // PRUNE_STALE_MS (60d) mirrors the design doc's prune rule (§15); an operator with NO row
+  // ever (newest = null) is treated as maximally stale, not skipped — it's the sharpest signal here.
+  const THIRTY_D_AGO = new Date(Date.now() - 30 * 864e5).toISOString();
+  const PRUNE_STALE_MS = 60 * 864e5;
+  const addedByOp = tally(historyRows.filter((r) => r.created_at >= THIRTY_D_AGO), (r) => r.operators?.slug);
+  const newestByOp = historyRows.reduce((acc, r) => {
+    const slug = r.operators?.slug;
+    if (slug && r.created_at && (!acc[slug] || r.created_at > acc[slug])) acc[slug] = r.created_at;
+    return acc;
+  }, {});
+  const queuePending = (await Bun.file("discovery/queue.json").json().catch(() => [])).length;
+
+  const scoreboardRows = operatorRoster
+    .map((op) => {
+      const live = liveByOp[op.slug] || 0;
+      const newest = newestByOp[op.slug] || null;
+      const stale = newest == null || Date.now() - new Date(newest).getTime() > PRUNE_STALE_MS;
+      return {
+        name: (op.name || op.slug).trim(),
+        live,
+        added: addedByOp[op.slug] || 0,
+        newest: newest ? newest.slice(0, 10) : "never",
+        rating: op.rating != null ? Number(op.rating).toFixed(1) : "—",
+        flag: live === 0 && stale ? "PRUNE?" : "",
+      };
+    })
+    .sort((a, b) => (a.flag ? 0 : 1) - (b.flag ? 0 : 1) || b.live - a.live || a.name.localeCompare(b.name));
+
+  const scoreboard = [
+    "## Operator scoreboard",
+    "",
+    "| operator | live | added 30d | newest | rating | flag |",
+    "|---|---|---|---|---|---|",
+    ...scoreboardRows.map((r) => `| ${r.name} | ${r.live} | ${r.added} | ${r.newest} | ${r.rating} | ${r.flag} |`),
+    "",
+    "`PRUNE?` = live 0 and no draw added in 60+ days (or never produced one). This table is a "
+      + "worklist, not a verdict — final removal still needs the GSC check from the curation sprint.",
+    `\`ADD-QUEUE\`: ${queuePending} candidate operator(s) pending in \`discovery/queue.json\`, awaiting curation review.`,
+  ].join("\n");
+
+  // Category snapshot + coverage: how the live catalogue splits by category, how many drafts
+  // are stuck behind the classification gate (step 2b's pool), and — Sundays only — how big
+  // this week's patrol detail sample is. None of this trips the run; it's the same "advisory,
+  // for the curation pass" spirit as the operator scoreboard above.
+  const categorySnapshot = [
+    "## Category distribution",
+    "",
+    ...Object.entries(byCategory)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([slug, n]) => `- ${slug}: ${n}`),
+    "",
+    `drafts awaiting classification: ${blockedDraftsCount ?? "unknown"}`,
+    ...(patrol?.counts?.detail_sample != null
+      ? [`patrol: this week's detail sample = ${patrol.counts.detail_sample} rows (~half the live catalogue; full re-verify ≈ every 2 weeks)`]
+      : []),
+  ].join("\n");
 
   const { tripped, reasons, warnings } = evaluateTripwire({
     activeCount, floor, scrapeOutcome, freshCount, minFresh, target, expiredDrafts,
@@ -194,7 +292,11 @@ if (import.meta.path === Bun.main) {
     "",
     "Check the run's coverage-report step summary for the per-operator picture.",
   ].join("\n");
-  await Bun.write("tripwire.md", body);
+  await Bun.write("tripwire.md", `${body}\n\n${categorySnapshot}\n\n${scoreboard}\n`);
+
+  const pruneCount = scoreboardRows.filter((r) => r.flag === "PRUNE?").length;
+  console.log(`scoreboard: ${operatorRoster.length} operators (${pruneCount} flagged PRUNE?), ${queuePending} pending in discovery queue`);
+  console.log(`category coverage: ${Object.keys(byCategory).length} categories live, ${blockedDraftsCount ?? "unknown"} drafts awaiting classification`);
 
   for (const w of warnings) console.log(`⚠️  ${w}`);
   if (tripped) { console.error(reasons.join("; ")); process.exit(1); }

@@ -5,7 +5,11 @@
 //
 // Usage: bun manager/draw-insert.mjs '<json>'
 //   json = { operator_slug, title, grand_prize, category, ticket_price, total_entries?,
-//            draw_date (ISO), image_url, entry_url, prize_description? }
+//            draw_date (ISO), image_url, entry_url, prize_description?, category_source? }
+//   `category` here is rule-derived (ai-fetch resolves it from the operator pin / keyword rules),
+//   so `category_source` stays NULL unless you pass one — only state 'claude' when YOU judged the
+//   category from the page. An explicit source is also the only thing that may overwrite the
+//   category on a draft already stamped 'claude'/'manual'.
 // Env: SUPABASE_SERVICE_ROLE_KEY (required).
 import { schemaGate } from "../gate.mjs";
 import { templateDescription } from "../lib/describe.mjs";
@@ -52,6 +56,19 @@ const [op] = await sbGet(`operators?slug=eq.${encodeURIComponent(d.operator_slug
 if (!op) { console.error(`unknown operator ${d.operator_slug}`); process.exit(1); }
 const cats = await sbGet(`categories?select=id,slug`);
 const category_id = cats.find((c) => c.slug === d.category)?.id || null;
+// Provenance for that category — recorded ONLY when the caller states it. It is tempting to
+// assume this tool's verdict is a judged one because Claude drives it, but the category field
+// does not come from Claude: ai-fetch.mjs resolves it as `op.category || inferCategory(...)`
+// (ai-fetch.mjs:117) — the operator pin and keyword rules, the same engine the scraper uses —
+// before Claude reads the page at all. Stamping that 'claude' would certify a rule guess as
+// judged and make it permanently immune to rule correction, so an unstated source stays null,
+// which is what every other category writer in this repo does.
+const CATEGORY_SOURCES = ["rule", "claude", "manual"];
+if (d.category_source != null && !CATEGORY_SOURCES.includes(d.category_source)) {
+  console.error(`category_source must be one of ${CATEGORY_SOURCES.join(", ")} — got ${JSON.stringify(d.category_source)}`);
+  process.exit(1);
+}
+const category_source = category_id && d.category_source ? d.category_source : null;
 const entries = Number.isFinite(Number(d.total_entries)) && Number(d.total_entries) > 0 ? Math.round(Number(d.total_entries)) : null;
 const tpv = entries ? Math.min(round2(Number(d.ticket_price) * entries), 1_000_000_000) : null;
 
@@ -68,12 +85,18 @@ try {
 
 // If this entry_url already exists: refresh the data on a DRAFT row (self-heals earlier
 // wrong/missing fields); never touch a published/ended row.
-const dup = await sbGet(`draws?entry_url=eq.${encodeURIComponent(d.entry_url)}&select=id,status`);
+const dup = await sbGet(`draws?entry_url=eq.${encodeURIComponent(d.entry_url)}&select=id,status,category_id,category_source`);
 if (dup.length) {
   const ex = dup[0];
   if (ex.status !== "draft") { console.log(`⏭ exists & ${ex.status}; left alone: ${d.title.slice(0, 40)}`); process.exit(0); }
   const patch = { total_entries: entries, total_prize_value: tpv, draw_date: d.draw_date, ticket_price: round2(Number(d.ticket_price)), image_url: d.image_url, grand_prize: d.grand_prize || d.title };
-  if (category_id) patch.category_id = category_id;
+  // Same immunity run.mjs applies on its refresh path: a claude/manual category was judged, not
+  // derived, so the rule-resolved verdict arriving here must never revert it — that would undo a
+  // human decision AND silently re-certify the guess that replaced it. Only an EXPLICIT source in
+  // the incoming JSON may supersede one.
+  const judged = ["claude", "manual"].includes(ex.category_source);
+  if (category_id && (!judged || d.category_source)) { patch.category_id = category_id; patch.category_source = category_source; }
+  else if (category_id && judged) console.log(`↩︎ kept judged category (source=${ex.category_source}) — pass category_source explicitly to override`);
   if (d.prize_description) patch.prize_description = d.prize_description;
   const ur = await fetch(`${SB}/rest/v1/draws?id=eq.${ex.id}`, { method: "PATCH", headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" }, body: JSON.stringify(patch) });
   if (!ur.ok) { console.error(`UPDATE ${ur.status} ${await ur.text()}`); process.exit(1); }
@@ -88,7 +111,7 @@ let slug = base, i = 2;
 while (taken.has(slug)) slug = `${base}-${i++}`.slice(0, 120);
 
 const draw = {
-  slug, operator_id: op.id, category_id,
+  slug, operator_id: op.id, category_id, category_source,
   title: d.title, grand_prize: d.grand_prize || d.title,
   prize_description: d.prize_description || null,
   image_url: d.image_url, ticket_price: round2(Number(d.ticket_price)),

@@ -40,6 +40,9 @@ THE THREE "AGENTS" (what each one does)
      category matches the prize?).
    - Publishes the clean ones (draft -> active), holds the doubtful ones as draft.
    - Reports any operator that produced ZERO draws (likely a broken site/selector).
+   - Also judges the category on drafts the scraper won't guess, and once a
+     week (Sundays) runs a deeper patrol: rechecks older drafts/categories,
+     re-proves details against the live page, and reviews an operator table.
 
 
 HOW TO SET UP THE COWORK ROUTINE (one time)
