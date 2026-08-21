@@ -111,7 +111,7 @@ whatever happens, always produce the step-5 report.
    never a made-up pass-rate.
 
 2b. **Classify the category-blocked drafts.** These are rows the scraper refused to guess:
-   `…/rest/v1/draws?status=eq.draft&category_id=is.null&order=created_at.desc&limit=60&select=id,title,grand_prize,entry_url,image_url,operator:operators(slug)`
+   `…/rest/v1/draws?status=eq.draft&category_id=is.null&order=created_at.asc&limit=60&select=id,title,grand_prize,entry_url,image_url,operator:operators(slug)`
    For each (batch them in ONE judgment pass): pick EXACTLY one of the eight R5 slugs from
    title + grand_prize; if the text is generic ("Summer Cash Splash", "Mystery Box"), fetch the
    image_url and judge from the banner. Write it with provenance:
@@ -148,10 +148,17 @@ whatever happens, always produce the step-5 report.
 
 ## SUNDAYS ONLY — the deep patrol (skip entirely Mon–Sat)
 S1. `bun patrol.mjs` → patrol-worklist.json (drift + this week's detail half; stateless rotation).
-S2. **Drift:** for each `drift` entry, decide rule-evidence vs stored like a fresh
-    classification (image tiebreak allowed). Fix real mistakes via draw-update
-    (`{"category_id":"…","category_source":"claude"}`); a WRONG RULE (evidence itself is bad —
-    e.g. a keyword misfiring) gets reported as a parser bug AND appended to
+    Failure: patrol.mjs fails or the DB is unreachable → skip S2–S4 (no worklist to act on), but
+    still attempt S5 — run `bun manager/tripwire.mjs` on its own and proceed if THAT succeeds.
+    Note whatever was skipped in the report.
+S2. **Drift:** `evidence` is the RULE's own fresh guess — `patrol.mjs` computes it by
+    re-classifying title+grand_prize under today's rules — it is NOT a second opinion and must
+    never stand in for one. First fetch what the drift row didn't carry:
+    `…/rest/v1/draws?id=eq.<id>&select=grand_prize,image_url,entry_url`. Then judge rule-evidence
+    vs stored like a genuinely fresh classification, from title + grand_prize (image tiebreak if
+    the text is generic, as in step 2b) — never from `evidence` itself. Fix real mistakes via
+    draw-update (`{"category_id":"…","category_source":"claude"}`); a WRONG RULE (evidence itself
+    is bad — e.g. a keyword misfiring) gets reported as a parser bug AND appended to
     `test/fixtures/regressions.json` on a branch: entry shape
     {"title":"…","grand_prize":null,"expected_category":"…","found":"YYYY-MM-DD patrol: <why>"} —
     commit + push branch `patrol/regressions-<date>` and open a PR (`gh pr create`); CI proves it.
@@ -182,8 +189,8 @@ S5. **Silent-operator diagnosis (self-healing, leashed).** For each operator tri
    **Enrichment:** N descriptions rewritten (of M live draws that needed one) · N batches redone
    **Tripwire:** <green | red: reason> · open issues: <#n commented / #n closed / none> ·
    top warning: <…>
-   **Patrol (Sun):** drift fixed N · rules flagged N (PR: <link|none>) · details checked N, fixed N, redrafted N
-   **Scoreboard (Sun):** top prune candidate <op|none> · discovery queue N
+   **Patrol (Sun):** drift fixed N · rules flagged N (PR: <link|none>) · details checked N, fixed N, redrafted N (Mon–Sat: write "n/a — not Sunday", never omit the line)
+   **Scoreboard (Sun):** top prune candidate <op|none> · discovery queue N (Mon–Sat: write "n/a — not Sunday")
    **Parser bugs to fix (verbatim example each):** <… or "none">
    **Cap recommendation:** hold AUTO_PUBLISH_MAX at 50 | raise to 200 (<n>th consecutive clean day)
 
@@ -191,4 +198,7 @@ S5. **Silent-operator diagnosis (self-healing, leashed).** For each operator tri
 Do the same pipeline single-agent, and cut scope rather than rigour: step 2 in full (it is the
 reason this routine exists), then as many step-3 descriptions as fit, writing and verifying them
 in TWO STRICT PASSES — pass 1 writes, pass 2 re-checks every fact against the row and the page
-without trusting pass-1 notes. Steps 1, 4 and 5 are unchanged. The bar for a patch is identical.
+without trusting pass-1 notes. Steps 1, 4 and 5 are unchanged. So is 2b — it runs single-agent
+unchanged; it never used workers either. SUNDAYS: do S1 and S4 as normal (scripts, not workers),
+then S2 and S3 at reduced scope with the same two-pass rigour as step 3's fallback; S5 is
+unchanged. The bar for a patch is identical.
