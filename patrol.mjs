@@ -24,7 +24,7 @@ if (import.meta.main) {
   const H = { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` };
   const rows = [];
   for (let from = 0; ; from += 1000) {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/draws?select=id,title,grand_prize,entry_url,ticket_price,total_entries,draw_date,category_source,categories(slug),operators(slug)&status=eq.active`, { headers: { ...H, Range: `${from}-${from + 999}` } });
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/draws?select=id,title,grand_prize,entry_url,ticket_price,total_entries,draw_date,category_source,categories(slug),operators(slug)&status=eq.active&order=id`, { headers: { ...H, Range: `${from}-${from + 999}` } });
     const page = await r.json();
     rows.push(...page);
     if (page.length < 1000) break;

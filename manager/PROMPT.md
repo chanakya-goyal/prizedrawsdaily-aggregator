@@ -40,7 +40,8 @@ whatever happens, always produce the step-5 report.
    date, image and category are rewritten by tomorrow's scrape, so a patch without evidence
    lasts a day and teaches you nothing: fix the parser, not the row. Report the pattern instead.
    The one field you MAY write without page evidence is `category_id` (+`category_source:'claude'`)
-   on rows where it is NULL — that judgment is this routine's job (step 2b).
+   on rows where it is NULL — that judgment is this routine's job (step 2b, and S2's drift
+   verdicts on Sundays).
 
 ## HARD DATA RULES (the standard you verify AGAINST; paste verbatim into every worker prompt)
 - R1 total_entries: ONLY a stated MAXIMUM ticket cap — a "MAX 15,000 ENTRIES" banner or

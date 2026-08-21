@@ -34,4 +34,16 @@ describe("decideRuleFix", () => {
     const d = mk({ title: "Win A 5g Gold Bar for Just 3p!", category_source: "manual" });
     expect(decideRuleFix(d, ops, cats)).toEqual({ action: "skip" });
   });
+  test("draft + no evidence + null source + has category → clear (stale guess, held for 2b)", () => {
+    const d = mk({ title: "Mando's Jungle Leaderboard", status: "draft" });
+    expect(decideRuleFix(d, ops, cats)).toEqual({ action: "clear" });
+  });
+  test("active + no evidence + null source + has category → still export (actives are judged via the worklist, never blanked — they're on the public site)", () => {
+    const d = mk({ title: "Mando's Jungle Leaderboard", status: "active" });
+    expect(decideRuleFix(d, ops, cats)).toEqual({ action: "export" });
+  });
+  test("draft + no evidence + claude source → still skip", () => {
+    const d = mk({ title: "Mando's Jungle Leaderboard", status: "draft", category_source: "claude" });
+    expect(decideRuleFix(d, ops, cats)).toEqual({ action: "skip" });
+  });
 });

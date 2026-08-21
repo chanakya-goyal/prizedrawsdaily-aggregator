@@ -1,5 +1,7 @@
 // One-off (re-runnable, idempotent) category backfill. Three modes:
-//   MODE=rules  [DRY_RUN=true|false]  — apply rule/pin verdicts + stamp category_source
+//   MODE=rules  [DRY_RUN=true|false]  — apply rule/pin verdicts + stamp category_source; also
+//                                        clears a draft's stale null-sourced guess when its title
+//                                        now yields no rule evidence (the one sanctioned nulling)
 //   MODE=export                        — write backfill-unknowns.json (active rows Claude must judge)
 //   MODE=apply DECISIONS=<file> [DRY_RUN] — apply {id → category} judgments as category_source='claude'
 // Never touches status. Every category CHANGE is logged old→new to backfill-log-<ts>.json (stamps have no delta to revert).
@@ -19,7 +21,17 @@ export function decideRuleFix(d, opsBySlug, catBySlug) {
       ? { action: "stamp", category: verdict, source: "rule" }
       : { action: "fix", category: verdict, source: "rule" };
   }
-  return d.status === "active" ? { action: "export" } : { action: "skip" };
+  if (d.status === "active") return { action: "export" };
+  // A pre-existing DRAFT row carrying an old fallback-GUESSED category (category_source null)
+  // whose title now yields NO rule evidence would keep its guess, publish via the second-
+  // observation gate (stored category satisfies hasStoredCategory), and then be invisible to
+  // backfill/2b/patrol forever. Clear it — this is the ONE sanctioned category-nulling: it
+  // converts a silent guess into a held draft that the daily cowork step 2b will judge before
+  // it can ever publish.
+  if (d.status === "draft" && verdict == null && d.category_source == null && d.category_slug != null) {
+    return { action: "clear" };
+  }
+  return { action: "skip" };
 }
 
 async function fetchAll(path) {
@@ -57,7 +69,7 @@ if (import.meta.main) {
   const log = [];
 
   if (MODE === "rules") {
-    let fixed = 0, stamped = 0, exported = 0, skipped = 0;
+    let fixed = 0, stamped = 0, cleared = 0, exported = 0, skipped = 0;
     for (const d of draws) {
       const v = decideRuleFix(d, opsBySlug, catBySlug);
       if (v.action === "fix") {
@@ -65,10 +77,15 @@ if (import.meta.main) {
         if (ok) { fixed++; log.push({ id: d.id, title: d.title, from: d.category_slug, to: v.category, source: v.source }); }
       } else if (v.action === "stamp") {
         if (await patch(d.id, { category_source: v.source })) stamped++;
+      } else if (v.action === "clear") {
+        // The ONE sanctioned category-nulling: converts a silent guess into a held draft that
+        // the daily cowork step 2b will judge before it can ever publish.
+        const ok = await patch(d.id, { category_id: null, category_source: null });
+        if (ok) { cleared++; log.push({ id: d.id, title: d.title, from: d.category_slug, to: null, source: null }); }
       } else if (v.action === "export") exported++;
       else skipped++;
     }
-    console.log(`fixed=${fixed} stamped=${stamped} needs-claude=${exported} skipped=${skipped}`);
+    console.log(`fixed=${fixed} stamped=${stamped} cleared=${cleared} needs-claude=${exported} skipped=${skipped}`);
   }
 
   if (MODE === "export") {

@@ -171,7 +171,7 @@ if (import.meta.path === Bun.main) {
   const quietSince = new Date(Date.now() - QUIET_DAYS * 864e5).toISOString();
   const CATEGORY_FLOORS = JSON.parse(process.env.TRIPWIRE_CATEGORY_FLOORS || '{"car-draws":10}');
 
-  const [activeCount, freshCount, expiredDrafts, liveRows, recentRows, storeBytes, operatorRoster, historyRows] = await Promise.all([
+  const [activeCount, freshCount, expiredDrafts, liveRows, recentRows, storeBytes, operatorRoster, historyRows, blockedDraftsCount] = await Promise.all([
     count("draws?select=id&status=eq.active"),
     count(`draws?select=id&created_at=gte.${since}`),
     count(`draws?select=id&status=eq.draft&draw_date=lt.${nowIso}`),
@@ -189,6 +189,9 @@ if (import.meta.path === Bun.main) {
     // (measured 2026-08-21), so a single request would silently corrupt exactly the two numbers
     // this section exists to report, right around the 60-day PRUNE boundary that matters most.
     rows("draws?select=created_at,operators(slug)", { all: true }),
+    // Category coverage: rows the scraper refused to guess at all (step 2b's pool, same filter
+    // it uses) — a single cheap count request, not the drafts themselves.
+    count("draws?select=id&status=eq.draft&category_id=is.null"),
   ]);
 
   // An operator we deliberately switched off will always look "stalled" — warning about it
@@ -199,6 +202,10 @@ if (import.meta.path === Bun.main) {
   );
 
   const byCategory = tally(liveRows, (r) => r.categories?.slug);
+  // Optional — only exists after a Sunday patrol run (S1). Read-only, and its coverage line
+  // below is silently omitted when the file is missing (no patrol has run yet, or it's a
+  // weekday checkout with no worklist committed).
+  const patrol = await Bun.file("patrol-worklist.json").json().catch(() => null);
   const liveByOp = tally(liveRows, (r) => r.operators?.slug);
   const recentByOp = tally(recentRows, (r) => r.operators?.slug);
   const stalledOperators = Object.entries(liveByOp)
@@ -249,6 +256,23 @@ if (import.meta.path === Bun.main) {
     `\`ADD-QUEUE\`: ${queuePending} candidate operator(s) pending in \`discovery/queue.json\`, awaiting curation review.`,
   ].join("\n");
 
+  // Category snapshot + coverage: how the live catalogue splits by category, how many drafts
+  // are stuck behind the classification gate (step 2b's pool), and — Sundays only — how big
+  // this week's patrol detail sample is. None of this trips the run; it's the same "advisory,
+  // for the curation pass" spirit as the operator scoreboard above.
+  const categorySnapshot = [
+    "## Category distribution",
+    "",
+    ...Object.entries(byCategory)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([slug, n]) => `- ${slug}: ${n}`),
+    "",
+    `drafts awaiting classification: ${blockedDraftsCount ?? "unknown"}`,
+    ...(patrol?.counts?.detail_sample != null
+      ? [`patrol: this week's detail sample = ${patrol.counts.detail_sample} rows (~half the live catalogue; full re-verify ≈ every 2 weeks)`]
+      : []),
+  ].join("\n");
+
   const { tripped, reasons, warnings } = evaluateTripwire({
     activeCount, floor, scrapeOutcome, freshCount, minFresh, target, expiredDrafts,
     byCategory, categoryFloors: CATEGORY_FLOORS, stalledOperators,
@@ -268,10 +292,11 @@ if (import.meta.path === Bun.main) {
     "",
     "Check the run's coverage-report step summary for the per-operator picture.",
   ].join("\n");
-  await Bun.write("tripwire.md", `${body}\n\n${scoreboard}\n`);
+  await Bun.write("tripwire.md", `${body}\n\n${categorySnapshot}\n\n${scoreboard}\n`);
 
   const pruneCount = scoreboardRows.filter((r) => r.flag === "PRUNE?").length;
   console.log(`scoreboard: ${operatorRoster.length} operators (${pruneCount} flagged PRUNE?), ${queuePending} pending in discovery queue`);
+  console.log(`category coverage: ${Object.keys(byCategory).length} categories live, ${blockedDraftsCount ?? "unknown"} drafts awaiting classification`);
 
   for (const w of warnings) console.log(`⚠️  ${w}`);
   if (tripped) { console.error(reasons.join("; ")); process.exit(1); }
