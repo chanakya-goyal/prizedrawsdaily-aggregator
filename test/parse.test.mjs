@@ -1,4 +1,5 @@
 import { test, expect, describe } from "bun:test";
+import { readFileSync } from "fs";
 import {
   extractEntries, extractDate, inferCategory, extractPrice, mapOperatorCategory,
   parseJsonLd, findProductLd, pickTitleImage, load, textOf, fieldsFromHtml, normalizeUkDate,
@@ -93,13 +94,16 @@ describe("inferCategory", () => {
   test("car", () => expect(inferCategory({ title: "Win a BMW M4" })).toBe("car-draws"));
   test("house", () => expect(inferCategory({ title: "Win this 3-bed house" })).toBe("house-draws"));
   test("tech", () => expect(inferCategory({ title: "iPhone 16 Pro giveaway" })).toBe("tech-giveaways"));
-  test("fallback cash", () => expect(inferCategory({ title: "Mystery prize" })).toBe("cash-prizes"));
+  // Task 6 (2026-08-21): the cash-prizes fallback is deleted — no evidence now means null,
+  // never a guessed category. See the "category — mechanics are not evidence" block below.
+  test("no evidence → null, not the old cash fallback", () => expect(inferCategory({ title: "Mystery prize" })).toBeNull());
   // expanded merchandise coverage — previously these all fell to the cash-prizes fallback and
   // were then draft-held by fieldFlags for "category may not match prize".
   test("appliance → tech", () => expect(inferCategory({ title: "Eufy Robot Vacuum Cleaner And Mop" })).toBe("tech-giveaways"));
   test("dyson → tech", () => expect(inferCategory({ title: "Win a Dyson V15 Detect" })).toBe("tech-giveaways"));
   test("air fryer → tech", () => expect(inferCategory({ title: "Ninja Air Fryer Bundle" })).toBe("tech-giveaways"));
-  test("hot tub → luxury", () => expect(inferCategory({ title: "Lay-Z-Spa Miami Hot Tub" })).toBe("luxury"));
+  // Task 6: hot tubs moved from luxury to home-garden (see CAT_RULES comment).
+  test("hot tub → home-garden (moved from luxury)", () => expect(inferCategory({ title: "Lay-Z-Spa Miami Hot Tub" })).toBe("home-garden"));
   test("apple watch → tech not luxury", () => expect(inferCategory({ title: "Apple Watch Series 10" })).toBe("tech-giveaways"));
   test("rolex still luxury", () => expect(inferCategory({ title: "Win a Rolex Submariner" })).toBe("luxury"));
   test("gift card → cash", () => expect(inferCategory({ title: "£200 Food Gift Card" })).toBe("cash-prizes"));
@@ -480,13 +484,13 @@ describe("fieldsFromHtml — Podium render path uses the operator entries patter
 });
 
 describe("categoryEvidence — bare 'golf' must not mean a car", () => {
-  // CAT_RULES lists cars before luxury and the car regex carried a bare `golf` for the VW
+  // CAT_RULES lists cars before sports and the car regex carried a bare `golf` for the VW
   // Golf. On a site with a dedicated golf operator (the largest by live inventory) that made
   // every box of golf balls read as a car draw, and once the category check started trusting
   // these rules it flagged the lot.
-  // The requirement is that golf equipment is never claimed as a CAR. Reading as luxury is
-  // ideal; returning null ("no evidence") is equally safe, because the category check only
-  // fires on a positive match naming a different category.
+  // The requirement is that golf equipment is never claimed as a CAR. Task 6 (2026-08-21)
+  // gave golf gear its own home — sports-outdoors — so this is no longer a "reads as luxury,
+  // or null is fine too" fallback story; a dedicated category is the correct positive answer.
   test("golf equipment is never claimed as a car", () => {
     for (const t of [
       "WIN 12 DOZEN TAYLORMADE SPEEDSOFT INK GOLF BALLS",
@@ -497,12 +501,13 @@ describe("categoryEvidence — bare 'golf' must not mean a car", () => {
     ]) expect(categoryEvidence({ title: t, grand_prize: t })).not.toBe("car-draws");
   });
 
-  test("explicit golf vocabulary reads as luxury", () => {
+  // Task 6: golf equipment moved from luxury to the new sports-outdoors category.
+  test("explicit golf vocabulary reads as sports-outdoors (moved from luxury)", () => {
     for (const t of [
       "WIN 12 DOZEN TAYLORMADE SPEEDSOFT INK GOLF BALLS",
       "WIN A MOTOCADDY M7 REMOTE TROLLEY",
       "WIN A CALLAWAY GOLF BAG",
-    ]) expect(categoryEvidence({ title: t, grand_prize: t })).toBe("luxury");
+    ]) expect(categoryEvidence({ title: t, grand_prize: t })).toBe("sports-outdoors");
   });
 
   test("an actual VW Golf still reads as a car", () => {
@@ -511,9 +516,12 @@ describe("categoryEvidence — bare 'golf' must not mean a car", () => {
     }
   });
 
+  // Task 6: "Trampoline & Enclosure" is no longer a good "no evidence" example — it's now
+  // explicit home-garden evidence (see the regression-fixture block). A genuinely unclassifiable
+  // prize (no keyword anywhere) must still resolve to null, never a guessed category.
   test("no evidence returns null rather than the cash fallback", () => {
-    expect(categoryEvidence({ title: "Trampoline & Enclosure", grand_prize: "Trampoline" })).toBe(null);
-    expect(inferCategory({ title: "Trampoline & Enclosure", grand_prize: "Trampoline" })).toBe("cash-prizes");
+    expect(categoryEvidence({ title: "The Ultimate Surprise Hamper Bundle", grand_prize: "Surprise Hamper" })).toBe(null);
+    expect(inferCategory({ title: "The Ultimate Surprise Hamper Bundle", grand_prize: "Surprise Hamper" })).toBe(null);
   });
 });
 
@@ -546,4 +554,67 @@ describe("total_entries must be a CAP, never the stock counter", () => {
     const d = fieldsFromHtml({ html, url: "https://x.co.uk/product/a", op, knownTitle: "Win a BMW", knownPrice: 1, apiStock: 42 });
     expect(d.total_entries).toBe(null);
   });
+});
+
+// ---- Task 6 (2026-08-21): category-classifier overhaul — mechanics demoted, cash fallback
+// deleted, sports-outdoors + home-garden added, trap guards ----
+
+describe("category — mechanics are not evidence, fallback is dead", () => {
+  const cases = [
+    // instant win is a MECHANIC — product instant-wins must not read as cash
+    ["Apple Vs Samsung - Tech Instant Win - 60,000 Instant Prizes", null],
+    ["Dart Mystery Box Instant Win", null],
+    // genuine cash vocabulary that used to fall through
+    ["£500 SITE CREDIT!#26", "cash-prizes"],
+    ["GGUK £250 Store Credit + Instant Wins #89", "cash-prizes"],
+    ["Win £2,000 Tax Free Cash", "cash-prizes"],
+    ["£1,000 Bank Transfer Friday", "cash-prizes"],
+    // sports-outdoors long tail (from the live wrong-category audit)
+    ["SATURDAY SALE AUTO-DRAW: WIN A SET OF COBRA RAD-S IRONS! #3", "sports-outdoors"],
+    ["WIN A CUSTOM FIT SET OF PXG IRONS #2", "sports-outdoors"],
+    ["AUTO-DRAW: WIN A J LINDEBERG FLARE STAND BAG! #13", "sports-outdoors"],
+    ["AUTO DRAW: WIN A SHOT SCOPE H50 HANDHELD GPS DEVICE! #1", "sports-outdoors"],
+    ["Win a Trout Fishing Weekend with all Tackle", "sports-outdoors"],
+    ["Specialized Rockhopper Mountain Bike", "sports-outdoors"],
+    ["Win an E-Bike worth £2,000", "sports-outdoors"],
+    // home-garden long tail
+    ["Win This Sealey Topchest 5 Drawer & 230pc Tool Kit for just 1p!", "home-garden"],
+    ["Trampoline & Enclosure", "home-garden"],
+    ["Lay-Z-Spa Miami Hot Tub", "home-garden"],
+    ["Ooni Koda 16 Pizza Oven Bundle", "home-garden"],
+    ["Rattan Garden Corner Sofa Set", "home-garden"],
+    // luxury keeps richness, gains bullion
+    ["Win A 5g Gold Bar for Just 3p!", "luxury"],
+    ["Rolex Datejust 41", "luxury"],
+    ["5* Maldives Holiday for Two", "luxury"],
+    // trap guards
+    ["Fruit Ninja", null],                       // Ninja the game ≠ Ninja appliances
+    ["Ninja Woodfire Electric BBQ", "tech-giveaways"], // appliance context present
+    ["HOME SWEET INSTANT WINS – £250 MAIN PRIZE", null], // no property context
+    ["Win a 4-Bed House in Cheshire worth £450,000", "house-draws"],
+    ["VW Golf GTI Clubsport", "car-draws"],      // car tested before sports
+    ["Yamaha MT-07 Motorbike", "car-draws"],
+    ["Van Gogh Print Set", null],
+    // silence is null, not cash
+    ["Mando's Jungle Leaderboard", null],
+    ["🫧 Bubble Blast", null],
+  ];
+  for (const [title, expected] of cases) {
+    test(`"${title}" → ${expected}`, () => expect(inferCategory({ title })).toBe(expected));
+  }
+});
+
+describe("operator taxonomy map — 8 slugs", () => {
+  test("Golf label → sports-outdoors", () => expect(mapOperatorCategory(["Golf"])).toBe("sports-outdoors"));
+  test("Tools label → home-garden", () => expect(mapOperatorCategory(["Power Tools"])).toBe("home-garden"));
+  test("generic label → null", () => expect(mapOperatorCategory(["Auto Draw", "Competitions"])).toBe(null));
+});
+
+describe("regression fixtures (auto-appended by audits)", () => {
+  const regs = JSON.parse(readFileSync(new URL("./fixtures/regressions.json", import.meta.url), "utf8"));
+  test("fixture file is a non-empty array", () => expect(Array.isArray(regs) && regs.length > 0).toBe(true));
+  for (const r of regs) {
+    test(`[reg] "${r.title}" → ${r.expected_category}`, () =>
+      expect(inferCategory({ title: r.title, grand_prize: r.grand_prize })).toBe(r.expected_category));
+  }
 });

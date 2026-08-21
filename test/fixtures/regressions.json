@@ -1,0 +1,12 @@
+[
+  { "title": "AUTO-DRAW: WIN AN OGIO FUNDAY CARRY BAG #5", "grand_prize": null, "expected_category": "sports-outdoors", "found": "2026-08-21 live audit: was cash-prizes via fallback" },
+  { "title": "SHOES QUICK DRAW INSTANT WIN COMPETITION! 350 INSTANT WINS OF A PAIR OF GOLF SHOES TO BE WON!", "grand_prize": null, "expected_category": "sports-outdoors", "found": "2026-08-21: 'instant win' read as cash" },
+  { "title": "WIN A WINNER’S CHOICE CUSTOM FIT SET OF WEDGES #93", "grand_prize": null, "expected_category": "sports-outdoors", "found": "2026-08-21 live audit" },
+  { "title": "SATURDAY SALE AUTO-DRAW: WIN A COBRA RAD-S DRIVER! #5", "grand_prize": null, "expected_category": "sports-outdoors", "found": "2026-08-21 live audit" },
+  { "title": "£100 site credit for 1p #77", "grand_prize": null, "expected_category": "cash-prizes", "found": "2026-08-21: fell through to fallback" },
+  { "title": "£75 SITE CREDIT!", "grand_prize": null, "expected_category": "cash-prizes", "found": "2026-08-21 live audit" },
+  { "title": "HOME SWEET INSTANT WINS – £250 MAIN PRIZE", "grand_prize": null, "expected_category": null, "found": "2026-08-21: 'home' false-positived house-draws" },
+  { "title": "Fruit Ninja", "grand_prize": null, "expected_category": null, "found": "2026-08-21: 'ninja' false-positived tech" },
+  { "title": "🥷 Rendalls Ninja Instant Win – Over £4,000 in Cash Prizes!", "grand_prize": null, "expected_category": "cash-prizes", "found": "2026-08-21: cash prizes named; ninja must not force tech" },
+  { "title": "Big BBQ Feast Package from Tunstall Meat company! serves 10!", "grand_prize": null, "expected_category": null, "found": "2026-08-21: food package — Claude territory, must not be cash" }
+]

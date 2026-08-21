@@ -21,7 +21,10 @@ describe("rev-comps woo fixture", () => {
     expect(d.entry_url).toBe(p.permalink);
     expect(d.image_url).toMatch(/^https?:\/\//);
     expect(d.ticket_price).toBeGreaterThan(0);
-    expect(CATEGORIES).toContain(d.category);
+    // This fixture's first product ("£50 RevComps Credit") names no operator category in the
+    // test call and its title carries no keyword evidence under either the old or new rules —
+    // it only ever "matched" cash-prizes via the fallback Task 6 deletes. null is now correct.
+    expect(d.category === null || CATEGORIES.includes(d.category)).toBe(true);
     // total_entries is either a plausible cap or null (never a sold/remaining count)
     if (d.total_entries != null) {
       expect(d.total_entries).toBeGreaterThanOrEqual(100);

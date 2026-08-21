@@ -54,9 +54,13 @@ describe("category flag — fires on contradiction, never on silence", () => {
   // THE BUG THIS REPLACES: the check demanded that the prize text corroborate its category,
   // and treated the absence of a keyword as proof the category was wrong. 241 of 400 drafts
   // were held that way, 211 of them for prizes our keyword lists simply do not describe.
+  // Task 6 (2026-08-21) gave the shared CAT_RULES a much longer home-garden/sports-outdoors
+  // keyword tail, so "a Dewalt tool kit" and "Trampoline & Enclosure" — the original examples
+  // here — now DO carry keyword evidence (home-garden) and are no longer unclassifiable; swapped
+  // for fresh examples that still match no keyword under the expanded rules.
   test("an unclassifiable prize is NOT flagged — silence is not contradiction", () => {
-    expect(catFlag(draw({ title: "Trampoline & Enclosure", grand_prize: "Trampoline" }))).toEqual([]);
-    expect(catFlag(draw({ title: "Win This Dewalt 2 Piece Brushless Power Tool Kit", grand_prize: "Dewalt kit", category: "tech-giveaways" }))).toEqual([]);
+    expect(catFlag(draw({ title: "The Ultimate Surprise Hamper Bundle", grand_prize: "Surprise Hamper" }))).toEqual([]);
+    expect(catFlag(draw({ title: "Win This Amazing Mystery Bundle #47", grand_prize: "Mystery Bundle", category: "tech-giveaways" }))).toEqual([]);
     expect(catFlag(draw({ title: "The £2 Million Summer Clear-Out #85!", grand_prize: "Summer Clear-Out" }))).toEqual([]);
   });
 
