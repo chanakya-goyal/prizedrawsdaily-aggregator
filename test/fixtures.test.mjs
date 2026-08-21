@@ -24,7 +24,9 @@ describe("rev-comps woo fixture", () => {
     // This fixture's first product ("£50 RevComps Credit") names no operator category in the
     // test call and its title carries no keyword evidence under either the old or new rules —
     // it only ever "matched" cash-prizes via the fallback Task 6 deletes. null is now correct.
-    expect(d.category === null || CATEGORIES.includes(d.category)).toBe(true);
+    // (review round 1: rewritten so a real regression shows WHICH bad slug came back, instead
+    // of a bare boolean assertion that only ever says "expected true, got false")
+    if (d.category !== null) expect(CATEGORIES).toContain(d.category);
     // total_entries is either a plausible cap or null (never a sold/remaining count)
     if (d.total_entries != null) {
       expect(d.total_entries).toBeGreaterThanOrEqual(100);
