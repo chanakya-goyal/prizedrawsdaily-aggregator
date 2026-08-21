@@ -96,7 +96,28 @@ describe("category flag — fires on contradiction, never on silence", () => {
     }))).toEqual([]);
   });
 
-  test("a draw with no category set is not flagged", () => {
+  // Narrow claim: the CONTRADICTION check needs a category to contradict, so silence on that
+  // side is not a flag. The separate "no category evidence" hold is asserted below.
+  test("a draw with no category set is not flagged as contradicted", () => {
     expect(catFlag(draw({ title: "£500 CASH!", category: null }))).toEqual([]);
+  });
+});
+
+// No-guess publishing (2026-08-21): with the cash fallback deleted, `inferCategory` returns null
+// whenever nothing in the prize text says what the draw is. An uncategorised draw must not reach
+// the site, so it is held as a draft until the cowork Claude routine judges it — but once judged,
+// the very next scrape re-reads the same page, resolves null again (the rules still can't classify
+// it, which is why Claude was needed), and must NOT re-hold the row forever.
+describe("fieldFlags — category policy", () => {
+  const base = { ticket_price: 1, total_entries: 1000, image_url: "https://x.com/i.jpg", entry_url: "https://x.com/d", description: "A perfectly reasonable description here.", title: "Some Mystery Prize Draw" };
+  test("null category → 'no category evidence' flag (draft-holding)", () => {
+    expect(fieldFlags({ ...base, category: null })).toContain("no category evidence");
+  });
+  test("stored category neutralises the null flag", () => {
+    expect(fieldFlags({ ...base, category: null }, { hasStoredCategory: true })).not.toContain("no category evidence");
+  });
+  test("valid category → no category flags", () => {
+    const flags = fieldFlags({ ...base, category: "sports-outdoors", title: "Win a set of Cobra irons" });
+    expect(flags.filter((f) => /category/.test(f))).toEqual([]);
   });
 });

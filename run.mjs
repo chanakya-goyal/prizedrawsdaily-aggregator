@@ -115,8 +115,10 @@ const catMap = Object.fromEntries(cats.map((c) => [c.slug, c.id]));
 const dbOps = await sbGet("operators?select=id,slug");
 const opMap = Object.fromEntries(dbOps.map((o) => [o.slug, o.id]));
 // The field values come back too, not just identity: publish verification compares this
-// stored observation against today's fresh scrape (see lib/verify.mjs).
-const existing = await sbGetAll("draws?select=id,entry_url,slug,status,title,ticket_price,total_entries,total_prize_value,draw_date,image_url,prize_description");
+// stored observation against today's fresh scrape (see lib/verify.mjs). `category_id` +
+// `category_source` come back for a second reason — they are the record of a judgment the
+// rules cannot reproduce, so every write path below has to read them before it overwrites.
+const existing = await sbGetAll("draws?select=id,entry_url,slug,status,title,ticket_price,total_entries,total_prize_value,draw_date,image_url,prize_description,category_id,category_source");
 const byUrl = new Map(existing.filter((d) => d.entry_url).map((d) => [d.entry_url, d]));
 const takenSlugs = new Set(existing.map((d) => d.slug));
 // Canonical keys of every draw we already hold, so a capped operator still re-reads them.
@@ -259,7 +261,11 @@ for (const op of operators) {
         if (!revive) { skipped++; continue; }
         byUrl.delete(d.entry_url);
         toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: false, row: {
-          category_id: catMap[d.category] || null, title: d.title, grand_prize: d.grand_prize,
+          // Never blank a stamped category with a fresh null read — a Claude/manual decision
+          // must survive every subsequent scrape (undefined keys vanish in JSON.stringify).
+          category_id: catMap[d.category] && !["claude", "manual"].includes(ex.category_source) ? catMap[d.category] : undefined,
+          category_source: catMap[d.category] && !["claude", "manual"].includes(ex.category_source) ? "rule" : undefined,
+          title: d.title, grand_prize: d.grand_prize,
           image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
           total_prize_value: tpv, draw_date: d.draw_date, status: "draft",
         } });
@@ -300,7 +306,12 @@ for (const op of operators) {
           // Only ever move a live row to a category we actually resolved. `catMap[...] || null`
           // would blank the category whenever the fresh read had none, dropping the draw out of
           // its category page as a side effect of a price correction.
-          if (catMap[d.category]) row.category_id = catMap[d.category];
+          // A claude/manual row is immune on top of that: those categories were judged, not
+          // derived, so a rule verdict must never re-litigate one (it would flap daily).
+          if (catMap[d.category] && !["claude", "manual"].includes(ex.category_source)) {
+            row.category_id = catMap[d.category];
+            row.category_source = "rule";
+          }
         }
         // image_url is deliberately NOT patched. It isn't one of the compared fields, so it is
         // never the reason we are here, and the stored value is a proven-reachable URL on our
@@ -322,7 +333,11 @@ for (const op of operators) {
       const candidate = AUTO_PUBLISH && verdict.publish;
       verdicts.push(verdict);
       toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate, row: {
-        category_id: catMap[d.category] || null, title: d.title, grand_prize: d.grand_prize,
+        // Never blank a stamped category with a fresh null read — a Claude/manual decision
+        // must survive every subsequent scrape (undefined keys vanish in JSON.stringify).
+        category_id: catMap[d.category] && !["claude", "manual"].includes(ex.category_source) ? catMap[d.category] : undefined,
+        category_source: catMap[d.category] && !["claude", "manual"].includes(ex.category_source) ? "rule" : undefined,
+        title: d.title, grand_prize: d.grand_prize,
         image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
         total_prize_value: tpv, draw_date: d.draw_date,
       } });
@@ -340,7 +355,11 @@ for (const op of operators) {
     toInsert.push({
       opSlug: op.slug,
       row: {
+        // `category_source` records HOW this row was categorised. 'rule' is re-checkable by the
+        // nightly audit; null means the rules found no evidence and the row is waiting on a
+        // judgment (it is held as a draft by the "no category evidence" flag above).
         slug, operator_id: opMap[op.slug], category_id: catMap[d.category] || null,
+        category_source: catMap[d.category] ? "rule" : null,
         title: d.title, grand_prize: d.grand_prize, prize_description: d.description,
         image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
         total_prize_value: tpv, prize_value: null,
