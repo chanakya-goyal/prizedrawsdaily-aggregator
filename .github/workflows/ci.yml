@@ -1,0 +1,23 @@
+name: CI
+
+# Every push and PR runs the full bun test suite. The self-improving loop
+# depends on this: audit-caught mistakes append fixtures to
+# test/fixtures/regressions.json, and this job is what makes them permanent.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun test
