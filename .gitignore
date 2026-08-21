@@ -47,6 +47,7 @@ patrol-worklist.json
 backfill-unknowns.json
 backfill-decisions.json
 backfill-log-*.json
+discovery/onboard-*.json
 
 # migration snapshots — hold the OLD project service key, needed 15 Sep
 *.pre-migration.bak
