@@ -14,6 +14,7 @@ import { fieldFlags, buildHealthReport, writeStepSummary, checkImage } from "./l
 import { rehostImage } from "./lib/rehost.mjs";
 import { verifyAgainstStored, summarise, relistDecision, correctionDecision } from "./lib/verify.mjs";
 import { permalinkKey } from "./lib/liveness.mjs";
+import { CATEGORIES } from "./lib/parse.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -112,6 +113,21 @@ if (!DRY_RUN && !SERVICE_KEY) { console.error("DRY_RUN=false needs SUPABASE_SERV
 
 const cats = await sbGet("categories?select=id,slug");
 const catMap = Object.fromEntries(cats.map((c) => [c.slug, c.id]));
+// Every slug the classifier can assign MUST have a categories row here, because the two
+// halves of the publish gate look at different things: `fieldFlags` decides "is this draw
+// categorised?" from the SLUG, while the insert writes `catMap[slug]` — the DB id. A slug
+// with no row therefore passes unflagged AND writes category_id NULL, and the row publishes
+// live with no category at all, invisible to every category page, with nothing left to
+// re-check it. Assert the two lists agree before a single operator is scraped, so a missing
+// migration is a loud day-one failure instead of a silent backlog of NULL-category publishes.
+const missingCats = CATEGORIES.filter((slug) => !catMap[slug]);
+if (missingCats.length) {
+  console.error(`\n✖ categories table is missing ${missingCats.length} slug(s) the classifier can assign:`);
+  for (const slug of missingCats) console.error(`    · ${slug}`);
+  console.error("  Apply supabase/migrations/20260821200000_sports_home_categories.sql in the site repo");
+  console.error("  (it adds the missing categories rows AND draws.category_source), then re-run.\n");
+  process.exit(1);
+}
 const dbOps = await sbGet("operators?select=id,slug");
 const opMap = Object.fromEntries(dbOps.map((o) => [o.slug, o.id]));
 // The field values come back too, not just identity: publish verification compares this
@@ -263,6 +279,9 @@ for (const op of operators) {
         toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: false, row: {
           // Never blank a stamped category with a fresh null read — a Claude/manual decision
           // must survive every subsequent scrape (undefined keys vanish in JSON.stringify).
+          // The same guard blocks the other direction too: a claude/manual row is immune to
+          // rule verdicts, because those categories were judged, not derived, and letting a
+          // rule re-litigate one would flap the category daily.
           category_id: catMap[d.category] && !["claude", "manual"].includes(ex.category_source) ? catMap[d.category] : undefined,
           category_source: catMap[d.category] && !["claude", "manual"].includes(ex.category_source) ? "rule" : undefined,
           title: d.title, grand_prize: d.grand_prize,
@@ -335,6 +354,9 @@ for (const op of operators) {
       toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate, row: {
         // Never blank a stamped category with a fresh null read — a Claude/manual decision
         // must survive every subsequent scrape (undefined keys vanish in JSON.stringify).
+        // The same guard blocks the other direction too: a claude/manual row is immune to
+        // rule verdicts, because those categories were judged, not derived, and letting a
+        // rule re-litigate one would flap the category daily.
         category_id: catMap[d.category] && !["claude", "manual"].includes(ex.category_source) ? catMap[d.category] : undefined,
         category_source: catMap[d.category] && !["claude", "manual"].includes(ex.category_source) ? "rule" : undefined,
         title: d.title, grand_prize: d.grand_prize,

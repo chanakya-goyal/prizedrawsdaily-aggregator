@@ -118,9 +118,6 @@ describe("verifyAgainstStored — fieldFlags still apply", () => {
   });
 });
 
-// Correcting a LIVE row is the only write that lands on the public site from ONE observation,
-// so it gets no agreement test — which makes fieldFlags the only thing between a one-day
-// misparse and a wrong price on a published card.
 // No-guess publishing: an uncategorised draw is held as a draft until the cowork Claude routine
 // stamps it. The next day's scrape re-reads the same page and resolves null AGAIN — the rules
 // still can't classify it, which is why Claude had to. The stored row is the record of that
@@ -143,6 +140,9 @@ describe("verifyAgainstStored — a stamped category survives a fresh null read"
   });
 });
 
+// Correcting a LIVE row is the only write that lands on the public site from ONE observation,
+// so it gets no agreement test — which makes fieldFlags the only thing between a one-day
+// misparse and a wrong price on a published card.
 describe("correctionDecision — a flagged read never overwrites a live row", () => {
   const live = { ...stored, status: "active" };
   const decide = (over) => correctionDecision(live, { ...base, ...over }, { now: NOW });

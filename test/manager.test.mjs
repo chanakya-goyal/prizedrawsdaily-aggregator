@@ -109,15 +109,15 @@ describe("category flag — fires on contradiction, never on silence", () => {
 // the very next scrape re-reads the same page, resolves null again (the rules still can't classify
 // it, which is why Claude was needed), and must NOT re-hold the row forever.
 describe("fieldFlags — category policy", () => {
-  const base = { ticket_price: 1, total_entries: 1000, image_url: "https://x.com/i.jpg", entry_url: "https://x.com/d", description: "A perfectly reasonable description here.", title: "Some Mystery Prize Draw" };
+  const draw = { ticket_price: 1, total_entries: 1000, image_url: "https://x.com/i.jpg", entry_url: "https://x.com/d", description: "A perfectly reasonable description here.", title: "Some Mystery Prize Draw" };
   test("null category → 'no category evidence' flag (draft-holding)", () => {
-    expect(fieldFlags({ ...base, category: null })).toContain("no category evidence");
+    expect(fieldFlags({ ...draw, category: null })).toContain("no category evidence");
   });
   test("stored category neutralises the null flag", () => {
-    expect(fieldFlags({ ...base, category: null }, { hasStoredCategory: true })).not.toContain("no category evidence");
+    expect(fieldFlags({ ...draw, category: null }, { hasStoredCategory: true })).not.toContain("no category evidence");
   });
   test("valid category → no category flags", () => {
-    const flags = fieldFlags({ ...base, category: "sports-outdoors", title: "Win a set of Cobra irons" });
+    const flags = fieldFlags({ ...draw, category: "sports-outdoors", title: "Win a set of Cobra irons" });
     expect(flags.filter((f) => /category/.test(f))).toEqual([]);
   });
 });

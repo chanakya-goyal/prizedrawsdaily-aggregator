@@ -5,7 +5,7 @@
 //
 // Usage: bun manager/draw-insert.mjs '<json>'
 //   json = { operator_slug, title, grand_prize, category, ticket_price, total_entries?,
-//            draw_date (ISO), image_url, entry_url, prize_description? }
+//            draw_date (ISO), image_url, entry_url, prize_description?, category_source? }
 // Env: SUPABASE_SERVICE_ROLE_KEY (required).
 import { schemaGate } from "../gate.mjs";
 import { templateDescription } from "../lib/describe.mjs";
@@ -52,6 +52,16 @@ const [op] = await sbGet(`operators?slug=eq.${encodeURIComponent(d.operator_slug
 if (!op) { console.error(`unknown operator ${d.operator_slug}`); process.exit(1); }
 const cats = await sbGet(`categories?select=id,slug`);
 const category_id = cats.find((c) => c.slug === d.category)?.id || null;
+// Provenance for that category. This tool IS the judged path — it exists for aiAssist operators
+// whose pages only a reader can parse — so its verdict defaults to 'claude', which also makes
+// run.mjs leave the category alone instead of flapping it against the keyword rules every day.
+// An explicit value wins (validated: a typo would be rejected by the DB CHECK as an opaque 400).
+const CATEGORY_SOURCES = ["rule", "claude", "manual"];
+if (d.category_source != null && !CATEGORY_SOURCES.includes(d.category_source)) {
+  console.error(`category_source must be one of ${CATEGORY_SOURCES.join(", ")} — got ${JSON.stringify(d.category_source)}`);
+  process.exit(1);
+}
+const category_source = category_id ? (d.category_source || "claude") : null;
 const entries = Number.isFinite(Number(d.total_entries)) && Number(d.total_entries) > 0 ? Math.round(Number(d.total_entries)) : null;
 const tpv = entries ? Math.min(round2(Number(d.ticket_price) * entries), 1_000_000_000) : null;
 
@@ -73,7 +83,7 @@ if (dup.length) {
   const ex = dup[0];
   if (ex.status !== "draft") { console.log(`⏭ exists & ${ex.status}; left alone: ${d.title.slice(0, 40)}`); process.exit(0); }
   const patch = { total_entries: entries, total_prize_value: tpv, draw_date: d.draw_date, ticket_price: round2(Number(d.ticket_price)), image_url: d.image_url, grand_prize: d.grand_prize || d.title };
-  if (category_id) patch.category_id = category_id;
+  if (category_id) { patch.category_id = category_id; patch.category_source = category_source; }
   if (d.prize_description) patch.prize_description = d.prize_description;
   const ur = await fetch(`${SB}/rest/v1/draws?id=eq.${ex.id}`, { method: "PATCH", headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" }, body: JSON.stringify(patch) });
   if (!ur.ok) { console.error(`UPDATE ${ur.status} ${await ur.text()}`); process.exit(1); }
@@ -88,7 +98,7 @@ let slug = base, i = 2;
 while (taken.has(slug)) slug = `${base}-${i++}`.slice(0, 120);
 
 const draw = {
-  slug, operator_id: op.id, category_id,
+  slug, operator_id: op.id, category_id, category_source,
   title: d.title, grand_prize: d.grand_prize || d.title,
   prize_description: d.prize_description || null,
   image_url: d.image_url, ticket_price: round2(Number(d.ticket_price)),
