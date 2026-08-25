@@ -8,7 +8,7 @@
 //
 //   DRY_RUN=true (default) → report only.  DRY_RUN=false → set status='ended' on the finished ones.
 import { UA } from "./lib/parse.mjs";
-import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, FINISHED_RE } from "./lib/liveness.mjs";
+import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, saysFinished } from "./lib/liveness.mjs";
 const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
@@ -18,7 +18,8 @@ const STATUS = (process.env.STATUS || "draft").split(",").map((s) => s.trim()).f
 if (!DRY && !KEY) { console.error("DRY_RUN=false needs SUPABASE_SERVICE_ROLE_KEY"); process.exit(1); }
 const READ = KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
 const H = { apikey: READ, Authorization: `Bearer ${READ}` };
-// FINISHED_RE now lives in lib/liveness.mjs so scraper, sweep and verifier share one definition.
+// FINISHED_RE and its matcher live in lib/liveness.mjs so scraper, sweep and verifier share one
+// definition. Match through saysFinished(), never FINISHED_RE.test(html) — see the note there.
 
 const ops = await Bun.file("operators.json").json();
 const opBy = Object.fromEntries(ops.map((o) => [o.slug, o]));
@@ -63,6 +64,18 @@ async function shopAvail(op) {
   return map;
 }
 
+// `draw_date` was selected by the query from the start and then used by nothing. A draw
+// closing three weeks from now could be marked ended on a phrase match alone.
+const NOW_MS = Date.now();
+function isFutureDated(d) {
+  const t = Date.parse(d?.draw_date ?? "");
+  return Number.isFinite(t) && t > NOW_MS;
+}
+function isPastDated(d) {
+  const t = Date.parse(d?.draw_date ?? "");
+  return Number.isFinite(t) && t <= NOW_MS;
+}
+
 async function isEnded(d) {
   const op = opBy[d.operators?.slug];
   if (!op) return { ended: null, why: "operator not in config" };
@@ -92,9 +105,16 @@ async function isEnded(d) {
       const avail = map.get(slug.toLowerCase());
       return { ended: !avail, why: avail ? "available" : "sold out / no available variant" };
     }
-    // render / other: text probe
+    // render / other: text probe. This is the ONLY weak signal in this file — Woo's
+    // is_purchasable and Shopify's variant availability are the operator's own flags, but
+    // "the page contains a finished phrase" is a heuristic, and it has been wrong at scale
+    // (see saysFinished in lib/liveness.mjs). So it gets a second gate the strong signals
+    // do not need: a draw still dated in the future is contrary evidence, and we report it
+    // as unverifiable rather than expiring a live draw on a phrase match.
     const html = await (await fetch(d.entry_url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) })).text();
-    return { ended: FINISHED_RE.test(html), why: FINISHED_RE.test(html) ? "page says finished" : "no finished marker" };
+    if (!saysFinished(html)) return { ended: false, why: "no finished marker" };
+    if (isFutureDated(d)) return { ended: null, why: "page says finished but draw_date is still ahead" };
+    return { ended: true, why: "page says finished" };
   } catch (e) { return { ended: null, why: `error ${(e.message || "").slice(0, 30)}` }; }
 }
 
@@ -108,6 +128,19 @@ const unknown = out.filter((x) => x.ended === null);
 console.log(`ENDED (finished comps in the draft queue): ${ended.length}`);
 for (const x of ended) console.log(`  ⛔ [${x.d.operators?.slug}] ${(x.d.title || "").slice(0, 44)} — ${x.why}`);
 if (unknown.length) { console.log(`\nUNKNOWN (couldn't verify — left as-is): ${unknown.length}`); for (const x of unknown.slice(0, 12)) console.log(`  ? [${x.d.operators?.slug}] ${(x.d.title || "").slice(0, 40)} — ${x.why}`); }
+
+// Still purchasable, but the close date has already passed. NOT expired here: a live
+// product means the DATE is wrong, not that the competition is over, and expiring it
+// would hide a draw people can still enter — correcting the date is run.mjs's job.
+// Reported because 219 of these were sitting in `active` completely unannounced
+// (measured 2026-08-26), inflating every live-draw count the site derives. Silence is
+// the enemy; this is the cohort nobody was looking at.
+const staleDate = out.filter((x) => x.ended === false && isPastDated(x.d));
+if (staleDate.length) {
+  console.log(`\n📅 STALE DATE (still purchasable, close date already passed — left ACTIVE, date needs correcting): ${staleDate.length}`);
+  for (const x of staleDate.slice(0, 12)) console.log(`  📅 [${x.d.operators?.slug}] ${(x.d.title || "").slice(0, 40)} — closed ${String(x.d.draw_date).slice(0, 10)}`);
+  if (staleDate.length > 12) console.log(`  … and ${staleDate.length - 12} more`);
+}
 
 if (!DRY && ended.length) {
   let n = 0;
