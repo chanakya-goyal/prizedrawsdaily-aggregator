@@ -28,17 +28,38 @@ const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
 if (!DRY && !KEY) { console.error("DRY_RUN=false needs SUPABASE_SERVICE_ROLE_KEY"); process.exit(1); }
-const READ = KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
+// Bun auto-loads .env, which already carries a working SUPABASE_SERVICE_ROLE_KEY — there is
+// normally nothing to paste. Note the hardcoded `sb_publishable_h-iA9…` fallback that ten
+// scripts in this repo still carry is STALE and now returns 401; it is deliberately not
+// used here, so a missing key fails immediately and legibly instead of 401-ing later.
+const READ = KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "";
+if (!READ) {
+  console.error("No key available. Bun loads .env automatically — check SUPABASE_SERVICE_ROLE_KEY is in ~/pdd-aggregator/.env,");
+  console.error("and do NOT pass one on the command line unless you mean to override it.");
+  process.exit(1);
+}
 const H = { apikey: READ, Authorization: `Bearer ${READ}` };
+const WH = { apikey: KEY, Authorization: `Bearer ${KEY}` };
 
 const ops = await Bun.file("operators.json").json();
 const RENDER = new Set(ops.filter((o) => o.method === "render").map((o) => o.slug));
 
 const now = new Date().toISOString();
-const rows = await (await fetch(
+const res = await fetch(
   `${URL}/rest/v1/draws?select=id,title,entry_url,draw_date,operators!inner(slug)&status=eq.ended&draw_date=gte.${now}&order=draw_date.asc`,
   { headers: H },
-)).json();
+);
+const rows = await res.json();
+// PostgREST answers failures with an object, not an array. Say so plainly rather than
+// letting `rows.filter` throw a TypeError three lines later.
+if (!Array.isArray(rows)) {
+  console.error(`\nRead failed — HTTP ${res.status}.`);
+  console.error(`PostgREST said: ${rows?.message || JSON.stringify(rows).slice(0, 200)}`);
+  console.error(`\nIf you passed SUPABASE_SERVICE_ROLE_KEY on the command line, drop it —`);
+  console.error(`.env already holds a working one and an explicit value overrides it.`);
+  console.error(`Also confirm the project is still ${URL} (it was migrated once).`);
+  process.exit(1);
+}
 
 const candidates = rows.filter((d) => RENDER.has(d.operators?.slug));
 const skipped = rows.filter((d) => !RENDER.has(d.operators?.slug));
@@ -77,10 +98,22 @@ if (!DRY && restore.length) {
   for (const x of restore) {
     const pr = await fetch(`${URL}/rest/v1/draws?id=eq.${x.d.id}`, {
       method: "PATCH",
-      headers: { ...H, "Content-Type": "application/json", Prefer: "return=minimal" },
+      headers: { ...WH, "Content-Type": "application/json", Prefer: "return=minimal" },
       body: JSON.stringify({ status: "active" }),
     });
-    if (pr.ok) n++; else console.log(`  ! PATCH ${pr.status} for ${x.d.id}`);
+    if (pr.ok) { n++; continue; }
+    const body = await pr.text();
+    console.error(`  ! PATCH ${pr.status} for ${x.d.id}: ${body.slice(0, 160)}`);
+    // Auth failures will fail identically for all 29 — stop rather than hammer the API
+    // and print the same error 29 times.
+    if (pr.status === 401 || pr.status === 403) {
+      console.error(`\nThe service-role key was rejected (HTTP ${pr.status}).`);
+      console.error(`Reads worked, so the project and query are fine — it is the key.`);
+      console.error(`Check it is the SERVICE ROLE key for ${URL}`);
+      console.error(`(the site migrated projects, so a key from the old project will 401),`);
+      console.error(`and that no quotes or trailing newline came along with the paste.`);
+      process.exit(1);
+    }
   }
   console.log(`\n✅ restored ${n} draws to status='active'`);
 } else if (DRY && restore.length) {
