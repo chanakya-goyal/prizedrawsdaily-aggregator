@@ -148,6 +148,76 @@ body {
   mix-blend-mode: screen; border-radius: inherit;
 }
 
+/* GLASS — modern app UI: frosted card floating over a soft indigo wash, hairline highlight,
+   layered shadows instead of an accent bloom. Everything the card needs is a token (see the
+   note on .card) so it survives the token-lift into the Reel and Story.
+   backdrop-filter was verified to composite in headless Chromium before this was written:
+   a hard black/white edge behind the panel becomes a real gradient (12.1% intermediate
+   luminance vs 0% with the filter removed) — it is not silently no-opping under SwiftShader. */
+[data-theme="glass"] {
+  --accent: #5B8CFF;        --accent-rgb: 91,140,255;
+  --accent-lt: #9DB9FF;     --accent-lt-rgb: 157,185,255;
+  --accent-deep-rgb: 42,74,186;
+  --glow: #6E9BFF;          --glow-rgb: 110,155,255;
+  --ray-rgb: 176,200,255;
+  --spark-core: #F2F6FF;    --spark-mid: #8FB2FF;   --spark-glow-rgb: 143,178,255;
+  --hot: #5FE0CE;                          /* teal secondary — dates / "from just" */
+  --stroke: #080b14;
+  --ink-end: #dbe5ff;
+  --grad-1: #FFFFFF; --grad-2: #CBDAFF; --grad-3: #6E9BFF;
+  --bg-1: #171d30; --bg-2: #0c1120; --bg-3: #050711; --bg-solid: #070a13;
+  --card-rgb: 16,22,38;
+  --scrim-rgb: 5,7,15;
+  --pill-1: #9DB9FF; --pill-2: #5B8CFF; --pill-3: #3B69DE;
+  --pill-edge-rgb: 224,234,255;
+  --pill-ink-rgb: 10,24,68;
+  /* Space Grotesk, not Bricolage: Bricolage's single-storey pound sign is near-identical in
+     silhouette to its own ampersand, and "OR £30,000" rendered as "OR &30,000" at slide size.
+     On a site whose whole pitch is honest, legible prices, an ambiguous £ is disqualifying. */
+  --font-display: 'Space Grotesk';
+  --font-kicker: 'Inter';
+  /* the glass itself */
+  --card-radius: 30px;
+  --card-bg: linear-gradient(158deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.06) 52%, rgba(255,255,255,.10) 100%);
+  --card-border: 1px solid rgba(255,255,255,.34);
+  --card-blur: blur(30px) saturate(1.35);
+  --card-shadow:
+    0 32px 72px rgba(3,6,16,.62),
+    0 8px 20px rgba(3,6,16,.42),
+    inset 0 1px 0 rgba(255,255,255,.42),
+    inset 0 -1px 0 rgba(255,255,255,.10);
+  /* No 7px outline: a heavy stroke is the single most dated thing on the slide, and it
+     tears on Bricolage's letterforms where it sat fine on Anton's. Depth comes from the
+     shadow stack instead of an accent bloom. */
+  --hl-track: -.5px;
+  --hl-stroke-w: 0px;
+  --hl-filter: drop-shadow(0 10px 28px rgba(3,6,16,.72));
+  --hl-filter-accent: drop-shadow(0 8px 22px rgba(3,6,16,.66));
+  --prize-track: -.5px;
+  --prize-stroke-w: 0px;
+  --prize-filter: drop-shadow(0 12px 30px rgba(3,6,16,.78));
+  /* the frosted panel the copy sits on — this is where the glass actually reads, because a
+     draw with a photo fills .card opaquely and hides any blur behind it */
+  --block-bg: linear-gradient(158deg, rgba(255,255,255,.13) 0%, rgba(255,255,255,.05) 100%);
+  --block-border: 1px solid rgba(255,255,255,.26);
+  --block-radius: 30px;
+  --block-blur: blur(26px) saturate(1.3);
+  --block-shadow: 0 24px 60px rgba(3,6,16,.5), inset 0 1px 0 rgba(255,255,255,.34);
+  --block-pad: 34px 34px 30px;
+  --pill-radius: 999px;
+  --pill-border: 1px solid rgba(255,255,255,.38);
+  --pill-blur: blur(18px) saturate(1.25);
+  --pill-shadow: 0 14px 34px rgba(3,6,16,.5), inset 0 1px 0 rgba(255,255,255,.45);
+  /* the cash line is the most important string on the slide; a 5px dark stroke turns it to
+     mud on a frosted panel, so it loses the outline and keeps a soft drop shadow instead */
+  --cash-stroke-w: 0px;
+  --cash-filter: drop-shadow(0 6px 16px rgba(3,6,16,.7));
+  /* gold furniture (the WIN THIS ribbon) is driven by its own tokens and would otherwise
+     stay amber on an indigo slide — cool it to platinum */
+  --gold-1: #F2F6FF; --gold-2: #C3D3F5; --gold-3: #8FA6CE;
+  --gold-rgb: 195,211,245; --gold-deep-rgb: 143,166,206;
+}
+
 .slide {
   position: relative; width: 1080px; height: 1350px; overflow: hidden;
   background:
@@ -157,14 +227,14 @@ body {
 }
 
 /* ---- glossy headline treatment (gradient fill + chunky dark outline + accent glow) ---- */
-.hl { font-family: var(--font-display), 'Anton', sans-serif; font-weight: 400; text-transform: uppercase; letter-spacing: .5px;
+.hl { font-family: var(--font-display), 'Anton', sans-serif; font-weight: 400; text-transform: uppercase; letter-spacing: var(--hl-track, .5px);
   background: linear-gradient(180deg, #ffffff 0%, #ffffff 46%, var(--ink-end) 100%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
-  -webkit-text-stroke: 7px var(--stroke); paint-order: stroke fill;
-  filter: drop-shadow(0 6px 18px rgba(0,0,0,.72)) drop-shadow(0 0 50px rgba(var(--accent-rgb),.55)); }
+  -webkit-text-stroke: var(--hl-stroke-w, 7px) var(--stroke); paint-order: stroke fill;
+  filter: var(--hl-filter, drop-shadow(0 6px 18px rgba(0,0,0,.72)) drop-shadow(0 0 50px rgba(var(--accent-rgb),.55))); }
 .hl.orange { background: linear-gradient(180deg, var(--grad-1) 0%, var(--grad-2) 56%, var(--grad-3) 100%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 5px 14px rgba(0,0,0,.7)) drop-shadow(0 0 44px rgba(var(--accent-rgb),.8)); }
+  filter: var(--hl-filter-accent, drop-shadow(0 5px 14px rgba(0,0,0,.7)) drop-shadow(0 0 44px rgba(var(--accent-rgb),.8))); }
 
 /* ---- atmospheric FX ---- */
 /* top light bloom */
@@ -222,11 +292,23 @@ body {
   background: linear-gradient(180deg, rgba(var(--scrim-rgb),.32) 0%, rgba(var(--scrim-rgb),0) 26%, rgba(var(--scrim-rgb),.70) 73%, rgba(var(--scrim-rgb),.96) 100%); }
 
 /* ---- framed product card (draw slides) ---- */
+/* The card surface is TOKENISED, not hardcoded, because descendant rules never reach video:
+   the token-lift regex in reel-template.mjs / story.mjs / reel.mjs extracts only :root and
+   [data-theme="…"] blocks, so `[data-theme="x"] .card { … }` renders on the carousel and
+   silently vanishes from the Reel. Anything a theme needs to change about the card has to
+   be a custom property. Defaults are INLINE var() fallbacks, never :root declarations —
+   `data-theme` sits on <body> while :root is <html>, so a composite declared on :root
+   substitutes var(--accent-rgb) using the DEFAULT theme's value and inherits down already
+   resolved. That silently repainted every themed card in the base orange (measured: cash
+   drifted to SSIM 0.979 against a 0.997 noise floor, luxury 0.992, default 0.997 = no
+   change — the drift tracked how far each accent sat from orange). An inline fallback
+   resolves on the element that uses it, which is inside the themed body. */
 .card { position: absolute; left: 60px; right: 60px; top: 168px; height: 716px; z-index: 3;
-  border-radius: 38px; overflow: hidden;
-  background: radial-gradient(circle at 50% 36%, rgba(var(--accent-rgb),.30) 0%, rgba(var(--card-rgb),.97) 60%);
-  border: 3px solid rgba(var(--ray-rgb),.65);
-  box-shadow: 0 26px 64px rgba(0,0,0,.62), 0 0 84px rgba(var(--accent-rgb),.38), inset 0 1px 0 rgba(255,255,255,.16); }
+  border-radius: var(--card-radius, 38px); overflow: hidden;
+  background: var(--card-bg, radial-gradient(circle at 50% 36%, rgba(var(--accent-rgb),.30) 0%, rgba(var(--card-rgb),.97) 60%));
+  border: var(--card-border, 3px solid rgba(var(--ray-rgb),.65));
+  backdrop-filter: var(--card-blur, none); -webkit-backdrop-filter: var(--card-blur, none);
+  box-shadow: var(--card-shadow, 0 26px 64px rgba(0,0,0,.62), 0 0 84px rgba(var(--accent-rgb),.38), inset 0 1px 0 rgba(255,255,255,.16)); }
 .card .cbg { position: absolute; inset: 0; }
 .card .cbg img { width: 100%; height: 100%; object-fit: contain; transform: scale(1.5);
   filter: blur(40px) saturate(1.6) brightness(1.12); opacity: .55; }
@@ -246,8 +328,9 @@ body {
 .pill { position: absolute; top: 52px; right: 50px; z-index: 6;
   background: linear-gradient(135deg, var(--pill-1) 0%, var(--pill-2) 52%, var(--pill-3) 100%); color: #fff;
   font-family: var(--font-display), 'Anton', sans-serif; font-size: 33px; letter-spacing: .4px;
-  padding: 15px 28px; border-radius: 14px; text-transform: uppercase;
-  border: 2px solid rgba(var(--pill-edge-rgb),.6); box-shadow: 0 12px 32px rgba(var(--accent-deep-rgb),.55), inset 0 1px 0 rgba(255,255,255,.35);
+  padding: 15px 28px; border-radius: var(--pill-radius, 14px); text-transform: uppercase;
+  border: var(--pill-border, 2px solid rgba(var(--pill-edge-rgb),.6)); box-shadow: var(--pill-shadow, 0 12px 32px rgba(var(--accent-deep-rgb),.55), inset 0 1px 0 rgba(255,255,255,.35));
+  backdrop-filter: var(--pill-blur, none); -webkit-backdrop-filter: var(--pill-blur, none);
   text-shadow: 0 2px 4px rgba(var(--pill-ink-rgb),.6); }
 
 /* rank circle */
@@ -256,18 +339,22 @@ body {
   font-family: var(--font-display), 'Anton', sans-serif; font-size: 46px; backdrop-filter: blur(4px); box-shadow: 0 0 30px rgba(var(--accent-rgb),.6); }
 
 /* title block (bottom-left) */
-.title-block { position: absolute; left: 58px; right: 58px; bottom: 124px; z-index: 5; }
+.title-block { position: absolute; left: 58px; right: 58px; bottom: 124px; z-index: 5;
+  background: var(--block-bg, transparent); border: var(--block-border, 0); border-radius: var(--block-radius, 0);
+  backdrop-filter: var(--block-blur, none); -webkit-backdrop-filter: var(--block-blur, none);
+  box-shadow: var(--block-shadow, none); padding: var(--block-pad, 0); }
 .prize { font-family: var(--font-display), 'Anton', sans-serif; font-size: 98px; line-height: .9; text-transform: uppercase;
+  letter-spacing: var(--prize-track, normal);
   background: linear-gradient(180deg, #ffffff 0%, #ffffff 50%, var(--ink-end) 100%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
-  -webkit-text-stroke: 6px var(--stroke); paint-order: stroke fill;
-  filter: drop-shadow(0 6px 16px rgba(0,0,0,.72)) drop-shadow(0 0 40px rgba(var(--accent-rgb),.42)); }
+  -webkit-text-stroke: var(--prize-stroke-w, 6px) var(--stroke); paint-order: stroke fill;
+  filter: var(--prize-filter, drop-shadow(0 6px 16px rgba(0,0,0,.72)) drop-shadow(0 0 40px rgba(var(--accent-rgb),.42))); }
 .prize.long { font-size: 72px; }
 .cash { margin-top: 14px; font-family: var(--font-display), 'Anton', sans-serif; font-size: 48px; text-transform: uppercase;
   background: linear-gradient(180deg, var(--grad-1) 0%, var(--grad-2) 56%, var(--grad-3) 100%);
   -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
-  -webkit-text-stroke: 5px var(--stroke); paint-order: stroke fill;
-  filter: drop-shadow(0 4px 12px rgba(0,0,0,.7)) drop-shadow(0 0 36px rgba(var(--accent-rgb),.6)); }
+  -webkit-text-stroke: var(--cash-stroke-w, 5px) var(--stroke); paint-order: stroke fill;
+  filter: var(--cash-filter, drop-shadow(0 4px 12px rgba(0,0,0,.7)) drop-shadow(0 0 36px rgba(var(--accent-rgb),.6))); }
 .closes { margin-top: 18px; font-family: 'Oswald', sans-serif; font-size: 33px; font-weight: 600; color: #fff;
   letter-spacing: .5px; text-transform: uppercase; text-shadow: 0 2px 10px rgba(0,0,0,.85); }
 .closes b { color: var(--hot); font-weight: 700; }
