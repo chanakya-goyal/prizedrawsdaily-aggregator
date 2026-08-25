@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { isPurchasable, hasAvailableVariant, productSlug, isPercentLiteralSlug, permalinkKey, FINISHED_RE } from "../lib/liveness.mjs";
+import { isPurchasable, hasAvailableVariant, productSlug, isPercentLiteralSlug, permalinkKey, FINISHED_RE, saysFinished } from "../lib/liveness.mjs";
 
 describe("isPurchasable — the Woo Store API type bug", () => {
   test("boolean true/false behave as expected", () => {
@@ -118,5 +118,45 @@ describe("FINISHED_RE", () => {
   // Known gap, documented rather than silently fixed: the bare two-word form needs "is".
   test("bare 'Competition closed' is NOT matched (needs 'is')", () => {
     expect(FINISHED_RE.test("Competition closed")).toBe(false);
+  });
+});
+
+describe("saysFinished — the marker must come from VISIBLE text", () => {
+  // The 2026-08-26 regression. wc-lottery ships an i18n string bundle on every page it
+  // renders, live or finished, and the bundle carries the literal finished phrase. Testing
+  // raw HTML expired every draw on those operators ~38 minutes after ingest; 42 were found
+  // at status='ended' with a draw_date still in the future.
+  const WC_LOTTERY_I18N = `<!doctype html><html><head>
+    <script id="wc-lottery-i18n" type="application/json">
+      {"sold_out":"Sold out","finished":"This competition has finished","closing":"Closing soon"}
+    </script></head>
+    <body><h1>Win a Range Rover Sport</h1><p>Only 4,000 tickets. Entry from £4.00.</p>
+    <button>Add to basket</button></body></html>`;
+
+  test("a finished phrase inside <script> does NOT count as finished", () => {
+    expect(FINISHED_RE.test(WC_LOTTERY_I18N)).toBe(true);   // the raw-HTML bug, still reproducible
+    expect(saysFinished(WC_LOTTERY_I18N)).toBe(false);      // the fix
+  });
+
+  test("a finished phrase in <template> or <noscript> does NOT count either", () => {
+    expect(saysFinished(`<body><template><p>This competition has finished</p></template>
+      <h1>Win a Rolex</h1></body>`)).toBe(false);
+    expect(saysFinished(`<body><noscript>This competition has finished</noscript>
+      <h1>Win a Rolex</h1></body>`)).toBe(false);
+  });
+
+  test("a finished phrase in real body copy DOES count", () => {
+    expect(saysFinished(`<body><h1>Win a Rolex</h1>
+      <p class="notice">This competition has now finished.</p></body>`)).toBe(true);
+  });
+
+  test("survives tags and entities splitting the phrase's surroundings", () => {
+    expect(saysFinished(`<body><div><strong>Update:</strong>&nbsp;this draw has ended</div></body>`)).toBe(true);
+  });
+
+  test("ordinary live copy stays live, and empty input is not finished", () => {
+    expect(saysFinished(`<body><p>Enter now before this competition sells out!</p></body>`)).toBe(false);
+    expect(saysFinished("")).toBe(false);
+    expect(saysFinished(null)).toBe(false);
   });
 });
