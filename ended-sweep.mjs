@@ -23,7 +23,16 @@ const H = { apikey: READ, Authorization: `Bearer ${READ}` };
 
 const ops = await Bun.file("operators.json").json();
 const opBy = Object.fromEntries(ops.map((o) => [o.slug, o]));
-const draws = await (await fetch(`${URL}/rest/v1/draws?status=in.(${STATUS.join(",")})&select=id,title,entry_url,draw_date,operators(slug,name)`, { headers: H })).json();
+const drawsRes = await fetch(`${URL}/rest/v1/draws?status=in.(${STATUS.join(",")})&select=id,title,entry_url,draw_date,operators(slug,name)`, { headers: H });
+const draws = await drawsRes.json();
+// PostgREST answers a failed read with an OBJECT. Unchecked, `draws.length` is undefined,
+// the worker loop `while (i < draws.length)` never runs, and this exits 0 having reported
+// "checking undefined draws" and expired nothing — a silent no-op on the daily cron, which
+// is the failure mode this fleet exists to prevent. Fail loudly instead.
+if (!Array.isArray(draws)) {
+  console.error(`read failed — HTTP ${drawsRes.status}: ${draws?.message || JSON.stringify(draws).slice(0, 200)}`);
+  process.exit(1);
+}
 console.log(`${DRY ? "DRY RUN" : "LIVE"} — checking ${draws.length} ${STATUS.join("+")} draws for ended comps\n`);
 
 const slugFromUrl = productSlug;
