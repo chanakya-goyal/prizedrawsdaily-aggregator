@@ -17,7 +17,11 @@ const DRY = process.env.DRY_RUN !== "false";
 // so a LIVE draw whose competition has since finished is auto-expired off the public site.
 const STATUS = (process.env.STATUS || "draft").split(",").map((s) => s.trim()).filter(Boolean);
 if (!DRY && !KEY) { console.error("DRY_RUN=false needs SUPABASE_SERVICE_ROLE_KEY"); process.exit(1); }
-const READ = KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
+const READ = KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "";
+if (!READ) {
+  console.error("No Supabase key available. Bun auto-loads .env — check SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_PUBLISHABLE_KEY) is set there.");
+  process.exit(1);
+}
 const H = { apikey: READ, Authorization: `Bearer ${READ}` };
 // FINISHED_RE and its matcher live in lib/liveness.mjs so scraper, sweep and verifier share one
 // definition. Match through saysFinished(), never FINISHED_RE.test(html) — see the note there.

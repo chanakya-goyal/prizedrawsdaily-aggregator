@@ -16,7 +16,11 @@ import { fetchHtml } from "./lib/fetcher.mjs";
 import { load, parseJsonLd, findProductLd } from "./lib/parse.mjs";
 
 const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
-const ANON = process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
+const ANON = process.env.SUPABASE_PUBLISHABLE_KEY || "";
+if (!ANON) {
+  console.error("No Supabase key available. Bun auto-loads .env — check SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_PUBLISHABLE_KEY) is set there.");
+  process.exit(1);
+}
 const FLARESOLVERR_URL = process.env.FLARESOLVERR_URL || "";
 
 const BLOCK_RE = /just a moment|checking your browser|attention required|cf-browser|access to this (site|service) has been limited|enable javascript and cookies|performing security|verify(ing)? you are human/i;
