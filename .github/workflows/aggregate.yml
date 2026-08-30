@@ -104,6 +104,13 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
+      - name: Inventory Integrity Index (advisory — never fails the run)
+        if: always()
+        run: bun manager/inventory-scorecard.mjs >> "$GITHUB_STEP_SUMMARY"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
       - name: Tripwire — alarm loudly if the pipeline is broken
         if: always()
         env:
