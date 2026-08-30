@@ -9,6 +9,7 @@
 //   DRY_RUN=true (default) → report only.  DRY_RUN=false → set status='ended' on the finished ones.
 import { UA } from "./lib/parse.mjs";
 import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, saysFinished } from "./lib/liveness.mjs";
+import { sbGetAll, sbCount } from "./lib/sb.mjs";
 const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
@@ -23,17 +24,27 @@ const H = { apikey: READ, Authorization: `Bearer ${READ}` };
 
 const ops = await Bun.file("operators.json").json();
 const opBy = Object.fromEntries(ops.map((o) => [o.slug, o]));
-const drawsRes = await fetch(`${URL}/rest/v1/draws?status=in.(${STATUS.join(",")})&select=id,title,entry_url,draw_date,operators(slug,name)`, { headers: H });
-const draws = await drawsRes.json();
-// PostgREST answers a failed read with an OBJECT. Unchecked, `draws.length` is undefined,
-// the worker loop `while (i < draws.length)` never runs, and this exits 0 having reported
-// "checking undefined draws" and expired nothing — a silent no-op on the daily cron, which
-// is the failure mode this fleet exists to prevent. Fail loudly instead.
-if (!Array.isArray(draws)) {
-  console.error(`read failed — HTTP ${drawsRes.status}: ${draws?.message || JSON.stringify(draws).slice(0, 200)}`);
+// Paged, not a single read. This was one unpaginated request and PostgREST silently caps at
+// 1000: on 2026-08-30 it logged "checking 1000 active+draft draws" — the cap describing
+// itself as a total — and every row past 1000 had never been swept in the table's life.
+// sbGetAll throws on a non-array body, preserving the loud-failure guard this replaced (a
+// silent no-op on the daily cron is the failure mode this fleet exists to prevent).
+const scope = await sbCount(`draws?select=id&status=in.(${STATUS.join(",")})`, { key: READ, base: URL });
+let draws;
+try {
+  draws = await sbGetAll(`draws?status=in.(${STATUS.join(",")})&select=id,title,entry_url,draw_date,operators(slug,name)`, { key: READ, base: URL });
+} catch (e) {
+  console.error(e.message);
   process.exit(1);
 }
-console.log(`${DRY ? "DRY RUN" : "LIVE"} — checking ${draws.length} ${STATUS.join("+")} draws for ended comps\n`);
+// Print read-vs-scope, never a bare count. A truncation can then never again read as a total.
+console.log(`${DRY ? "DRY RUN" : "LIVE"} — checking ${draws.length} of ${scope ?? "?"} ${STATUS.join("+")} draws in scope for ended comps\n`);
+if (scope != null && draws.length < scope) {
+  console.error(`⚠️  read ${draws.length} rows but ${scope} are in scope — pagination is losing rows`);
+}
+// Consumed by manager/inventory-scorecard.mjs to score sweep coverage. Written even on a dry
+// run: coverage is a property of the read, not of whether we wrote anything.
+await Bun.write("sweep-scope.json", JSON.stringify({ swept: draws.length, scope, statuses: STATUS, at: new Date().toISOString() }, null, 2));
 
 const slugFromUrl = productSlug;
 
