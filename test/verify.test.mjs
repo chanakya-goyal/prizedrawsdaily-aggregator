@@ -400,11 +400,15 @@ describe("staleDateDecision — the 397 cohort", () => {
     expect(staleDateDecision(stored, { purchasable: false, source: "shopify" }, NOW).confidence).toBe("high");
   });
 
+  test("api evidence is high — the adapters read the operator's own live set", () => {
+    expect(staleDateDecision(stored, { purchasable: true, freshDate: future, source: "api" }, NOW).confidence).toBe("high");
+  });
+
   test("a source with no evidence path is LOW confidence, never high", () => {
-    // api operators fall through the sweep with no adapter path; an unknown method likewise.
-    // Grading them "high" by default would let a no-evidence row look authoritative.
-    expect(staleDateDecision(stored, { purchasable: null, reachable: false, source: "api" }, NOW).confidence).toBe("low");
+    // An unknown or absent method has no evidence at all. Grading it "high" by default would
+    // let a no-evidence row look authoritative enough to authorise a write.
     expect(staleDateDecision(stored, { purchasable: null, reachable: false, source: null }, NOW).confidence).toBe("low");
+    expect(staleDateDecision(stored, { purchasable: null, reachable: false, source: "carrier-pigeon" }, NOW).confidence).toBe("low");
   });
 
   // ── this function owns draw_date and nothing else ────────────────────────────────────
