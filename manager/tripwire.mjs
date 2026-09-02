@@ -34,6 +34,8 @@ export function evaluateTripwire({
   storageQuotaBytes = 1073741824, // free plan = 1 GB
   storageWarnPct = 70,
   storageRedPct = 90,
+  staleActive = null,  // status='active' but draw_date already passed — counted as live, isn't
+  futureEnded = null,  // status='ended' but draw_date still ahead — expired early
 }) {
   const reasons = [];   // → exit 1, opens/comments the tripwire issue
   const warnings = [];  // → reported in tripwire.md, run stays green
@@ -51,6 +53,18 @@ export function evaluateTripwire({
   // and then threw away. Never a build failure — but it is the number that says the publish
   // path is the bottleneck, so it belongs in front of you every day.
   if (expiredDrafts) warnings.push(`${expiredDrafts} draft(s) passed their draw date unpublished — scraped, never shown`);
+
+  // `status` and `draw_date` disagreeing is not itself a fault — the sweep expires on the
+  // operator's own purchasability flag, not on a date, and an operator may legitimately
+  // extend a comp past its listed close. But the disagreement was invisible, and it was
+  // large: measured 2026-08-30, 397 of 759 `status=active` rows had a draw_date already in
+  // the past — 52% of what this alarm was calling "live inventory". `activeCount` is now
+  // date-guarded so the floor/target compare against draws a visitor can actually enter;
+  // these two warnings keep the discrepancy itself in front of you rather than letting the
+  // guard quietly hide it. Warn only: acting on them is ended-sweep's and
+  // apply-stale-dates' job, and neither is a reason to red the daily run.
+  if (staleActive) warnings.push(`${staleActive} draw(s) are status=active with a draw_date already passed — not enterable, not counted as live`);
+  if (futureEnded) warnings.push(`${futureEnded} draw(s) are status=ended with a draw_date still ahead — expired early`);
 
   // A total-inventory check cannot see one category collapsing while another grows. Cars are
   // the sharpest case: the site sat at 5 live car draws while cash-prizes had 86, and the
@@ -171,11 +185,21 @@ if (import.meta.path === Bun.main) {
   const quietSince = new Date(Date.now() - QUIET_DAYS * 864e5).toISOString();
   const CATEGORY_FLOORS = JSON.parse(process.env.TRIPWIRE_CATEGORY_FLOORS || '{"car-draws":10}');
 
-  const [activeCount, freshCount, expiredDrafts, liveRows, recentRows, storeBytes, operatorRoster, historyRows, blockedDraftsCount] = await Promise.all([
-    count("draws?select=id&status=eq.active"),
+  const [activeCount, freshCount, expiredDrafts, liveRows, recentRows, storeBytes, operatorRoster, historyRows, blockedDraftsCount, staleActive, futureEnded] = await Promise.all([
+    // Date-guarded on purpose. `status=eq.active` alone counted 759 on 2026-08-30 when only
+    // 362 of those rows were enterable — the floor (150) and target (350) were being compared
+    // against a number 2.1x the truth, so a real collapse to ~200 live draws would still have
+    // printed green. Every listing query on the site already guards on draw_date rather than
+    // status (src/lib/directory.functions.ts, sitemap[.]xml.tsx), so this also makes the alarm
+    // count the same inventory the visitor sees.
+    count(`draws?select=id&status=eq.active&draw_date=gte.${nowIso}`),
     count(`draws?select=id&created_at=gte.${since}`),
     count(`draws?select=id&status=eq.draft&draw_date=lt.${nowIso}`),
-    rows("draws?select=operators(slug),categories(slug)&status=eq.active&limit=2000"),
+    // Same date guard, and `all: true` rather than `limit=2000`: the limit was never honoured
+    // (this project hard-caps REST responses at 1000 regardless — the note on `rows()` below
+    // documents it), so the category floors and the operator scoreboard were both computed
+    // from a truncated, undated sample.
+    rows(`draws?select=operators(slug),categories(slug)&status=eq.active&draw_date=gte.${nowIso}`, { all: true }),
     rows(`draws?select=operators(slug)&created_at=gte.${quietSince}&limit=2000`),
     storageBytes(),
     // Operator scoreboard (below): the DB `operators` table is the authoritative roster (99
@@ -192,6 +216,9 @@ if (import.meta.path === Bun.main) {
     // Category coverage: rows the scraper refused to guess at all (step 2b's pool, same filter
     // it uses) — a single cheap count request, not the drafts themselves.
     count("draws?select=id&status=eq.draft&category_id=is.null"),
+    // The two halves of the status/draw_date disagreement, reported as warnings above.
+    count(`draws?select=id&status=eq.active&draw_date=lt.${nowIso}`),
+    count(`draws?select=id&status=eq.ended&draw_date=gte.${nowIso}`),
   ]);
 
   // An operator we deliberately switched off will always look "stalled" — warning about it
@@ -280,6 +307,7 @@ if (import.meta.path === Bun.main) {
     storageQuotaBytes: Number(process.env.STORAGE_QUOTA_BYTES || 1073741824),
     storageWarnPct: Number(process.env.STORAGE_WARN_PCT || 70),
     storageRedPct: Number(process.env.STORAGE_RED_PCT || 90),
+    staleActive, futureEnded,
   });
 
   const body = [
@@ -287,8 +315,9 @@ if (import.meta.path === Bun.main) {
     "",
     ...(reasons.length ? ["**Broken:**", ...reasons.map((x) => `- ${x}`), ""] : []),
     ...(warnings.length ? ["**Watch:**", ...warnings.map((x) => `- ${x}`), ""] : []),
-    `Active draws: **${activeCount ?? "unknown"}** (floor ${floor}, target ${target}) · `
+    `Enterable draws: **${activeCount ?? "unknown"}** (active with a future draw_date; floor ${floor}, target ${target}) · `
       + `new in 24h: **${freshCount ?? "unknown"}** · scrape outcome: **${scrapeOutcome}**`,
+    ...(staleActive ? [`Also holding **${staleActive}** active row(s) whose draw_date has passed — excluded from the count above.`] : []),
     "",
     "Check the run's coverage-report step summary for the per-operator picture.",
   ].join("\n");
@@ -300,5 +329,5 @@ if (import.meta.path === Bun.main) {
 
   for (const w of warnings) console.log(`⚠️  ${w}`);
   if (tripped) { console.error(reasons.join("; ")); process.exit(1); }
-  console.log(`tripwire ok — active ${activeCount}, ${freshCount} new in 24h, scrape ${scrapeOutcome}`);
+  console.log(`tripwire ok — enterable ${activeCount} (+${staleActive ?? 0} stale-dated), ${freshCount} new in 24h, scrape ${scrapeOutcome}`);
 }

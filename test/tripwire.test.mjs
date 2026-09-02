@@ -155,3 +155,36 @@ describe("evaluateTripwire — storage budget", () => {
     expect(r.tripped).toBe(false);
   });
 });
+
+describe("evaluateTripwire — status/date disagreement", () => {
+  // Measured 2026-08-30: 397 of 759 active rows had a passed draw_date. The alarm counted
+  // all 759, so a collapse to ~200 enterable draws would still have printed green against
+  // a floor of 150. These warn; they never red the run — correcting them belongs to
+  // ended-sweep and apply-stale-dates, not to the daily alarm.
+  test("stale-dated active rows warn without tripping", () => {
+    const r = evaluateTripwire({ ...ok, staleActive: 397 });
+    expect(r.tripped).toBe(false);
+    expect(r.warnings.join(" ")).toContain("397");
+    expect(r.warnings.join(" ")).toContain("draw_date already passed");
+  });
+
+  test("future-dated ended rows warn without tripping", () => {
+    const r = evaluateTripwire({ ...ok, futureEnded: 12 });
+    expect(r.tripped).toBe(false);
+    expect(r.warnings.join(" ")).toContain("12");
+    expect(r.warnings.join(" ")).toContain("expired early");
+  });
+
+  test("neither signal is reported when the database agrees with itself", () => {
+    const r = evaluateTripwire({ ...ok, staleActive: 0, futureEnded: 0 });
+    expect(r.warnings.join(" ")).not.toContain("draw_date");
+  });
+
+  // The regression this whole PR exists to prevent: the floor must be compared against the
+  // date-guarded count. A caller passing the unguarded 759 would hide a real collapse.
+  test("a below-floor enterable count still trips even with plenty of stale rows around", () => {
+    const r = evaluateTripwire({ ...ok, activeCount: 120, floor: 150, staleActive: 397 });
+    expect(r.tripped).toBe(true);
+    expect(r.reasons.join(" ")).toContain("120");
+  });
+});
