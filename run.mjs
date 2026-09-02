@@ -18,7 +18,7 @@ import { CATEGORIES } from "./lib/parse.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const ANON_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
+const ANON_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "";
 const DRY_RUN = process.env.DRY_RUN !== "false";
 const PUBLISH_STATUS = process.env.PUBLISH_STATUS || "draft"; // cowork owns publish; keep draft by default
 const PER_OP = Number(process.env.PER_OP || 5);             // render: per-op cap (browser cost — keep modest)
@@ -51,6 +51,14 @@ const CORRECT_MAX = Number(process.env.CORRECT_MAX || 100);
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
 const METHODS = process.env.METHODS ? new Set(process.env.METHODS.split(",").map((s) => s.trim())) : null;
 const READ_KEY = SERVICE_KEY || ANON_KEY;
+// No hardcoded key fallback. The `sb_publishable_h-iA9…` literal that used to sit on ANON_KEY
+// has returned 401 since the project moved, so it was not a working fallback — it was a false
+// affordance that made a keyless invocation look supported and then failed three layers down
+// with an opaque 401 from whichever request happened to run first.
+if (!READ_KEY) {
+  console.error("No Supabase key available. Bun auto-loads .env — check SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_PUBLISHABLE_KEY) is set there.");
+  process.exit(1);
+}
 
 const now = new Date();
 const round2 = (n) => Math.round(n * 100) / 100;
