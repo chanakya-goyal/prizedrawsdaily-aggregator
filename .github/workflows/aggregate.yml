@@ -139,6 +139,11 @@ jobs:
           TRIPWIRE_QUIET_DAYS: "5" # has live draws but added none in 5d = parser broke under us
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The alarm has to be able to turn OFF again. Until now the healthy path did
+          # nothing at all, so issue #21 — opened 2026-08-15, last real alarm 2026-08-20 —
+          # sat OPEN and red through twelve consecutive green runs. An alarm that is always
+          # on carries no information: a genuine failure would have appended a comment to an
+          # issue everyone had already learned to ignore.
           if ! bun manager/tripwire.mjs; then
             EXISTING=$(gh issue list --label tripwire --state open --json number -q '.[0].number' || true)
             if [ -n "$EXISTING" ]; then
@@ -149,4 +154,12 @@ jobs:
                 --label tripwire --body-file tripwire.md
             fi
             exit 1
+          else
+            # Green. Close any open alarm, quoting the run that cleared it so the issue
+            # history reads as a resolution rather than just going quiet.
+            EXISTING=$(gh issue list --label tripwire --state open --json number -q '.[0].number' || true)
+            if [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --body "✅ Cleared by [run ${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on $(date -u +%Y-%m-%d) — tripwire passed. Closing; a future failure opens a fresh issue."
+              gh issue close "$EXISTING"
+            fi
           fi
