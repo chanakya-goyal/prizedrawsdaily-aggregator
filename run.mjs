@@ -7,7 +7,7 @@
 // run re-reads the same URL and agrees with it (lib/verify.mjs) — publishing is this script's
 // job now, not the cowork routine's, which QAs the result and rewrites descriptions.
 import { chromium } from "playwright";
-import { renderOperator, wooOperator, shopifyOperator, apiOperator, dedupe, makeContext } from "./extractor.mjs";
+import { renderOperator, wooOperator, shopifyOperator, apiOperator, dedupe, makeContext, renderLivenessMode } from "./extractor.mjs";
 import { gate } from "./gate.mjs";
 import { templateDescription } from "./lib/describe.mjs";
 import { fieldFlags, buildHealthReport, writeStepSummary, checkImage } from "./lib/manager.mjs";
@@ -152,6 +152,11 @@ const toUpdate = [];
 const counts = [];
 const verdicts = [];
 let pages = 0, skipped = 0, autoPublished = 0, relisted = 0, correctedLive = 0;
+// Render-path comps whose page visibly says the competition has finished. In `report` mode
+// these are counted and kept; in `enforce` they are counted and dropped. Either way the
+// number is printed — an unreported inventory change is the failure mode this fleet exists
+// to prevent, and a drop is a removal of inventory.
+const renderFinished = [];
 
 // Incremental flush: re-host + write pending rows every few operators so a job-timeout
 // kill loses only the tail, never the sweep (the 2026-08-14 90-min cancel lost a full
@@ -254,7 +259,9 @@ for (const op of operators) {
     // capped, or a published draw outside the cap can never be corrected or expired.
     else if (op.method === "woo") draws = await withBudget(wooOperator(op, PER_OP_API, { knownUrls }), OP_BUDGET_MS);
     else if (op.method === "shopify") draws = await withBudget(shopifyOperator(op, PER_OP_API, { knownUrls }), OP_BUDGET_MS);
-    else draws = await withBudget(renderOperator(ctx, op, PER_OP), OP_BUDGET_MS);
+    // `onFinished` mirrors dedupe's onDrop below: a removal of inventory that nobody counts
+    // is the same silence that let dedupe destroy two thirds of a car operator's catalogue.
+    else draws = await withBudget(renderOperator(ctx, op, PER_OP, { onFinished: (hit) => renderFinished.push(hit) }), OP_BUDGET_MS);
   } catch (e) { console.log(`  FAILED: ${(e.message || "").slice(0, 80)}`); continue; }
   pages += draws.length;
   c.scraped = draws.length;
@@ -399,6 +406,13 @@ for (const op of operators) {
 if (browser) await browser.close();
 await flush();
 
+if (renderFinished.length) {
+  const mode = renderLivenessMode();
+  const byOp = renderFinished.reduce((a, h) => { a[h.operator] = (a[h.operator] || 0) + 1; return a; }, {});
+  console.log(`\n🏁 render liveness (${mode}): ${renderFinished.length} page(s) say finished — ` +
+    Object.entries(byOp).map(([s, n]) => `${s}:${n}`).join(" "));
+  await Bun.write("render-finished.json", JSON.stringify({ mode, total: renderFinished.length, byOperator: byOp, hits: renderFinished }, null, 2));
+}
 console.log(`\n\n==== ${totalNew} new, ${totalRefreshed} refreshed${relisted ? `, ${relisted} relisted` : ""}${correctedLive ? `, ${correctedLive} live rows corrected` : ""} (${pages} pages read, ${skipped} skipped) ====`);
 if (DRY_RUN) {
   console.log("(dry run — nothing written)");
