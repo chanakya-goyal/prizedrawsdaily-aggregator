@@ -9,6 +9,9 @@
 //   DRY_RUN=true (default) → report only.  DRY_RUN=false → set status='ended' on the finished ones.
 import { UA, textOf, extractDate, fieldsFromHtml } from "./lib/parse.mjs";
 import { staleDateDecision } from "./lib/verify.mjs";
+import { raffleEngineOperator } from "./lib/adapters/raffle-engine.mjs";
+import { hydraOperator } from "./lib/adapters/hydra.mjs";
+import { inertiaOperator } from "./lib/adapters/inertia.mjs";
 import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, saysFinished } from "./lib/liveness.mjs";
 import { sbGetAll, sbCount } from "./lib/sb.mjs";
 const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
@@ -75,6 +78,38 @@ async function wooFeed(op) {
   } catch { /* partial or empty map → those draws stay unverified, never wrongly expired */ }
   wooCache.set(op.slug, map);
   return map;
+}
+
+// API operators: the same idea as wooFeed/shopAvail, one catalogue fetch per operator.
+//
+// These three adapters already ask the operator's own API for the LIVE set — raffle-engine
+// passes include_finished=false, hydra and inertia filter server-side — so presence in the
+// feed is the operator's own liveness answer, as authoritative as Woo's is_purchasable. It
+// also carries a real draw_date, which is the whole reason 248 rows had no readable evidence:
+// they were being probed as raw SPA HTML that contains neither.
+//
+// ABSENCE IS NOT EVIDENCE OF ENDING. A URL shape can drift, and the feed is capped. Same rule
+// as shopify's "not in product feed (unverified)": never expire on absence.
+// ABSENCE IS ONLY MEANINGFUL IF OUR URL SHAPE STILL MATCHES THE FEED. `drawPath` is config,
+// and if an operator changes their URL scheme every key mismatches at once — absence would
+// then look like "every competition finished today". So each feed also reports how many of
+// OUR stored rows it matched: with zero matches the shape has drifted and absence says
+// nothing, and this is reported rather than silently acted on.
+const apiCache = new Map();
+const API_ADAPTERS = { "raffle-engine": raffleEngineOperator, hydra: hydraOperator, inertia: inertiaOperator };
+async function apiFeed(op) {
+  if (apiCache.has(op.slug)) return apiCache.get(op.slug);
+  const map = new Map();
+  let error = null;
+  try {
+    const fn = API_ADAPTERS[op.apiStyle];
+    if (fn) for (const dr of (await fn(op, 300)) || []) if (dr?.entry_url) map.set(permalinkKey(dr.entry_url), dr);
+  } catch (e) { error = (e.message || "").slice(0, 60); } // empty map → unverified, never wrongly expired
+  const ours = draws.filter((d) => d.operators?.slug === op.slug);
+  const matched = ours.filter((d) => map.has(permalinkKey(d.entry_url))).length;
+  const feed = { map, matched, ours: ours.length, error };
+  apiCache.set(op.slug, feed);
+  return feed;
 }
 
 const shopCache = new Map();
@@ -144,16 +179,28 @@ async function isEnded(d) {
       // find a date would be a request per row; that is apply-time work, not sweep work.
       return { ended: !avail, why: avail ? "available" : "sold out / no available variant", purchasable: avail, freshDate: null, reachable: true, source: "shopify" };
     }
-    // API operators have never had a branch here, so they fell through to the render text
+    // API operators had no branch here until now, so they fell through to the render text
     // probe below — which fetches the raw HTML of a JS-rendered SPA and finds neither a
-    // finished marker nor a date. Measured 2026-08-31: 151 of the 472 stale-dated rows are
-    // ukcc + seven-days-perf alone, held as "no future date readable" when the truth is that
-    // we never asked their API. Their adapters (lib/adapters/raffle-engine.mjs, hydra, inertia)
-    // already answer both questions server-side and are the correct source; wiring them into
-    // the sweep is its own change. Until then, say so explicitly rather than letting these
-    // rows sit in the render bucket looking like a parser failure.
+    // finished marker nor a date. That read 248 rows as "still purchasable" purely because a
+    // probe against an empty shell found no finished marker, and left every one of them with
+    // no usable date (ukcc + seven-days-perf alone were 151 of the 472 stale-dated rows).
     if (op.method === "api") {
-      return { ended: null, why: `api operator (${op.apiStyle || "?"}) — sweep has no adapter path`, purchasable: null, freshDate: null, reachable: false, source: "api" };
+      if (!API_ADAPTERS[op.apiStyle]) {
+        return { ended: null, why: `api operator (${op.apiStyle || "?"}) — no adapter for this apiStyle`, purchasable: null, freshDate: null, reachable: false, source: "api" };
+      }
+      const { map, matched, error } = await apiFeed(op);
+      if (!map.size) return { ended: null, why: `api feed unavailable${error ? ` (${error})` : ""}`, purchasable: null, freshDate: null, reachable: false, source: "api" };
+      const hit = map.get(permalinkKey(d.entry_url));
+      if (hit) return { ended: false, why: "present in api live feed", purchasable: true, freshDate: hit.draw_date ?? null, reachable: true, source: "api" };
+      // Absent. These adapters request the LIVE set only (raffle-engine passes
+      // include_finished=false), so absence from a feed that still recognises our URL shape is
+      // the operator's own answer that the comp is over. Still REPORTED, not acted on: this
+      // sweep only ever writes on an explicit not-purchasable signal, and turning 248 rows
+      // ended in one run is a decision for a human with the tally in front of them.
+      if (matched === 0) {
+        return { ended: null, why: `not in api live feed, but 0 of our ${op.slug} URLs match it — shape drift, absence proves nothing`, purchasable: null, freshDate: null, reachable: true, source: "api" };
+      }
+      return { ended: null, why: `not in api live feed (feed matched ${matched} of our rows, so the shape is good)`, purchasable: null, freshDate: null, reachable: true, source: "api" };
     }
 
     // render / other: text probe. This is the ONLY weak signal in this file — Woo's
@@ -207,6 +254,11 @@ if (staleDate.length) {
     title: x.d.title ?? null,
     entry_url: x.d.entry_url,
     stored_draw_date: x.d.draw_date,
+    source: x.source ?? null,
+    // The sweep's own finding, kept alongside the decision's reason. staleDateDecision
+    // collapses every no-evidence case to one reason; this is what was actually observed,
+    // and it is the difference between "we never asked" and "we asked and it wasn't there".
+    evidence: x.why,
     ...staleDateDecision(x.d, x, new Date(NOW_MS)),
   }));
   const tally = verdicts.reduce((a, v) => { a[v.action] = (a[v.action] || 0) + 1; return a; }, {});
