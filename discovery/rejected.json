@@ -28,5 +28,20 @@
     "domain": "inthekitchendraw.co.uk",
     "reason": "Structural: every comp capped at 291-300 entries (dry-run 2026-09-03), below the 500-entry minimum gate forever",
     "date": "2026-09-03"
+  },
+  {
+    "domain": "northern-competitions.co.uk",
+    "reason": "FlareSolverr pilot 2026-09-03: reachable, 15 pages scraped, but ALL comps are instant-win/auto-draw with no extractable draw_date (required gate). Re-try only with a patterns.date override built from CI-fetched HTML. TP 4.8/11,780 — worth a second look.",
+    "date": "2026-09-03"
+  },
+  {
+    "domain": "thatprizeguy.co.uk",
+    "reason": "FlareSolverr pilot 2026-09-03: reachable, 15 pages scraped, 0 with an extractable draw_date (required gate). Possible patterns.date fix via CI-fetched HTML. TP 4.5/1,029.",
+    "date": "2026-09-03"
+  },
+  {
+    "domain": "golfdailydraw.co.uk",
+    "reason": "FlareSolverr pilot 2026-09-03: reachable, 12 pages scraped, all dateless instant-win/auto-draw golf comps (required-date gate). TP 5.0/391.",
+    "date": "2026-09-03"
   }
 ]
