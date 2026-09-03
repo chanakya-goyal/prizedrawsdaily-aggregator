@@ -1,0 +1,400 @@
+[
+ {
+  "slug": ".cars.Subaru-Impreza-RB320-1-000-03-09-26",
+  "title": "Win This Subaru Impreza RB320 WRX STi + \u00a31,000 Cash!",
+  "competition_tag": null,
+  "card_asset": {
+   "type": "image",
+   "default": {
+    "url": "https://cdn.clickcompetitions.co.uk/clickcompetitions/sFyBEhjUiVKI049N_AIV00642.jpg?auto=format%2Ccompress"
+   }
+  },
+  "server": {
+   "id": "01a03d6d-0e44-7c34-89bf-ca4614c9c0a4",
+   "slug": "SC3526A",
+   "name": "Subaru Impreza RB320 + \u00a31,000 03.09.26",
+   "classification": "SC",
+   "categoryId": "019fa83f-2459-7ae5-ad6f-fb3906baf82d",
+   "slugPrefix": ".cars.Subaru-Impreza-RB320-1-000-03-09-26",
+   "startDate": "2026-08-27T16:00:00.000Z",
+   "endDate": "2026-09-03T19:55:00.000Z",
+   "status": "live",
+   "unified_status": "liveOpen",
+   "draw_mechanism": "manual",
+   "automated_delay": 0,
+   "ticketAmount": 0.33,
+   "ticketDiscountAmount": 0,
+   "originalTicketAmount": 0.33,
+   "infiniteTickets": false,
+   "quickTotalTicketsSelector": [
+    10,
+    25,
+    50,
+    100
+   ],
+   "recommendedTotalTickets": [
+    10,
+    25,
+    50,
+    100
+   ],
+   "percentage": 38.37,
+   "maximum_tickets_quantity": 3000,
+   "global_maximum_tickets_quantity": 3000,
+   "type": "multiPrize_singleTicket",
+   "prizes": [
+    {
+     "prize": {
+      "id": "9b361fe1-b384-4a98-9c56-7747cbe2fe31",
+      "name": "Subaru Impreza RB320",
+      "description": "Subaru Impreza RB320",
+      "displayedDescription": null,
+      "type": "generic",
+      "category": "Cars",
+      "imageUrl": "https://cdn.skywind360.com/003a014c-2805-48ce-9e97-7b94d55b3365/9b361fe1-b384-4a98-9c56-7747cbe2fe31/desktop-1787736778124.jpg",
+      "rrp": 23000,
+      "alternativeCashAmount": 15500,
+      "alternativeGameCreditAmount": 18600
+     },
+     "quantity": 1,
+     "wonCount": 0
+    },
+    {
+     "prize": {
+      "id": "3daf94c3-ace0-42a9-b440-d33ace88de00",
+      "name": "\u00a31,000 Cash",
+      "description": "\u00a31,000 Cash",
+      "displayedDescription": null,
+      "type": "cash",
+      "category": "Cash Under \u00a35,000",
+      "imageUrl": "https://cdn.skywind360.com/003a014c-2805-48ce-9e97-7b94d55b3365/3daf94c3-ace0-42a9-b440-d33ace88de00/desktop.jpg",
+      "rrp": 1000,
+      "alternativeCashAmount": 0,
+      "alternativeGameCreditAmount": 1200
+     },
+     "quantity": 1,
+     "wonCount": 0
+    }
+   ],
+   "drawDate": "2026-09-03T19:55:00.000Z",
+   "liveDrawDate": null,
+   "totalPrizes": 2,
+   "totalPrizesAmount": 24000,
+   "totalAlternativeCashAmount": 16500,
+   "discount": null,
+   "freeCompetition": false,
+   "restrictionMethod": "none",
+   "availableOnlyForTestUser": false,
+   "allowedToUseGameCreditOrBonusMoney": true,
+   "totalDiscountAmount": 0,
+   "dynamicVisibility": {
+    "list": {
+     "percentage": 38.37
+    },
+    "detail": {
+     "totalTickets": 179995,
+     "soldTickets": 69070
+    }
+   },
+   "isLive": true,
+   "isSoldOut": false,
+   "isPendingDraw": false,
+   "isEnded": false,
+   "passwordProtectedCompetition": false,
+   "pagePhase": "default",
+   "isManualDraw": true,
+   "isAutoDraw": false,
+   "earlyBirdSoldThreshold": null
+  }
+ },
+ {
+  "slug": ".prizes.5-000-for-1p-03-09-26",
+  "title": "Win \u00a35,000 Tax Free Cash For 1p!",
+  "competition_tag": null,
+  "card_asset": {
+   "type": "image",
+   "default": {
+    "url": "https://cdn.clickcompetitions.co.uk/clickcompetitions/acU1UJGXnQHGY_sH_WIN%C2%A35%2C000MARCH2026.jpg?auto=format%2Ccompress"
+   }
+  },
+  "server": {
+   "id": "01a03e07-69e5-75a9-86b2-e28061b3e30d",
+   "slug": "SP3326S",
+   "name": "\u00a35,000 for 1p 03.09.26",
+   "classification": "SP",
+   "categoryId": "019fa840-23a6-7dfd-9fc1-e7dfd22c5667",
+   "slugPrefix": ".prizes.5-000-for-1p-03-09-26",
+   "startDate": "2026-08-27T16:00:00.000Z",
+   "endDate": "2026-09-03T19:50:00.000Z",
+   "status": "live",
+   "unified_status": "liveOpen",
+   "draw_mechanism": "manual",
+   "automated_delay": 0,
+   "ticketAmount": 0.01,
+   "ticketDiscountAmount": 0,
+   "originalTicketAmount": 0.01,
+   "infiniteTickets": false,
+   "quickTotalTicketsSelector": [
+    500,
+    1000,
+    2000,
+    5000
+   ],
+   "recommendedTotalTickets": [
+    500,
+    1000,
+    2000,
+    5000
+   ],
+   "percentage": 60.4,
+   "maximum_tickets_quantity": 10000,
+   "global_maximum_tickets_quantity": 10000,
+   "type": "singlePrize_singleTicket",
+   "prizes": [
+    {
+     "prize": {
+      "id": "ba313f7e-9284-4094-ab9f-6ed68ed57724",
+      "name": "\u00a35,000 Cash",
+      "description": "\u00a35,000 Cash",
+      "displayedDescription": null,
+      "type": "cash",
+      "category": "Cash \u00a35,000+",
+      "imageUrl": "https://cdn.skywind360.com/003a014c-2805-48ce-9e97-7b94d55b3365/ba313f7e-9284-4094-ab9f-6ed68ed57724/desktop.jpg",
+      "rrp": 5000,
+      "alternativeCashAmount": 0,
+      "alternativeGameCreditAmount": 6000
+     },
+     "quantity": 1,
+     "wonCount": 0
+    }
+   ],
+   "drawDate": "2026-09-03T19:50:00.000Z",
+   "liveDrawDate": null,
+   "totalPrizes": 1,
+   "totalPrizesAmount": 5000,
+   "discount": null,
+   "freeCompetition": null,
+   "restrictionMethod": "none",
+   "availableOnlyForTestUser": false,
+   "allowedToUseGameCreditOrBonusMoney": true,
+   "totalDiscountAmount": 0,
+   "dynamicVisibility": {
+    "list": {
+     "percentage": 60.4
+    },
+    "detail": {
+     "totalTickets": 1249999,
+     "soldTickets": 755117
+    }
+   },
+   "isLive": true,
+   "isSoldOut": false,
+   "isPendingDraw": false,
+   "isEnded": false,
+   "passwordProtectedCompetition": false,
+   "pagePhase": "default",
+   "isManualDraw": true,
+   "isAutoDraw": false,
+   "earlyBirdSoldThreshold": null
+  }
+ },
+ {
+  "slug": ".instawins.Car-IW-30-08-26",
+  "title": "OVER 125,000 INSTANT WINS INCLUDING 10 CARS + \u00a32,000 END PRIZE! *1 IN 4 CHANCE OF WINNING*",
+  "competition_tag": null,
+  "card_asset": {
+   "type": "image",
+   "default": {
+    "url": "https://cdn.clickcompetitions.co.uk/clickcompetitions/iA5Pd9hoXKq24ZmB_23RDAUGUSTIWSTART-01.jpg?auto=format%2Ccompress"
+   }
+  },
+  "server": {
+   "id": "01a01ee7-5e9b-71cd-ab7b-cf844e50fd58",
+   "slug": "IW3326C",
+   "name": "Car IW - 06.09.26",
+   "classification": "IW",
+   "categoryId": "019fa83f-aa4b-7938-9e30-b74859d29a75",
+   "slugPrefix": ".instawins.Car-IW-30-08-26",
+   "startDate": "2026-08-23T16:00:00.000Z",
+   "endDate": "2026-09-06T21:00:00.000Z",
+   "status": "live",
+   "unified_status": "liveOpen",
+   "draw_mechanism": "rngWithoutDelay",
+   "automated_delay": 0,
+   "ticketAmount": 0.99,
+   "ticketDiscountAmount": 0,
+   "originalTicketAmount": 0.99,
+   "infiniteTickets": false,
+   "quickTotalTicketsSelector": [
+    5,
+    10,
+    20,
+    25
+   ],
+   "recommendedTotalTickets": [
+    5,
+    10,
+    20,
+    25
+   ],
+   "percentage": 17.38,
+   "maximum_tickets_quantity": 3000,
+   "global_maximum_tickets_quantity": 3000,
+   "type": "singlePrize_singleTicket",
+   "prizes": [
+    {
+     "prize": {
+      "id": "0e4f4fa4-74f8-4279-ac93-90b1d03d6a6c",
+      "name": "\u00a32,000 Cash End Prize",
+      "description": "\u00a32,000 Cash",
+      "displayedDescription": null,
+      "type": "cash",
+      "category": "End Prizes For Instant Wins",
+      "imageUrl": "https://cdn.skywind360.com/003a014c-2805-48ce-9e97-7b94d55b3365/0e4f4fa4-74f8-4279-ac93-90b1d03d6a6c/desktop.jpg",
+      "rrp": 2000,
+      "alternativeCashAmount": 0,
+      "alternativeGameCreditAmount": 2400
+     },
+     "quantity": 1,
+     "wonCount": 0
+    }
+   ],
+   "drawDate": "2026-09-06T21:00:00.000Z",
+   "liveDrawDate": null,
+   "totalPrizes": 125001,
+   "totalPrizesAmount": 359532,
+   "discount": null,
+   "freeCompetition": null,
+   "restrictionMethod": "none",
+   "availableOnlyForTestUser": false,
+   "allowedToUseGameCreditOrBonusMoney": true,
+   "totalDiscountAmount": 0,
+   "dynamicVisibility": {
+    "list": {
+     "percentage": 17.38
+    },
+    "detail": {
+     "totalTickets": 499995,
+     "soldTickets": 86934
+    }
+   },
+   "isLive": true,
+   "isSoldOut": false,
+   "isPendingDraw": false,
+   "isEnded": false,
+   "passwordProtectedCompetition": false,
+   "pagePhase": "default",
+   "isManualDraw": false,
+   "isAutoDraw": true,
+   "earlyBirdSoldThreshold": null
+  }
+ },
+ {
+  "slug": ".cars.Suzuki-Jimny-05-09-26",
+  "title": "Win This Suzuki Jimny SZ5 4X4 & \u00a31,000 Cash!",
+  "competition_tag": null,
+  "card_asset": {
+   "type": "image",
+   "default": {
+    "url": "https://cdn.clickcompetitions.co.uk/clickcompetitions/Lze4vTHbEyoymqkC_AIV03130.jpg?auto=format%2Ccompress"
+   }
+  },
+  "server": {
+   "id": "01a03e52-126a-7da6-a280-e2af523846e6",
+   "slug": "SC3526B",
+   "name": "Suzuki Jimny 05.09.26",
+   "classification": "SC",
+   "categoryId": "019fa83f-2459-7ae5-ad6f-fb3906baf82d",
+   "slugPrefix": ".cars.Suzuki-Jimny-05-09-26",
+   "startDate": "2026-08-29T16:00:00.000Z",
+   "endDate": "2026-09-05T20:00:00.000Z",
+   "status": "live",
+   "unified_status": "liveOpen",
+   "draw_mechanism": "manual",
+   "automated_delay": 0,
+   "ticketAmount": 0.29,
+   "ticketDiscountAmount": 0,
+   "originalTicketAmount": 0.29,
+   "infiniteTickets": false,
+   "quickTotalTicketsSelector": [
+    10,
+    25,
+    50,
+    100
+   ],
+   "recommendedTotalTickets": [
+    10,
+    25,
+    50,
+    100
+   ],
+   "percentage": 32.81,
+   "maximum_tickets_quantity": 4000,
+   "global_maximum_tickets_quantity": 4000,
+   "type": "multiPrize_singleTicket",
+   "prizes": [
+    {
+     "prize": {
+      "id": "da693f42-cd27-4a0b-85fc-8a92529d65c8",
+      "name": "Suzuki Jimny GREEN",
+      "description": "Suzuki Jimny",
+      "displayedDescription": null,
+      "type": "generic",
+      "category": "Cars",
+      "imageUrl": "https://cdn.skywind360.com/003a014c-2805-48ce-9e97-7b94d55b3365/da693f42-cd27-4a0b-85fc-8a92529d65c8/desktop-1787751787376.jpg",
+      "rrp": 30000,
+      "alternativeCashAmount": 19000,
+      "alternativeGameCreditAmount": 20800
+     },
+     "quantity": 1,
+     "wonCount": 0
+    },
+    {
+     "prize": {
+      "id": "3daf94c3-ace0-42a9-b440-d33ace88de00",
+      "name": "\u00a31,000 Cash",
+      "description": "\u00a31,000 Cash",
+      "displayedDescription": null,
+      "type": "cash",
+      "category": "Cash Under \u00a35,000",
+      "imageUrl": "https://cdn.skywind360.com/003a014c-2805-48ce-9e97-7b94d55b3365/3daf94c3-ace0-42a9-b440-d33ace88de00/desktop.jpg",
+      "rrp": 1000,
+      "alternativeCashAmount": 0,
+      "alternativeGameCreditAmount": 1200
+     },
+     "quantity": 1,
+     "wonCount": 0
+    }
+   ],
+   "drawDate": "2026-09-05T20:00:00.000Z",
+   "liveDrawDate": null,
+   "totalPrizes": 2,
+   "totalPrizesAmount": 31000,
+   "totalAlternativeCashAmount": 20000,
+   "discount": null,
+   "freeCompetition": false,
+   "restrictionMethod": "none",
+   "availableOnlyForTestUser": false,
+   "allowedToUseGameCreditOrBonusMoney": true,
+   "totalDiscountAmount": 0,
+   "dynamicVisibility": {
+    "list": {
+     "percentage": 32.81
+    },
+    "detail": {
+     "totalTickets": 205995,
+     "soldTickets": 67599
+    }
+   },
+   "isLive": true,
+   "isSoldOut": false,
+   "isPendingDraw": false,
+   "isEnded": false,
+   "passwordProtectedCompetition": false,
+   "pagePhase": "default",
+   "isManualDraw": true,
+   "isAutoDraw": false,
+   "earlyBirdSoldThreshold": null
+  }
+ }
+]

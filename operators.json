@@ -6,7 +6,7 @@
   "method": "api",
   "apiStyle": "raffle-engine",
   "drawPath": "/product/{slug}",
-  "note": "Angular SPA — every HTML path returns the same shell, so the old render config was capped at ~10 of 56 live comps. Public keyless JSON: /api/v2/raffle-draws/GBP."
+  "note": "Angular SPA \u2014 every HTML path returns the same shell, so the old render config was capped at ~10 of 56 live comps. Public keyless JSON: /api/v2/raffle-draws/GBP."
  },
  {
   "name": "All Star Prizes",
@@ -39,7 +39,7 @@
   "base": "https://competitions.online",
   "method": "woo",
   "maxLive": 40,
-  "note": "carp/fishing flood — capped for balance."
+  "note": "carp/fishing flood \u2014 capped for balance."
  },
  {
   "name": "Carpatic Giveaways",
@@ -67,7 +67,7 @@
   "base": "https://daydreamdraws.co.uk",
   "method": "woo",
   "fetcher": "flaresolverr",
-  "note": "Cloudflare 403 on the plain Store API fetch (server: cloudflare, cf-ray present) — verified 2026-08-19."
+  "note": "Cloudflare 403 on the plain Store API fetch (server: cloudflare, cf-ray present) \u2014 verified 2026-08-19."
  },
  {
   "name": "Dream Big Draws",
@@ -75,7 +75,7 @@
   "base": "https://dreambigdraws.com",
   "method": "woo",
   "maxLive": 40,
-  "note": "Pokemon/collectibles flood — capped for balance."
+  "note": "Pokemon/collectibles flood \u2014 capped for balance."
  },
  {
   "name": "Dream Car Giveaways",
@@ -124,7 +124,7 @@
   "base": "https://www.gaminggiveaways.co.uk",
   "method": "woo",
   "maxLive": 40,
-  "note": "collectibles/instant-win flood — capped for balance."
+  "note": "collectibles/instant-win flood \u2014 capped for balance."
  },
  {
   "name": "Historia Prize Draw",
@@ -168,7 +168,7 @@
   "base": "https://pawsomecomps.com",
   "method": "woo",
   "maxLive": 40,
-  "note": "high-volume small comps — capped for balance."
+  "note": "high-volume small comps \u2014 capped for balance."
  },
  {
   "name": "Planetofdreams",
@@ -238,7 +238,7 @@
   "base": "https://scousecompetitions.com",
   "method": "woo",
   "fetcher": "flaresolverr",
-  "note": "Cloudflare 403 on the plain Store API fetch (server: cloudflare, cf-ray present) — verified 2026-08-19."
+  "note": "Cloudflare 403 on the plain Store API fetch (server: cloudflare, cf-ray present) \u2014 verified 2026-08-19."
  },
  {
   "name": "Storm Competitions ",
@@ -270,7 +270,7 @@
   "base": "https://www.thecarcompetition.co.uk",
   "method": "woo",
   "maxLive": 150,
-  "note": "253 live comps measured 2026-08-19 — a car operator, the site's weakest category."
+  "note": "253 live comps measured 2026-08-19 \u2014 a car operator, the site's weakest category."
  },
  {
   "name": "The Giveaway Guys",
@@ -297,7 +297,7 @@
   "method": "api",
   "apiStyle": "raffle-engine",
   "drawPath": "/competition/{slug}",
-  "note": "Same platform as 7Days Performance — identical API and schema, only the public URL shape differs."
+  "note": "Same platform as 7Days Performance \u2014 identical API and schema, only the public URL shape differs."
  },
  {
   "name": "Waffle Competitions",
@@ -305,7 +305,7 @@
   "base": "https://wafflecompetitions.co.uk",
   "method": "woo",
   "maxLive": 40,
-  "note": "325 live, overwhelmingly micro-raffles — capped so one operator can't flood the listings."
+  "note": "325 live, overwhelmingly micro-raffles \u2014 capped so one operator can't flood the listings."
  },
  {
   "name": "Winner Winner Competitions",
@@ -429,7 +429,7 @@
   "base": "https://beethewinner.co.uk",
   "method": "woo",
   "fetcher": "flaresolverr",
-  "note": "HTTP 403 from Apache (no Cloudflare) — a WAF/UA block rather than a JS challenge, so FlareSolverr's real browser may or may not clear it. Worth one attempt; if it stays silent this needs a different approach, not more retries."
+  "note": "HTTP 403 from Apache (no Cloudflare) \u2014 a WAF/UA block rather than a JS challenge, so FlareSolverr's real browser may or may not clear it. Worth one attempt; if it stays silent this needs a different approach, not more retries."
  },
  {
   "name": "Croc Comps",
@@ -455,7 +455,7 @@
   "base": "https://golfstarcompetitions.co.uk",
   "method": "woo",
   "maxLive": 110,
-  "note": "77+ live comps measured; the cap must exceed the live catalogue or the tail is never re-observed — 18 rows sat live with a NULL total_entries because they fell outside it.",
+  "note": "77+ live comps measured; the cap must exceed the live catalogue or the tail is never re-observed \u2014 18 rows sat live with a NULL total_entries because they fell outside it.",
   "category": "sports-outdoors"
  },
  {
@@ -464,7 +464,7 @@
   "base": "https://infinitydraws.co.uk",
   "method": "woo",
   "enabled": false,
-  "disabledReason": "Host does not resolve/connect at all (not a block — no TCP). Dead site; re-enable only if it comes back. Verified 2026-08-19."
+  "disabledReason": "Host does not resolve/connect at all (not a block \u2014 no TCP). Dead site; re-enable only if it comes back. Verified 2026-08-19."
  },
  {
   "name": "Max Competitions",
@@ -560,7 +560,7 @@
   "method": "render",
   "wait": 6000,
   "enabled": false,
-  "disabledReason": "Spot-the-ball skill competition, not a capped raffle — structurally cannot supply our required fields. Its own API (/umbraco/00000002/appv2/getactivecompetitions) reports MaxEntries:0 for most comps and its entry URLs are category pages (/prizes/cars), not per-competition slugs. Every one of the 21 drafts it produced was wrong: ticket_price £9.99 (the subscription price) on all of them despite titles saying 5p/15p/£1.29, six titled with raw URL slugs (ASubscriberComp…), and nine with total_entries 2026 — the year misparsed as a ticket count. Deleted 2026-08-19."
+  "disabledReason": "Spot-the-ball skill competition, not a capped raffle \u2014 structurally cannot supply our required fields. Its own API (/umbraco/00000002/appv2/getactivecompetitions) reports MaxEntries:0 for most comps and its entry URLs are category pages (/prizes/cars), not per-competition slugs. Every one of the 21 drafts it produced was wrong: ticket_price \u00a39.99 (the subscription price) on all of them despite titles saying 5p/15p/\u00a31.29, six titled with raw URL slugs (ASubscriberComp\u2026), and nine with total_entries 2026 \u2014 the year misparsed as a ticket count. Deleted 2026-08-19."
  },
  {
   "name": "Ignite Comps",
@@ -651,6 +651,105 @@
   "method": "api",
   "apiStyle": "inertia",
   "listing": "https://dreambigcompetitions.com/competitions",
-  "note": "Laravel + Inertia (compengine.io whitelabel) — full page state is JSON in the #app data-page attribute. JDM-leaning car operator."
+  "note": "Laravel + Inertia (compengine.io whitelabel) \u2014 full page state is JSON in the #app data-page attribute. JDM-leaning car operator."
+ },
+ {
+  "name": "Kiltedcompetitions",
+  "slug": "kiltedcompetitions",
+  "base": "https://kiltedcompetitions.co.uk",
+  "method": "woo"
+ },
+ {
+  "name": "Thecollectorsclubcompetitions",
+  "slug": "thecollectorsclubcompetitions",
+  "base": "https://thecollectorsclubcompetitions.com",
+  "method": "woo"
+ },
+ {
+  "name": "Clubhousecompetitions",
+  "slug": "clubhousecompetitions",
+  "base": "https://clubhousecompetitions.com",
+  "method": "woo"
+ },
+ {
+  "name": "Lucky Day Competitions",
+  "slug": "lucky-day-competitions",
+  "base": "https://luckydaycompetitions.com",
+  "method": "woo"
+ },
+ {
+  "name": "Breeze Competitions",
+  "slug": "breeze-competitions",
+  "base": "https://breezecompetitions.com",
+  "method": "woo"
+ },
+ {
+  "name": "LLF Games",
+  "slug": "llf-games",
+  "base": "https://llfgames.com",
+  "method": "woo"
+ },
+ {
+  "name": "Bonkers Competitions",
+  "slug": "bonkers-competitions",
+  "base": "https://bonkerscompetitions.co.uk",
+  "method": "woo"
+ },
+ {
+  "name": "Click Competitions",
+  "slug": "click-competitions",
+  "base": "https://www.clickcompetitions.co.uk",
+  "method": "api",
+  "apiStyle": "click",
+  "note": "Bespoke Next.js \u2014 full catalogue in /all-competitions __NEXT_DATA__; adapter lib/adapters/click.mjs. TP 4.7/4,475 at add (2026-09-03)."
+ },
+ {
+  "name": "WinWink",
+  "slug": "winwink",
+  "base": "https://winwink.co.uk",
+  "method": "render",
+  "note": "Laravel Livewire \u2014 renders headless fine, /competitions/{slug}. TP 4.8/1,671 at add (2026-09-03). patterns.entries pinned to the labelled \"Max entries N\" \u2014 the generic tiers grabbed the YEAR (2026) as the cap (BOTB failure mode; real cap 20,000 verified 2026-09-03).",
+  "patterns": {
+   "entries": "Max entries\\s*([0-9][0-9,]{3,})"
+  }
+ },
+ {
+  "name": "Ooosch",
+  "slug": "ooosch",
+  "base": "https://www.ooosch.co.uk",
+  "method": "render",
+  "note": "Custom Next/tRPC \u2014 renders headless fine, /product/{slug}. TP 4.8/3,218 at add (2026-09-03)."
+ },
+ {
+  "name": "Northern Competitions",
+  "slug": "northern-competitions",
+  "base": "https://northern-competitions.co.uk",
+  "method": "render",
+  "fetcher": "flaresolverr",
+  "note": "Cloudflare-guarded WordPress \u2014 CI FlareSolverr probe 200 (2026-09-03). TP 4.8/11,780 at add. PILOT: verify yield after first run."
+ },
+ {
+  "name": "CompCity Giveaways",
+  "slug": "compcity-giveaways",
+  "base": "https://compcitygiveaways.co.uk",
+  "method": "render",
+  "fetcher": "flaresolverr",
+  "note": "Cloudflare-guarded, platform unknown (312KB server HTML) \u2014 CI FlareSolverr probe 200 (2026-09-03). TP 4.9/3,403 at add. PILOT: verify yield after first run."
+ },
+ {
+  "name": "That Prize Guy",
+  "slug": "that-prize-guy",
+  "base": "https://thatprizeguy.co.uk",
+  "method": "render",
+  "fetcher": "flaresolverr",
+  "note": "Cloudflare-guarded Laravel Livewire \u2014 CI FlareSolverr probe 200 (2026-09-03). TP 4.5/1,029 at add. PILOT: verify yield after first run."
+ },
+ {
+  "name": "Golf Daily Draw",
+  "slug": "golf-daily-draw",
+  "base": "https://golfdailydraw.co.uk",
+  "method": "render",
+  "fetcher": "flaresolverr",
+  "note": "Cloudflare-guarded Laravel Livewire \u2014 CI FlareSolverr probe 200 (2026-09-03). TP 5.0/391 at add. PILOT: verify yield after first run."
  }
 ]

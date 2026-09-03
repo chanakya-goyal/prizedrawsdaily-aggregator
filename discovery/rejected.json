@@ -1,0 +1,32 @@
+[
+  {
+    "domain": "capitalcarpcompetitions.co.uk",
+    "reason": "Trustpilot profile unclaimed with ZERO reviews — fails the 3+-rating-with-reviews bar (2026-09-03); re-consider if it builds a reputation",
+    "date": "2026-09-03"
+  },
+  {
+    "domain": "boboncomps.co.uk",
+    "reason": "No Trustpilot profile at all (404 on bare + www, 2026-09-03) — fails the required trustpilot-3plus bar",
+    "date": "2026-09-03"
+  },
+  {
+    "domain": "airsoftcompetitions.com",
+    "reason": "No Trustpilot profile at all (404 on bare + www, 2026-09-03) — fails the required trustpilot-3plus bar; niche airsoft micro-comps",
+    "date": "2026-09-03"
+  },
+  {
+    "domain": "rafflemastermerch.co.uk",
+    "reason": "No Trustpilot profile + it is a 4-product merch spinoff of existing operator raffle-master, not a real comps operator",
+    "date": "2026-09-03"
+  },
+  {
+    "domain": "theclassiccompetitioncompany.com",
+    "reason": "Structural: draws are 'when sold out' — no draw_date on ANY of 15 live comps (dry-run 2026-09-03), fails the required-draw-date gate forever",
+    "date": "2026-09-03"
+  },
+  {
+    "domain": "inthekitchendraw.co.uk",
+    "reason": "Structural: every comp capped at 291-300 entries (dry-run 2026-09-03), below the 500-entry minimum gate forever",
+    "date": "2026-09-03"
+  }
+]

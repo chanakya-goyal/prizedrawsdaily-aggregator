@@ -11,6 +11,7 @@ import { isPurchasable, hasAvailableVariant, permalinkKey } from "./lib/liveness
 import { raffleEngineOperator } from "./lib/adapters/raffle-engine.mjs";
 import { hydraOperator } from "./lib/adapters/hydra.mjs";
 import { inertiaOperator } from "./lib/adapters/inertia.mjs";
+import { clickOperator } from "./lib/adapters/click.mjs";
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Bounded-concurrency map — runs the per-product page fetches in parallel (with a ceiling so
@@ -284,6 +285,7 @@ const API_ADAPTERS = {
   "raffle-engine": raffleEngineOperator, // 7Days Performance, UKCC
   hydra: hydraOperator,                  // Dream Car Giveaways
   inertia: inertiaOperator,              // Dream Big Competitions (compengine.io)
+  click: clickOperator,                  // Click Competitions (bespoke Next.js, __NEXT_DATA__)
 };
 
 export async function apiOperator(op, perOp = 300) {

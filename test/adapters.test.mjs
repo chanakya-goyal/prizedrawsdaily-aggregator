@@ -7,6 +7,7 @@ import { CATEGORIES } from "../lib/parse.mjs";
 import { mapRaffle, unitPrice, listUrl } from "../lib/adapters/raffle-engine.mjs";
 import { mapCompetition as mapHydra, imageUrl, isLive } from "../lib/adapters/hydra.mjs";
 import { parseDataPage, arrayOf, mapCompetition as mapInertia } from "../lib/adapters/inertia.mjs";
+import { parseNextData, collectCompetitions, mapCompetition as mapClick } from "../lib/adapters/click.mjs";
 import { gate } from "../gate.mjs";
 
 // Every adapter must produce the shape fieldsFromHtml produces, or the gate/dedupe/flush
@@ -229,5 +230,64 @@ describe("inertia adapter (Dream Big Competitions)", () => {
     // genuinely vehicle-titled one lands in car-draws.
     const vehicle = cars.find((r) => /lexus|toyota|honda|bmw|audi|jdm/i.test(r.name));
     if (vehicle) expect(mapInertia(vehicle, op).category).toBe("car-draws");
+  });
+});
+
+describe("click adapter (Click Competitions)", () => {
+  const op = { slug: "click-competitions", name: "Click Competitions", base: "https://www.clickcompetitions.co.uk" };
+  const load = () => Bun.file("test/fixtures/api/click.competitions.json").json();
+
+  test("__NEXT_DATA__ parses out of raw HTML and returns null rather than throwing without it", () => {
+    const next = parseNextData('<html><script id="__NEXT_DATA__" type="application/json">{"props":{"a":1}}</script></html>');
+    expect(next).toEqual({ props: { a: 1 } });
+    expect(parseNextData("<html><body>nope</body></html>")).toBe(null);
+    expect(parseNextData("")).toBe(null);
+    expect(parseNextData(null)).toBe(null);
+  });
+
+  // The same competition renders twice per page (pageData.body AND pageComponents mirror
+  // each other), and which blocks are inline vs ref-wrapped changes per template — so the
+  // collector must dedupe on server.slug wherever the object sits in the tree.
+  test("collectCompetitions finds nested cards and dedupes the mirrored copies", async () => {
+    const [a, b] = await load();
+    const tree = {
+      pageData: { data: { body: [{ ref: { list: [{ competition: a }, { competition: b }] } }] } },
+      pageComponents: [{ ref: { list: [{ competition: a }] } }],
+    };
+    const out = collectCompetitions(tree);
+    expect(out).toHaveLength(2);
+    expect(out.map((c) => c.server.slug).sort()).toEqual([a.server.slug, b.server.slug].sort());
+  });
+
+  test("every fixture card maps to a valid draw shape", async () => {
+    for (const c of await load()) expectDrawShape(mapClick(c, op));
+  });
+
+  test("cap comes from dynamicVisibility.detail and the dotted slugPrefix becomes the public path", async () => {
+    const [c] = await load();
+    const d = mapClick(c, op);
+    expect(d.total_entries).toBe(c.server.dynamicVisibility.detail.totalTickets);
+    expect(d.draw_date && new Date(d.draw_date).getTime()).toBe(new Date(c.server.endDate).getTime());
+    expect(d.entry_url).toBe(`https://www.clickcompetitions.co.uk/${c.server.slugPrefix.split(".").filter(Boolean).join("/")}`);
+    expect(d.entry_url).not.toContain("..");
+  });
+
+  // infiniteTickets comps must surface a NULL cap for the gate to drop — a numeric cap here
+  // would publish a fake ticket allocation.
+  test("infiniteTickets nulls the cap instead of faking one", async () => {
+    const [c] = await load();
+    const forged = { ...c, server: { ...c.server, infiniteTickets: true } };
+    expect(mapClick(forged, op).total_entries).toBe(null);
+  });
+
+  test("fixture comps pass the publishing gate end-to-end", async () => {
+    const draws = (await load()).map((c) => mapClick(c, op));
+    // Freeze "now" relative to the fixture's own dates: these comps closed in Sep 2026, so
+    // assert only the date-independent gate reasons (price, cap, title) are absent.
+    for (const d of draws) {
+      expect(d.ticket_price).toBeGreaterThan(0);
+      expect(d.total_entries).toBeGreaterThan(499);
+      expect(d.title.length).toBeGreaterThan(3);
+    }
   });
 });
