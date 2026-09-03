@@ -27,6 +27,7 @@ export function evaluateTripwire({
   minFresh = 1,
   target = null,
   expiredDrafts = null,
+  publishableDrafts = null, // status='draft' but draw_date STILL AHEAD — publishable right now
   byCategory = null,     // { "car-draws": 12, … } live counts
   categoryFloors = null, // { "car-draws": 10, … }
   stalledOperators = null, // [{ slug, live, daysQuiet }] — has inventory, produces nothing
@@ -53,6 +54,20 @@ export function evaluateTripwire({
   // and then threw away. Never a build failure — but it is the number that says the publish
   // path is the bottleneck, so it belongs in front of you every day.
   if (expiredDrafts) warnings.push(`${expiredDrafts} draft(s) passed their draw date unpublished — scraped, never shown`);
+
+  // The counterpart to expiredDrafts, and the actionable half. `expiredDrafts` counts
+  // inventory already lost; this counts inventory still savable — drafts whose draw_date has
+  // NOT passed, so they can be published today and still be entered. Measured 2026-09-02:
+  // 393 active-and-enterable vs 276 draft-and-enterable, i.e. 41% more publishable inventory
+  // sitting invisible than the site is actually showing. Nothing in the pipeline said so,
+  // because the only draft number reported was the one for drafts that had already expired.
+  // A warning, never a failure: holding a draft is a deliberate QA decision, and the publish
+  // path is a human routine. This just refuses to let the backlog stay silent.
+  if (publishableDrafts) {
+    warnings.push(
+      `${publishableDrafts} draft(s) are still enterable and unpublished — publishable inventory the site is not showing`,
+    );
+  }
 
   // `status` and `draw_date` disagreeing is not itself a fault — the sweep expires on the
   // operator's own purchasability flag, not on a date, and an operator may legitimately
@@ -175,6 +190,14 @@ async function storageBytes() {
 
 if (import.meta.path === Bun.main) {
   const floor = Number(process.env.TRIPWIRE_FLOOR || 150);
+  // ⚠️ TARGET IS UNCALIBRATED FOR THE NEW METRIC. 350 was chosen when `activeCount` meant
+  // "status=active, any date" — a number 2.1x the enterable truth. Now that the count is
+  // date-guarded, 350 sits inside normal daily variation (measured enterable: 362 on 08-30,
+  // 393 on 09-02), so it will flip in and out of WARN on noise. It is deliberately NOT
+  // changed here: two datapoints is not a baseline, and `status` has no history in the table
+  // so the real range cannot be reconstructed. Leave it until a few weeks of the date-guarded
+  // number have accumulated, then set it from evidence. The FLOOR (150) is unaffected and
+  // still means what it says.
   const target = Number(process.env.TRIPWIRE_TARGET || 350);
   const minFresh = Number(process.env.TRIPWIRE_MIN_FRESH || 1);
   const scrapeOutcome = process.env.SCRAPE_OUTCOME || "unknown";
@@ -185,7 +208,7 @@ if (import.meta.path === Bun.main) {
   const quietSince = new Date(Date.now() - QUIET_DAYS * 864e5).toISOString();
   const CATEGORY_FLOORS = JSON.parse(process.env.TRIPWIRE_CATEGORY_FLOORS || '{"car-draws":10}');
 
-  const [activeCount, freshCount, expiredDrafts, liveRows, recentRows, storeBytes, operatorRoster, historyRows, blockedDraftsCount, staleActive, futureEnded] = await Promise.all([
+  const [activeCount, freshCount, expiredDrafts, publishableDrafts, liveRows, recentRows, storeBytes, operatorRoster, historyRows, blockedDraftsCount, staleActive, futureEnded] = await Promise.all([
     // Date-guarded on purpose. `status=eq.active` alone counted 759 on 2026-08-30 when only
     // 362 of those rows were enterable — the floor (150) and target (350) were being compared
     // against a number 2.1x the truth, so a real collapse to ~200 live draws would still have
@@ -195,6 +218,7 @@ if (import.meta.path === Bun.main) {
     count(`draws?select=id&status=eq.active&draw_date=gte.${nowIso}`),
     count(`draws?select=id&created_at=gte.${since}`),
     count(`draws?select=id&status=eq.draft&draw_date=lt.${nowIso}`),
+    count(`draws?select=id&status=eq.draft&draw_date=gte.${nowIso}`),
     // Same date guard, and `all: true` rather than `limit=2000`: the limit was never honoured
     // (this project hard-caps REST responses at 1000 regardless — the note on `rows()` below
     // documents it), so the category floors and the operator scoreboard were both computed
@@ -301,7 +325,7 @@ if (import.meta.path === Bun.main) {
   ].join("\n");
 
   const { tripped, reasons, warnings } = evaluateTripwire({
-    activeCount, floor, scrapeOutcome, freshCount, minFresh, target, expiredDrafts,
+    activeCount, floor, scrapeOutcome, freshCount, minFresh, target, expiredDrafts, publishableDrafts,
     byCategory, categoryFloors: CATEGORY_FLOORS, stalledOperators,
     storageBytes: storeBytes,
     storageQuotaBytes: Number(process.env.STORAGE_QUOTA_BYTES || 1073741824),
