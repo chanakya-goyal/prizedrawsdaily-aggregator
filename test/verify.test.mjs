@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { verifyAgainstStored, ukDayKey, summarise, relistDecision, correctionDecision } from "../lib/verify.mjs";
+import { verifyAgainstStored, ukDayKey, summarise, relistDecision, correctionDecision, staleDateDecision } from "../lib/verify.mjs";
 
 const NOW = new Date("2026-08-19T10:00:00Z");
 const SOON = "2026-08-30T20:00:00+01:00";
@@ -334,5 +334,101 @@ describe("correctionDecision — a pool-only drift must not rewrite the whole ro
   test("a missing stored pool is not invented as drift", () => {
     const c = correctionDecision({ ...base4, total_prize_value: null }, fresh4, { now: NOW4 });
     expect(c.fields).not.toContain("total_prize_value");
+  });
+});
+
+describe("staleDateDecision — the 397 cohort", () => {
+  const NOW = new Date("2026-08-31T12:00:00Z");
+  const stored = { draw_date: "2026-08-20T18:00:00Z" }; // closed 11 days ago
+  const future = "2026-09-15T18:00:00Z";
+
+  // ── the one signal strong enough to end a draw ───────────────────────────────────────
+  test("not purchasable ends it — the operator's own flag", () => {
+    const v = staleDateDecision(stored, { purchasable: false, source: "woo" }, NOW);
+    expect(v.action).toBe("end");
+  });
+
+  test("a past date ALONE never ends a draw", () => {
+    // The whole point. Blanket-ending the 397 would destroy the comps people can still enter.
+    const v = staleDateDecision(stored, { purchasable: true, freshDate: null, source: "woo" }, NOW);
+    expect(v.action).not.toBe("end");
+    expect(v.action).toBe("hold");
+  });
+
+  // ── extension needs TWO independent agreements ───────────────────────────────────────
+  test("still purchasable + a strictly later future date extends", () => {
+    const v = staleDateDecision(stored, { purchasable: true, freshDate: future, source: "woo" }, NOW);
+    expect(v.action).toBe("extend");
+    expect(v.to).toBe(new Date(future).toISOString());
+  });
+
+  test("purchasable but no readable date holds — one agreement is not evidence", () => {
+    expect(staleDateDecision(stored, { purchasable: true, freshDate: null, source: "woo" }, NOW).action).toBe("hold");
+  });
+
+  test("purchasable but the advertised date has ALSO passed holds", () => {
+    const v = staleDateDecision(stored, { purchasable: true, freshDate: "2026-08-25T00:00:00Z", source: "woo" }, NOW);
+    expect(v.action).toBe("hold");
+    expect(v.reason).toContain("also passed");
+  });
+
+  test("an advertised date no later than the stored one holds", () => {
+    // Re-reading the same stale date is not evidence of an extension.
+    const v = staleDateDecision(stored, { purchasable: true, freshDate: stored.draw_date, source: "woo" }, NOW);
+    expect(v.action).toBe("hold");
+  });
+
+  // ── no evidence, no write ────────────────────────────────────────────────────────────
+  test("an unreachable page holds even if a date was somehow parsed", () => {
+    const v = staleDateDecision(stored, { purchasable: true, freshDate: future, reachable: false, source: "woo" }, NOW);
+    expect(v.action).toBe("hold");
+    expect(v.reason).toContain("unreachable");
+  });
+
+  test("unknown purchasability holds", () => {
+    const v = staleDateDecision(stored, { purchasable: null, freshDate: future, source: "render" }, NOW);
+    expect(v.action).toBe("hold");
+  });
+
+  // ── confidence is graded by source ───────────────────────────────────────────────────
+  test("render evidence is medium confidence — no purchasability flag exists there", () => {
+    expect(staleDateDecision(stored, { purchasable: true, freshDate: future, source: "render" }, NOW).confidence).toBe("medium");
+  });
+
+  test("woo and shopify evidence is high confidence", () => {
+    expect(staleDateDecision(stored, { purchasable: true, freshDate: future, source: "woo" }, NOW).confidence).toBe("high");
+    expect(staleDateDecision(stored, { purchasable: false, source: "shopify" }, NOW).confidence).toBe("high");
+  });
+
+  test("api evidence is high — the adapters read the operator's own live set", () => {
+    expect(staleDateDecision(stored, { purchasable: true, freshDate: future, source: "api" }, NOW).confidence).toBe("high");
+  });
+
+  test("a source with no evidence path is LOW confidence, never high", () => {
+    // An unknown or absent method has no evidence at all. Grading it "high" by default would
+    // let a no-evidence row look authoritative enough to authorise a write.
+    expect(staleDateDecision(stored, { purchasable: null, reachable: false, source: null }, NOW).confidence).toBe("low");
+    expect(staleDateDecision(stored, { purchasable: null, reachable: false, source: "carrier-pigeon" }, NOW).confidence).toBe("low");
+  });
+
+  // ── this function owns draw_date and nothing else ────────────────────────────────────
+  test("never proposes a status change under any input", () => {
+    const inputs = [
+      { purchasable: false, source: "woo" },
+      { purchasable: true, freshDate: future, source: "woo" },
+      { purchasable: true, freshDate: null, source: "render" },
+      { purchasable: null, reachable: false, source: "render" },
+    ];
+    for (const e of inputs) {
+      const v = staleDateDecision(stored, e, NOW);
+      expect(["end", "extend", "hold"]).toContain(v.action);
+      expect(v).not.toHaveProperty("status");
+      expect(v).not.toHaveProperty("publish");
+    }
+  });
+
+  test("a stored row with no date can still be extended on fresh evidence", () => {
+    const v = staleDateDecision({ draw_date: null }, { purchasable: true, freshDate: future, source: "woo" }, NOW);
+    expect(v.action).toBe("extend");
   });
 });

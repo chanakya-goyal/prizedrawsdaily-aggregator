@@ -4,7 +4,11 @@ import { makeCutouts } from "./freehero.mjs";
 import { mkdir } from "node:fs/promises";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
-const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
+const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "";
+if (!KEY) {
+  console.error("No Supabase key available. Bun auto-loads .env — check SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_PUBLISHABLE_KEY) is set there.");
+  process.exit(1);
+}
 
 const priceLabel = (p) => { const n = Number(p); if (!isFinite(n) || n <= 0) return null; return n < 1 ? `${Math.round(n * 100)}p` : (n % 1 === 0 ? `£${n}` : `£${n.toFixed(2)}`); };
 const cleanTitle = (t = "") => String(t).replace(/\s*[-–|+].*$/, "").replace(/\bcompetition\b/i, "").replace(/\s+/g, " ").trim() || t;
