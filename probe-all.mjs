@@ -4,7 +4,11 @@
 import { chromium } from "playwright";
 
 const SB = "https://ilnegxrsalmzpljotgpe.supabase.co";
-const ANON = "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
+const ANON = process.env.SUPABASE_PUBLISHABLE_KEY || "";
+if (!ANON) {
+  console.error("No Supabase key available. Bun auto-loads .env — check SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_PUBLISHABLE_KEY) is set there.");
+  process.exit(1);
+}
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
 
 // Excluded by the user: review-only + free-model + hard-blocked.

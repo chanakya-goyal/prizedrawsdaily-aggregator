@@ -16,7 +16,11 @@ const DRY = process.env.DRY_RUN !== "false";
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
 const ID = process.env.ID || null;
 if (!DRY && !KEY) { console.error("DRY_RUN=false needs SUPABASE_SERVICE_ROLE_KEY"); process.exit(1); }
-const READ = KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
+const READ = KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "";
+if (!READ) {
+  console.error("No Supabase key available. Bun auto-loads .env — check SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_PUBLISHABLE_KEY) is set there.");
+  process.exit(1);
+}
 const H = { apikey: READ, Authorization: `Bearer ${READ}` };
 const ops = await Bun.file("operators.json").json();
 const opBy = Object.fromEntries(ops.map((o) => [o.slug, o]));

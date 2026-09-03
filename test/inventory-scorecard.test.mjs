@@ -65,8 +65,22 @@ describe("scoreInventory — unmeasured inputs must not read as failures", () =>
   });
 
   test("a report with zero holds scores full marks", () => {
-    const { metrics } = scoreInventory({ ...AUG30, holds: 0 });
+    const { metrics } = scoreInventory({ ...AUG30, holds: 0, verdictTotal: 472 });
     expect(metrics.find((x) => x.key === "verdict_coverage").value).toBe(1);
+  });
+
+  test("verdict coverage uses the report's own total, not staleActive", () => {
+    // The sweep covers active+draft, staleActive counts active only. Mixing them gave
+    // "469 of 422 held" — a ratio above 1 that clamped to a meaningless 0%.
+    const { metrics } = scoreInventory({ ...AUG30, holds: 469, verdictTotal: 472 });
+    const m = metrics.find((x) => x.key === "verdict_coverage");
+    expect(m.value).toBeCloseTo(3 / 472, 4);
+    expect(m.detail).toContain("of 472");
+  });
+
+  test("holds without a report total is unmeasurable, not zero", () => {
+    const { metrics } = scoreInventory({ ...AUG30, holds: 469 });
+    expect(metrics.find((x) => x.key === "verdict_coverage").value).toBe(null);
   });
 
   test("all-null inputs yield a null score rather than a misleading 0 or 100", () => {

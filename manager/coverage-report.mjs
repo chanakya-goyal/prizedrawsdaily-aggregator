@@ -5,6 +5,7 @@
 //                                                    # GitHub Action step summary)
 //        JSON=true bun manager/coverage-report.mjs   # machine-readable, for the cowork routine
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_PUBLISHABLE_KEY for read).
+import { sbGetAll } from "../lib/sb.mjs";
 const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "";
 if (!KEY) { console.error("need SUPABASE_SERVICE_ROLE_KEY or SUPABASE_PUBLISHABLE_KEY"); process.exit(1); }
@@ -14,16 +15,11 @@ const get = async (path) => {
   if (!r.ok) { console.error(`GET ${path} → ${r.status} ${await r.text()}`); process.exit(1); }
   return r.json();
 };
-// PostgREST caps any select at 1000 rows — page through (same bug class run.mjs hit at 1117 draws).
-const getAll = async (path, pageSize = 1000) => {
-  const sep = path.includes("?") ? "&" : "?";
-  const rows = [];
-  for (let offset = 0; ; offset += pageSize) {
-    const page = await get(`${path}${sep}limit=${pageSize}&offset=${offset}`);
-    rows.push(...page);
-    if (page.length < pageSize) return rows;
-  }
-};
+// PostgREST caps any select at 1000 rows — page through (same bug class run.mjs hit at 1117
+// draws). Now shared via lib/sb.mjs: this local copy omitted the ORDER BY, so offset paging
+// over an unordered result set could skip or repeat rows between requests — silently lossy on
+// exactly the large tables that made paging necessary. sbGetAll appends `order=id`.
+const getAll = (path) => sbGetAll(path, { key: KEY, base: SB });
 
 const config = await Bun.file(new URL("../operators.json", import.meta.url)).json();
 const cfgBySlug = Object.fromEntries(config.map((o) => [o.slug, o]));
