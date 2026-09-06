@@ -7,7 +7,7 @@
 // run re-reads the same URL and agrees with it (lib/verify.mjs) — publishing is this script's
 // job now, not the cowork routine's, which QAs the result and rewrites descriptions.
 import { chromium } from "playwright";
-import { renderOperator, wooOperator, shopifyOperator, apiOperator, dedupe, makeContext } from "./extractor.mjs";
+import { renderOperator, wooOperator, shopifyOperator, apiOperator, dedupe, makeContext, renderLivenessMode } from "./extractor.mjs";
 import { gate } from "./gate.mjs";
 import { templateDescription } from "./lib/describe.mjs";
 import { fieldFlags, buildHealthReport, writeStepSummary, checkImage, probeSilentReasons } from "./lib/manager.mjs";
@@ -20,7 +20,7 @@ import { CATEGORIES } from "./lib/parse.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const ANON_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "sb_publishable_h-iA9nWMpXeZHX8uA1Yeyw_3xh_XPKs";
+const ANON_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "";
 const DRY_RUN = process.env.DRY_RUN !== "false";
 const PUBLISH_STATUS = process.env.PUBLISH_STATUS || "draft"; // cowork owns publish; keep draft by default
 const PER_OP = Number(process.env.PER_OP || 5);             // render: per-op cap (browser cost — keep modest)
@@ -57,6 +57,14 @@ const MIN_OBSERVATION_GAP_MS = Number(process.env.MIN_OBSERVATION_GAP_MS || 0);
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
 const METHODS = process.env.METHODS ? new Set(process.env.METHODS.split(",").map((s) => s.trim())) : null;
 const READ_KEY = SERVICE_KEY || ANON_KEY;
+// No hardcoded key fallback. The `sb_publishable_h-iA9…` literal that used to sit on ANON_KEY
+// has returned 401 since the project moved, so it was not a working fallback — it was a false
+// affordance that made a keyless invocation look supported and then failed three layers down
+// with an opaque 401 from whichever request happened to run first.
+if (!READ_KEY) {
+  console.error("No Supabase key available. Bun auto-loads .env — check SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_PUBLISHABLE_KEY) is set there.");
+  process.exit(1);
+}
 
 const now = new Date();
 const slugify = (s) => (s || "draw").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "draw";
@@ -170,6 +178,11 @@ const toUpdate = [];
 const counts = [];
 const verdicts = [];
 let pages = 0, skipped = 0, autoPublished = 0, relisted = 0, correctedLive = 0;
+// Render-path comps whose page visibly says the competition has finished. In `report` mode
+// these are counted and kept; in `enforce` they are counted and dropped. Either way the
+// number is printed — an unreported inventory change is the failure mode this fleet exists
+// to prevent, and a drop is a removal of inventory.
+const renderFinished = [];
 
 // Incremental flush: re-host + write pending rows every few operators so a job-timeout
 // kill loses only the tail, never the sweep (the 2026-08-14 90-min cancel lost a full
@@ -272,7 +285,9 @@ for (const op of operators) {
     // capped, or a published draw outside the cap can never be corrected or expired.
     else if (op.method === "woo") draws = await withBudget(wooOperator(op, PER_OP_API, { knownUrls }), OP_BUDGET_MS);
     else if (op.method === "shopify") draws = await withBudget(shopifyOperator(op, PER_OP_API, { knownUrls }), OP_BUDGET_MS);
-    else draws = await withBudget(renderOperator(ctx, op, PER_OP), OP_BUDGET_MS);
+    // `onFinished` mirrors dedupe's onDrop below: a removal of inventory that nobody counts
+    // is the same silence that let dedupe destroy two thirds of a car operator's catalogue.
+    else draws = await withBudget(renderOperator(ctx, op, PER_OP, { onFinished: (hit) => renderFinished.push(hit) }), OP_BUDGET_MS);
   } catch (e) { console.log(`  FAILED: ${(e.message || "").slice(0, 80)}`); continue; }
   pages += draws.length;
   c.scraped = draws.length;
@@ -364,6 +379,13 @@ for (const op of operators) {
 if (browser) await browser.close();
 await flush();
 
+if (renderFinished.length) {
+  const mode = renderLivenessMode();
+  const byOp = renderFinished.reduce((a, h) => { a[h.operator] = (a[h.operator] || 0) + 1; return a; }, {});
+  console.log(`\n🏁 render liveness (${mode}): ${renderFinished.length} page(s) say finished — ` +
+    Object.entries(byOp).map(([s, n]) => `${s}:${n}`).join(" "));
+  await Bun.write("render-finished.json", JSON.stringify({ mode, total: renderFinished.length, byOperator: byOp, hits: renderFinished }, null, 2));
+}
 console.log(`\n\n==== ${totalNew} new, ${totalRefreshed} refreshed${relisted ? `, ${relisted} relisted` : ""}${correctedLive ? `, ${correctedLive} live rows corrected` : ""} (${pages} pages read, ${skipped} skipped) ====`);
 if (DRY_RUN) {
   console.log("(dry run — nothing written)");

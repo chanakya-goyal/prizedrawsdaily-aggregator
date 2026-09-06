@@ -8,7 +8,7 @@ import { gotoSettled } from "./lib/render-nav.mjs";
 
 export { CATEGORIES, UA, WINDOW_DAYS, normalizeUkDate };
 import { detectZap, parseZapRefresh, mergeZap, fetchZapRefresh } from "./lib/zap.mjs";
-import { isPurchasable, hasAvailableVariant, permalinkKey } from "./lib/liveness.mjs";
+import { isPurchasable, hasAvailableVariant, permalinkKey, saysFinished } from "./lib/liveness.mjs";
 import { raffleEngineOperator } from "./lib/adapters/raffle-engine.mjs";
 import { hydraOperator } from "./lib/adapters/hydra.mjs";
 import { inertiaOperator } from "./lib/adapters/inertia.mjs";
@@ -92,7 +92,32 @@ export const DRAW_RE = /\/(product|competition|competitions|draw|draws|raffle|ra
 export const BAD_LINK = /\/(category|categories|collections|product-category|draw-results|winners?|results|past|account|cart|checkout|basket|blog|faq|about|contact|terms|privacy|how-it-works|pages?|my-account|wishlist|login|register)(\/|$)/i;
 export const CATEGORY_TAIL = /\/(cars?|cash|tech|house|houses|luxury|electronics|jewellery|watch(es)?|instant-wins?|all|live|holidays?|gadgets?|home|bundles?)\/?$/i;
 
-export async function renderOperator(ctx, op, perOp = 6) {
+// Ingest-time liveness for the render path.
+//
+// WHY THIS WAS MISSING AND WHY IT MATTERS: lib/liveness.mjs's header says the scraper shares
+// its definition of "finished", but extractor.mjs only ever imported isPurchasable /
+// hasAvailableVariant / permalinkKey — never saysFinished. So the three other ingest paths
+// were guarded and render was not: woo filters on is_purchasable (line ~188), shopify on
+// variant availability (~256), and all four api operators get server-side liveness from their
+// adapters. Render is 40 of 94 operators — 43% of the roster — and its only guard was
+// gate.mjs's `dt < now`. A page that visibly says "this competition has finished" but carries
+// a future date was ingested as live and stayed live until the NEXT DAY's sweep.
+//
+// WHY IT SHIPS IN report MODE: the Cloudflare/flaresolverr operators are only inspectable
+// inside the Action — the cleared HTML does not exist locally (see the 0-matched diagnostic
+// below). A local shadow run therefore cannot cover the riskiest operators, so the first real
+// evidence has to come from a live run. `report` logs and keeps; flip to `enforce` once the
+// tally has been eyeballed.
+//
+// ALWAYS PASS RAW `html`, NEVER `text`: saysFinished does its own <template>/<noscript>
+// stripping, and that stripping is the entire point of the function — it is what stops the
+// wc-lottery i18n bundle from matching (that bug expired 42 draws in ~38 minutes).
+export function renderLivenessMode(env = process.env) {
+  const m = String(env.RENDER_LIVENESS || "report").toLowerCase();
+  return ["off", "report", "enforce"].includes(m) ? m : "report";
+}
+
+export async function renderOperator(ctx, op, perOp = 6, { onFinished, mode = renderLivenessMode() } = {}) {
   const drawMatch = compileOpRegex(op.drawMatch) || DRAW_RE;
   const exclude = (op.exclude || []).map((e) => compileOpRegex(e)).filter(Boolean);
 
@@ -125,6 +150,11 @@ export async function renderOperator(ctx, op, perOp = 6) {
       let d = await renderVia(renderPage, ctx, url, op, { waitMs: op.wait ? 5000 : 2500 });
       if (looksBlocked(d.text)) d = await renderVia(renderPage, ctx, url, op, { waitMs: 5000, hard: true });
       if (looksBlocked(d.text)) { console.log(`  ⛔ ${url.slice(-42)} blocked — skip`); continue; }
+      if (mode !== "off" && saysFinished(d.html)) {
+        onFinished?.({ url, operator: op.slug });
+        console.log(`  🏁 ${url.slice(-42)} says finished${mode === "enforce" ? " — dropped" : " — kept (report mode)"}`);
+        if (mode === "enforce") continue;
+      }
       draws.push(fieldsFromHtml({ html: d.html, url, op, knownImage: d.ogImage }));
     } catch (e) {
       console.log(`  ! ${url.slice(-42)} failed: ${(e.message || "").slice(0, 60)}`);

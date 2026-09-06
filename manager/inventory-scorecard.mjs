@@ -36,6 +36,7 @@ export function scoreInventory({
   sweptRows = null,     // rows ended-sweep actually read last run
   sweepScope = null,    // rows it was scoped to read
   holds = null,         // stale-date verdicts that produced no action (B3+B4)
+  verdictTotal = null,  // how many rows the stale-date report covered — its OWN denominator
   tripwireActive = null,// what the alarm reported as live
   guardedPaths = null,  // ingest paths applying a finished-comp check
   totalPaths = null,    // ingest paths in use
@@ -69,8 +70,12 @@ export function scoreInventory({
       weight: 15,
       // `holds == null` means no report existed, which is NOT the same as "every row was
       // held" — scoring it 0 would have made an unmeasured metric look like a failed one.
-      value: holds == null || !staleActive ? null : ratio(staleActive - holds, staleActive),
-      detail: holds == null ? "not measured — no stale-date-report.json" : `${holds} of ${staleActive} held without a verdict`,
+      //
+      // The denominator is the REPORT's own total, not staleActive. The two differ: the sweep
+      // covers active+draft while staleActive counts active only, so using staleActive gave
+      // "469 of 422 held" — a ratio above 1 that clamped to a meaningless 0%.
+      value: holds == null || !verdictTotal ? null : ratio(verdictTotal - holds, verdictTotal),
+      detail: holds == null ? "not measured — no stale-date-report.json" : `${holds} of ${verdictTotal} held without an actionable verdict`,
     },
     {
       key: "alarm_truth",
@@ -162,6 +167,7 @@ if (import.meta.main) {
     sweptRows: sweep?.swept ?? null,
     sweepScope: sweep?.scope ?? null,
     holds: stale ? stale.verdicts?.filter?.((v) => v.action === "hold").length ?? null : null,
+    verdictTotal: stale?.total ?? null,
     tripwireActive: enterable, // post-PR-1 the alarm reads the guarded count by construction
     guardedPaths: 3, totalPaths: 4, // woo, shopify, api guarded; render is not (PR 3)
   });

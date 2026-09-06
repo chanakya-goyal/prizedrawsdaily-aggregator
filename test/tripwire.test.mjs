@@ -225,3 +225,31 @@ describe("deadOperators", () => {
     expect(r.warnings.join(" ")).not.toContain("produced none");
   });
 });
+
+// publishableDrafts — the actionable counterpart to expiredDrafts. Measured 2026-09-02:
+// 393 enterable-and-active vs 276 enterable-and-draft, and nothing in the pipeline said so.
+describe("publishableDrafts", () => {
+  const base = { activeCount: 400, floor: 150, scrapeOutcome: "success", freshCount: 5 };
+
+  test("warns when enterable drafts are sitting unpublished", () => {
+    const r = evaluateTripwire({ ...base, publishableDrafts: 276 });
+    expect(r.warnings.some((w) => w.includes("276 draft(s) are still enterable"))).toBe(true);
+  });
+
+  test("never fails the run — holding a draft is a deliberate QA decision", () => {
+    const r = evaluateTripwire({ ...base, publishableDrafts: 5000 });
+    expect(r.tripped).toBe(false);
+    expect(r.reasons).toEqual([]);
+  });
+
+  test("is silent at zero, and silent when not measured", () => {
+    expect(evaluateTripwire({ ...base, publishableDrafts: 0 }).warnings.some((w) => w.includes("enterable and unpublished"))).toBe(false);
+    expect(evaluateTripwire({ ...base, publishableDrafts: null }).warnings.some((w) => w.includes("enterable and unpublished"))).toBe(false);
+  });
+
+  test("is distinct from expiredDrafts — one is lost inventory, the other is savable", () => {
+    const r = evaluateTripwire({ ...base, expiredDrafts: 155, publishableDrafts: 276 });
+    expect(r.warnings.some((w) => w.includes("passed their draw date unpublished"))).toBe(true);
+    expect(r.warnings.some((w) => w.includes("still enterable and unpublished"))).toBe(true);
+  });
+});

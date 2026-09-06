@@ -70,6 +70,13 @@ jobs:
           FLARESOLVERR_URL: http://localhost:8191/v1 # Cloudflare solver for flaresolverr operators
           DRY_RUN: "false"
           METHODS: "render" # browser-driven operators only; api/woo/shopify run in aggregate-json.yml
+          # report = count finished render pages, keep them. The Cloudflare/flaresolverr
+          # operators are only inspectable inside this Action (the cleared HTML does not exist
+          # locally), so the first real evidence has to come from a live run. Flip to
+          # "enforce" once the tally has been eyeballed — one-line change, no code.
+          # Lives only here: RENDER_LIVENESS guards the render path, and after the split this
+          # is the only workflow that runs one.
+          RENDER_LIVENESS: "report"
           PUBLISH_STATUS: "draft" # a FIRST sighting always lands as draft — never auto-published
           # A draft goes live once a SECOND independent scrape agrees with it (lib/verify.mjs):
           # same price, same cap, same UK draw day, clean field flags, image provably loads.
@@ -104,6 +111,16 @@ jobs:
           DRY_RUN: "false"
           STATUS: "active,draft" # expire LIVE comps that have finished, plus stale drafts
 
+      - name: Render-liveness tally (report mode — counts, does not drop)
+        if: always()
+        run: |
+          if [ -f render-finished.json ]; then
+            echo "### Render liveness" >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            head -c 4000 render-finished.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Coverage report (DB operators × config × live counts)
         if: always() # the gap report is most valuable exactly when a step above broke
         run: bun manager/coverage-report.mjs
@@ -131,6 +148,11 @@ jobs:
           TRIPWIRE_QUIET_DAYS: "5" # has live draws but added none in 5d = parser broke under us
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The alarm has to be able to turn OFF again. Until now the healthy path did
+          # nothing at all, so issue #21 — opened 2026-08-15, last real alarm 2026-08-20 —
+          # sat OPEN and red through twelve consecutive green runs. An alarm that is always
+          # on carries no information: a genuine failure would have appended a comment to an
+          # issue everyone had already learned to ignore.
           if ! bun manager/tripwire.mjs; then
             EXISTING=$(gh issue list --label tripwire --state open --json number -q '.[0].number' || true)
             if [ -n "$EXISTING" ]; then
@@ -141,4 +163,12 @@ jobs:
                 --label tripwire --body-file tripwire.md
             fi
             exit 1
+          else
+            # Green. Close any open alarm, quoting the run that cleared it so the issue
+            # history reads as a resolution rather than just going quiet.
+            EXISTING=$(gh issue list --label tripwire --state open --json number -q '.[0].number' || true)
+            if [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --body "✅ Cleared by [run ${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on $(date -u +%Y-%m-%d) — tripwire passed. Closing; a future failure opens a fresh issue."
+              gh issue close "$EXISTING"
+            fi
           fi
