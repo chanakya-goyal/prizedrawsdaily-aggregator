@@ -125,10 +125,26 @@ health report lists **silent operators** (0 draws) so you know which ones need t
 
 ## Schedule
 
-`.github/workflows/aggregate.yml` runs the render feeder daily at 07:00 UTC (08:00 BST),
-and can be triggered from the **Actions** tab. Required repo secrets: `SUPABASE_URL`,
-`SUPABASE_SERVICE_ROLE_KEY`. The cowork routine is scheduled separately (see
-`manager/PROMPT.md`).
+The scrape is split across two workflows, both triggerable from the **Actions** tab.
+Required repo secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. The cowork routine is
+scheduled separately (see `manager/PROMPT.md`).
+
+| workflow | operators | schedule | why |
+|---|---|---|---|
+| `aggregate.yml` | `render` (40) | 07:00 UTC daily | needs Chromium; slow, so once a day |
+| `aggregate-json.yml` | `api`/`woo`/`shopify` (59) | 01:00, 13:00, 19:00 UTC | one cheap JSON call each, so a transient 403 gets two more chances the same day |
+
+The two share the `aggregator` concurrency group so they queue rather than overlap —
+`AUTO_PUBLISH_MAX` is a per-process counter, and two concurrent runs would each cap
+independently. Their caps are budgeted **together** (14×1 + 12×3 = 50/day, the same blast
+radius as the single run before the split); raising one without the other quietly multiplies it.
+`test/workflows.test.mjs` asserts both of those, plus that every method is covered exactly once.
+
+⚠️ **`MIN_OBSERVATION_GAP_MS` is what makes the split safe.** A draft publishes only when a
+*later, independent* scrape agrees with it, which silently assumed one run a day. Three sweeps a
+day would let a draft publish six hours after first sighting — the same-day "second observation"
+`manager/PROMPT.md` forbids the cowork routine from creating. The gap (18h) keeps the rule true.
+Do not remove it while any sweep runs more often than daily.
 
 ⚠️ The workflow's test gate is `bun run test:scraper` (= `bun test test/`) on purpose:
 everything in `test/` must stay **offline-deterministic** (no network, no Chromium, no
