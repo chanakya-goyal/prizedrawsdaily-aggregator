@@ -1,11 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { readFileSync } from "fs";
-import {
-  extractEntries, extractDate, inferCategory, extractPrice, mapOperatorCategory,
-  parseJsonLd, findProductLd, pickTitleImage, load, textOf, fieldsFromHtml, normalizeUkDate,
-  isGenericTitle, cleanPrizeLine, extractGrandPrize, extractPrizeSection, categoryEvidence,
-  CATEGORIES,
-} from "../lib/parse.mjs";
+import { extractEntries, extractDate, inferCategory, extractPrice, mapOperatorCategory, parseJsonLd, findProductLd, pickTitleImage, load, textOf, fieldsFromHtml, normalizeUkDate, isGenericTitle, cleanPrizeLine, extractGrandPrize, extractPrizeSection, categoryEvidence, CATEGORIES, resolveShortYear } from "../lib/parse.mjs";
 
 describe("extractEntries — veto-first, conservative", () => {
   const cases = [
@@ -649,5 +644,111 @@ describe("operators.json category pins", () => {
   }
   test("golf-star-competitions is pinned sports-outdoors", () => {
     expect(list.find((o) => o.slug === "golf-star-competitions")?.category).toBe("sports-outdoors");
+  });
+});
+
+// ---- short-form draw dates ----
+// Seven operators lost 230 draws in ONE run to "missing draw_date" because extractDate required
+// a full month name and a 4-digit year, while their pages print "Live draw 18th Sep 26 @ 9:30 PM".
+describe("extractDate — short form", () => {
+  const day = (iso) => String(iso).slice(0, 10);
+
+  test("reads the real on-page form: abbreviated month, 2-digit year, time", () => {
+    expect(day(extractDate("Live draw 18th Sep 26 @ 9:30 PM"))).toBe("2026-09-18");
+  });
+
+  test("reads a labelled short date with no year at all", () => {
+    expect(day(extractDate("Draw Thu 17th Sep Instant Wins"))).toBe("2026-09-17");
+  });
+
+  test("a trailing percentage is never read as a year", () => {
+    // Live decoy: "Draw Fri 25th Sep 26 % Sold" — the 26 is 26% sold. Reading it as a year
+    // happened to give 2026 here, but the same shape gave 2012 on a sibling card.
+    expect(day(extractDate("Draw Mon 14th Sep 12 % Sold"))).toBe("2026-09-14");
+    expect(day(extractDate("Draw Fri 25th Sep 26 % Sold 1.99 Per Entry"))).toBe("2026-09-25");
+  });
+
+  test("prefers the time-anchored date over an unanchored one", () => {
+    // The product's own date carries "@ 9:30 PM"; carousel siblings usually do not.
+    const text = "Draw Fri 11th Sep 13 % Sold ... Live draw 18th Sep 26 @ 9:30 PM";
+    expect(day(extractDate(text))).toBe("2026-09-18");
+  });
+
+  test("full month name with a 4-digit year still wins — existing behaviour unchanged", () => {
+    expect(day(extractDate("Draw Thu 17th Sep. Draw date: 20th September 2026"))).toBe("2026-09-20");
+  });
+
+  test("does not invent a date out of version strings or prose numbers", () => {
+    expect(extractDate("Chrome/124 Safari/537.36")).toBeNull();
+    expect(extractDate("Sold 5 of 500 tickets")).toBeNull();
+    expect(extractDate("")).toBeNull();
+  });
+
+  test("an unordinalised bare month is not a draw date", () => {
+    // "5 Sep" appears in prose and T&Cs; requiring st/nd/rd/th keeps it out.
+    expect(extractDate("shipped 5 Sep to winners")).toBeNull();
+  });
+});
+
+describe("resolveShortYear", () => {
+  const now = new Date("2026-09-06T12:00:00Z");
+  test("picks this year when the date is still ahead", () => {
+    expect(resolveShortYear(20, 9, now)).toBe(2026);
+  });
+  test("rolls to next year when the date has clearly passed", () => {
+    expect(resolveShortYear(20, 1, now)).toBe(2027);
+  });
+  test("allows a few days' grace so a just-closed draw does not jump twelve months", () => {
+    expect(resolveShortYear(5, 9, now)).toBe(2026);
+  });
+});
+
+// ---- regressions found by A/B-ing this parser against the previous one on 111 live pages ----
+// Every one of these shipped green unit tests and still moved a date we had already published.
+describe("extractDate / fieldsFromHtml — short-form regressions", () => {
+  const day = (iso) => (iso ? String(iso).slice(0, 10) : iso);
+
+  test("a JSON-LD priceValidUntil is never read as a draw date", () => {
+    // `.single-product` is a class WordPress puts on <body>, so the "summary" scope matched the
+    // whole document; cheerio's .text() then folded in all 28 inline <script> blocks, and the
+    // offer block's "priceValidUntil":"2027-12-31" won. Live on island-competitions.
+    const html = `<html><body class="single-product">
+      <script type="application/ld+json">{"offers":{"priceValidUntil":"2027-12-31"}}</script>
+      <div class="woocommerce-product-details__short-description">Prize: an iPhone 17 Pro. 18th Sep 26</div>
+    </body></html>`;
+    expect(day(fieldsFromHtml({ html, url: "https://x.test/p/1", op: {} }).draw_date)).toBe("2026-09-18");
+  });
+
+  test("an unambiguous date beats a short date even when the short one is better scoped", () => {
+    // waffle-competitions: the real date is a <head> meta the body-scoped summary cannot see,
+    // while the body says "Drawn on Sun 23rd Aug" — already drawn, so a forward-looking year
+    // guess turns it into 2027 and relistDecision would revive a finished competition.
+    // The strong date is document text OUTSIDE <body>, which is exactly the asymmetry: `text` is
+    // built from the whole document, `summaryText` from the matched element (here <body>).
+    const html = `<html><head><title>Instant Win 123 — drawn 23/08/2026</title></head>
+      <body class="single-product">Drawn on Sun 23rd Aug Winners announced</body></html>`;
+    expect(day(fieldsFromHtml({ html, url: "https://x.test/p/2", op: {} }).draw_date)).toBe("2026-08-23");
+  });
+
+  test("a related-competitions carousel does not donate its date", () => {
+    // bigbeastie-competitions prints neighbours' dates in the identical short format.
+    const html = `<html><body>
+      <div class="summary entry-summary">Win £750 Cash. Live draw 30th Oct 26 @ 8:00 PM</div>
+      <section class="related"><h2>Related Competitions</h2>
+        <a>Draw Wed 9th Sep 13 % Sold</a><a>Draw Fri 25th Sep 45 % Sold</a></section>
+    </body></html>`;
+    expect(day(fieldsFromHtml({ html, url: "https://x.test/p/3", op: {} }).draw_date)).toBe("2026-10-30");
+  });
+
+  test("the short-date tier is additive: it never overrides an ISO or numeric date", () => {
+    expect(day(extractDate("Draw Fri 25th Sep @ 8pm ... 2026-10-14T20:00"))).toBe("2026-10-14");
+    expect(day(extractDate("Draw Fri 25th Sep @ 8pm ... closes 14/10/2026"))).toBe("2026-10-14");
+    // ...but it still fills a gap when nothing stronger is present.
+    expect(day(extractDate("Draw Fri 25th Sep 26 @ 8pm"))).toBe("2026-09-25");
+  });
+
+  test("shortForm:false disables the last-resort tier", () => {
+    expect(extractDate("Draw Fri 25th Sep 26 @ 8pm", undefined, { shortForm: false })).toBeNull();
+    expect(day(extractDate("closes 14/10/2026", undefined, { shortForm: false }))).toBe("2026-10-14");
   });
 });

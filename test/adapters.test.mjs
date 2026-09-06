@@ -9,6 +9,7 @@ import { mapCompetition as mapHydra, imageUrl, isLive } from "../lib/adapters/hy
 import { parseDataPage, arrayOf, mapCompetition as mapInertia } from "../lib/adapters/inertia.mjs";
 import { parseNextData, collectCompetitions, mapCompetition as mapClick } from "../lib/adapters/click.mjs";
 import { gate } from "../gate.mjs";
+import { gotoSettled } from "../lib/render-nav.mjs";
 
 // Every adapter must produce the shape fieldsFromHtml produces, or the gate/dedupe/flush
 // stages downstream will quietly mishandle it.
@@ -289,5 +290,49 @@ describe("click adapter (Click Competitions)", () => {
       expect(d.total_entries).toBeGreaterThan(499);
       expect(d.title.length).toBeGreaterThan(3);
     }
+  });
+});
+
+// ---- gotoSettled: networkidle must never be able to kill an operator on its own ----
+describe("gotoSettled (render navigation)", () => {
+  const fakePage = (behaviour) => {
+    const calls = [];
+    return {
+      calls,
+      async goto(url, opts) {
+        calls.push(opts.waitUntil);
+        const verdict = behaviour(opts.waitUntil, calls.length);
+        if (verdict) throw verdict;
+      },
+    };
+  };
+  const timeoutErr = () => new Error("goto: Timeout 45000ms exceeded.");
+
+  test("hard pass prefers networkidle when it settles", async () => {
+    const page = fakePage(() => null);
+    const r = await gotoSettled(page, "https://x.test/", { hard: true });
+    expect(r).toEqual({ settled: "networkidle", degraded: false });
+    expect(page.calls).toEqual(["networkidle"]);
+  });
+
+  test("hard pass falls back to domcontentloaded when networkidle times out", async () => {
+    // The real-world failure: a chat widget holds a socket open so idle never arrives.
+    const page = fakePage((waitUntil) => (waitUntil === "networkidle" ? timeoutErr() : null));
+    const r = await gotoSettled(page, "https://x.test/", { hard: true });
+    expect(r).toEqual({ settled: "domcontentloaded", degraded: true });
+    expect(page.calls).toEqual(["networkidle", "domcontentloaded"]);
+  });
+
+  test("a non-timeout failure still propagates — we do not paper over a dead host", async () => {
+    const boom = new Error("net::ERR_CONNECTION_REFUSED");
+    const page = fakePage(() => boom);
+    await expect(gotoSettled(page, "https://x.test/", { hard: true })).rejects.toThrow("ERR_CONNECTION_REFUSED");
+    expect(page.calls).toEqual(["networkidle"]);
+  });
+
+  test("soft pass does not retry — a domcontentloaded timeout is a real failure", async () => {
+    const page = fakePage(() => timeoutErr());
+    await expect(gotoSettled(page, "https://x.test/", { hard: false })).rejects.toThrow("Timeout");
+    expect(page.calls).toEqual(["domcontentloaded"]);
   });
 });

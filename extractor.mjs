@@ -4,6 +4,7 @@
 import { chromium } from "playwright";
 import { fieldsFromHtml, compileOpRegex, CATEGORIES, UA, WINDOW_DAYS, normalizeUkDate } from "./lib/parse.mjs";
 import { fetchHtml, renderVia } from "./lib/fetcher.mjs";
+import { gotoSettled } from "./lib/render-nav.mjs";
 
 export { CATEGORIES, UA, WINDOW_DAYS, normalizeUkDate };
 import { detectZap, parseZapRefresh, mergeZap, fetchZapRefresh } from "./lib/zap.mjs";
@@ -13,6 +14,10 @@ import { hydraOperator } from "./lib/adapters/hydra.mjs";
 import { inertiaOperator } from "./lib/adapters/inertia.mjs";
 import { clickOperator } from "./lib/adapters/click.mjs";
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// A listing fetch failing loses the entire operator, so it keeps the default 3 attempts.
+// A product page failing loses one draw and these run FETCH_CONCURRENCY-wide, so 2.
+const PER_PRODUCT_RETRY = { attempts: 2 };
 
 // Bounded-concurrency map — runs the per-product page fetches in parallel (with a ceiling so
 // we never hammer one operator). At PER_OP_API=60 this turns ~60 sequential fetches per operator
@@ -40,7 +45,9 @@ export function looksBlocked(text) { return !text || text.replace(/\s+/g, " ").t
 export async function renderPage(ctx, url, waitMs = 2800, { hard = false } = {}) {
   const page = await ctx.newPage();
   try {
-    await page.goto(url, { waitUntil: hard ? "networkidle" : "domcontentloaded", timeout: hard ? 45000 : 35000 });
+    const nav = await gotoSettled(page, url, { hard });
+    // A degraded settle means we never reached network idle, so give the DOM longer to fill in.
+    if (nav.degraded) waitMs = Math.max(waitMs, 9000);
     await page.waitForTimeout(hard ? Math.max(waitMs, 6000) : waitMs);
     const data = await page.evaluate(() => {
       const og = document.querySelector('meta[property="og:image"]');
@@ -251,7 +258,7 @@ export async function wooOperator(op, perOp = 6, { knownUrls = new Set() } = {})
       const sm = String(p.stock_availability?.text || "").match(/([\d,]+)\s*in\s*stock/i);
       const apiStock = sm ? Number(sm[1].replace(/,/g, "")) : null;
       let html = "";
-      try { html = (await fetchHtml(p.permalink, op)).text; } catch { /* API desc still usable */ }
+      try { html = (await fetchHtml(p.permalink, op, PER_PRODUCT_RETRY)).text; } catch { /* API desc still usable */ }
       if (!sawZap && detectZap(html)) sawZap = true;
       return { id: p.id, draw: fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText, apiCategories, apiStock }) };
     } catch (e) { console.log(`  ! ${(p.permalink || p.name || "?").slice(-42)} parse failed: ${(e.message || "").slice(0, 50)}`); return null; }
@@ -300,7 +307,7 @@ export async function shopifyOperator(op, perOp = 6, { knownUrls = new Set() } =
       // Shopify product_type + tags are the operator's taxonomy (no reliable inventory count here).
       const apiCategories = [p.product_type, ...(Array.isArray(p.tags) ? p.tags : [])].filter(Boolean);
       let html = "";
-      try { html = (await fetchHtml(url, op)).text; } catch { /* body_html still usable */ }
+      try { html = (await fetchHtml(url, op, PER_PRODUCT_RETRY)).text; } catch { /* body_html still usable */ }
       return fieldsFromHtml({ html, url, op, knownTitle: p.title, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText, apiCategories });
     } catch (e) { console.log(`  ! ${(p.handle || p.title || "?")} parse failed: ${(e.message || "").slice(0, 50)}`); return null; }
   });

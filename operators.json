@@ -727,5 +727,21 @@
   "method": "render",
   "fetcher": "flaresolverr",
   "note": "Cloudflare-guarded, platform unknown (312KB server HTML) — CI FlareSolverr probe 200 (2026-09-03). TP 4.9/3,403 at add. PILOT: verify yield after first run."
+ },
+ {
+  "name": "Elite Competitions",
+  "slug": "elite-competitions",
+  "base": "https://elitecompetitions.co.uk",
+  "method": "render",
+  "enabled": false,
+  "disabledReason": "Added + probed 2026-09-06. Renders fine (8 comps found) but the numbers are wrong: ticket_price parses as £0.04-£0.15 where the site charges £2+, and total_entries looks like tickets SOLD not the cap (a £2M home bundle derived a £1,184 pool). Every row landed flagged, so it could never publish — needs selectors/patterns before enabling."
+ },
+ {
+  "name": "Good Life Plus",
+  "slug": "good-life-plus",
+  "base": "https://goodlifeplus.co.uk",
+  "method": "render",
+  "enabled": false,
+  "disabledReason": "Added + probed 2026-09-06. Renders fine (8 comps found) but it is a £1.99/month SUBSCRIPTION prize draw, not a per-ticket raffle: there is no ticket price and no entry cap, so every row fails requiredGate. Does not fit the draw model — do not re-add without one."
  }
 ]

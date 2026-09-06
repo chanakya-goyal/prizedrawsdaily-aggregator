@@ -16,6 +16,8 @@
 // every single day (measured 24-136 new rows/day across Aug 2026), so a day with ZERO new
 // rows means the scrape ran but produced nothing — the exact shape of the Aug outage, and
 // invisible to a total-inventory check because auto-expire drains inventory only slowly.
+import { probeSilentReasons } from "../lib/manager.mjs";
+
 const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
@@ -31,6 +33,7 @@ export function evaluateTripwire({
   byCategory = null,     // { "car-draws": 12, … } live counts
   categoryFloors = null, // { "car-draws": 10, … }
   stalledOperators = null, // [{ slug, live, daysQuiet }] — has inventory, produces nothing
+  deadOperators = null,    // [{ slug, days, reason }] — has NO inventory and never produced
   storageBytes = null,     // total bytes across all buckets (public.storage_usage RPC)
   storageQuotaBytes = 1073741824, // free plan = 1 GB
   storageWarnPct = 70,
@@ -97,6 +100,20 @@ export function evaluateTripwire({
   // worked recently) and has produced nothing for days: its parser has broken under us.
   for (const op of stalledOperators || []) {
     warnings.push(`${op.slug} has ${op.live} live draw(s) but has added nothing in ${op.daysQuiet}d — parser may have broken`);
+  }
+
+  // The blind spot the above leaves: it only considers operators that HAVE >=3 live draws, so
+  // one that has produced nothing since the day it was added — zero live, zero ever — never
+  // qualifies for any alert in this file. 21 were sitting in that state, some for 100+ days.
+  // Deliberately a WARNING, not a reason: reddening the build every morning over 21 known-bad
+  // operators is the same noise failure the fixed floor caused in Aug 2026, and a daily red
+  // build teaches everyone to ignore it. The cause string is what makes it actionable.
+  if (deadOperators?.length) {
+    const shown = deadOperators.slice(0, 8).map((o) => `${o.slug}${o.reason ? ` — ${o.reason}` : ""}`).join("; ");
+    warnings.push(
+      `${deadOperators.length} operator(s) hold no live draws and have produced none: ${shown}`
+      + (deadOperators.length > 8 ? `; +${deadOperators.length - 8} more` : ""),
+    );
   }
 
   // Storage is the one quota that takes the WHOLE PROJECT down, not just the scrape:
@@ -223,7 +240,9 @@ if (import.meta.path === Bun.main) {
     // (this project hard-caps REST responses at 1000 regardless — the note on `rows()` below
     // documents it), so the category floors and the operator scoreboard were both computed
     // from a truncated, undated sample.
-    rows(`draws?select=operators(slug),categories(slug)&status=eq.active&draw_date=gte.${nowIso}`, { all: true }),
+    // order=id: Range-paging an UNORDERED query can overlap or skip rows between pages, and
+    // this count is what the inventory floor reds the build on.
+    rows(`draws?select=operators(slug),categories(slug)&status=eq.active&draw_date=gte.${nowIso}&order=id`, { all: true }),
     rows(`draws?select=operators(slug)&created_at=gte.${quietSince}&limit=2000`),
     storageBytes(),
     // Operator scoreboard (below): the DB `operators` table is the authoritative roster (99
@@ -247,10 +266,10 @@ if (import.meta.path === Bun.main) {
 
   // An operator we deliberately switched off will always look "stalled" — warning about it
   // every day is the same noise problem the fixed floor had.
-  const disabled = new Set(
-    (await Bun.file("operators.json").json().catch(() => []))
-      .filter((o) => o.enabled === false).map((o) => o.slug),
-  );
+  const opConfig = await Bun.file("operators.json").json().catch(() => []);
+  const disabled = new Set(opConfig.filter((o) => o.enabled === false).map((o) => o.slug));
+  // The DB roster is slug,name,rating — no URL — so base comes from the config file.
+  const baseBySlug = Object.fromEntries(opConfig.map((o) => [o.slug, o.base]));
 
   const byCategory = tally(liveRows, (r) => r.categories?.slug);
   // Optional — only exists after a Sunday patrol run (S1). Read-only, and its coverage line
@@ -278,6 +297,36 @@ if (import.meta.path === Bun.main) {
     return acc;
   }, {});
   const queuePending = (await Bun.file("discovery/queue.json").json().catch(() => [])).length;
+
+  // Operators that have never worked. stalledOperators cannot see these (it requires >=3 live
+  // draws), so they had no alert at all. Probe each one so the warning carries a CAUSE — a
+  // Cloudflare block is somebody else's problem, "parser found nothing" is ours, and the two
+  // want completely different responses.
+  const DEAD_DAYS = Number(process.env.TRIPWIRE_DEAD_DAYS || 14);
+  const deadCutoff = Date.now() - DEAD_DAYS * 864e5;
+  const deadCandidates = operatorRoster
+    .filter((op) => !disabled.has(op.slug) && !(liveByOp[op.slug] > 0))
+    .filter((op) => {
+      const newest = newestByOp[op.slug];
+      return !newest || new Date(newest).getTime() < deadCutoff;
+    });
+  const deadReasons = deadCandidates.length
+    ? await probeSilentReasons(deadCandidates.map((op) => ({ slug: op.slug, base: baseBySlug[op.slug] })))
+    : new Map();
+  const deadOperators = deadCandidates.map((op) => ({
+    slug: op.slug,
+    days: newestByOp[op.slug] ? Math.floor((Date.now() - new Date(newestByOp[op.slug]).getTime()) / 864e5) : null,
+    // An operator row in the DB with no operators.json entry has a public review page but no
+    // scraper config, so it can NEVER produce a draw however long we wait. That is a different
+    // problem from a block or a broken parser, and it is fixed by adding config, so say so
+    // rather than leaving the cause blank (5 operators were in this state, incl. two large ones).
+    reason: baseBySlug[op.slug]
+      ? (deadReasons.get(op.slug) || null)
+      : "no operators.json entry — not configured for scraping",
+  // `days: null` means it has produced NOTHING, ever — the worst case, so it sorts first.
+  // Subtracting two Infinities to express that yields NaN, and a comparator returning NaN
+  // leaves the order unspecified, so rank explicitly instead.
+  })).sort((a, b) => (b.days ?? Number.MAX_SAFE_INTEGER) - (a.days ?? Number.MAX_SAFE_INTEGER));
 
   const scoreboardRows = operatorRoster
     .map((op) => {
@@ -326,7 +375,7 @@ if (import.meta.path === Bun.main) {
 
   const { tripped, reasons, warnings } = evaluateTripwire({
     activeCount, floor, scrapeOutcome, freshCount, minFresh, target, expiredDrafts, publishableDrafts,
-    byCategory, categoryFloors: CATEGORY_FLOORS, stalledOperators,
+    byCategory, categoryFloors: CATEGORY_FLOORS, stalledOperators, deadOperators,
     storageBytes: storeBytes,
     storageQuotaBytes: Number(process.env.STORAGE_QUOTA_BYTES || 1073741824),
     storageWarnPct: Number(process.env.STORAGE_WARN_PCT || 70),

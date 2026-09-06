@@ -1,0 +1,106 @@
+name: Aggregator — JSON sweep (api/woo/shopify)
+
+# The cheap half of the scrape, split out of aggregate.yml so it can run more often.
+#
+# Why split at all: a WAF that refuses GitHub's datacenter IPs takes an operator out for a whole
+# day when there is only one run. Three JSON sweeps give a transient 403 two more chances the
+# same day, on top of the retry added in lib/fetcher.mjs. These operators are a single cheap JSON
+# endpoint each, so a sweep is minutes, not the hour the browser sweep needs.
+#
+# It still needs FlareSolverr: 3 `woo` operators carry fetcher:"flaresolverr". It does NOT need
+# Chromium — no operator here is browser-driven.
+#
+# ⚠️ The publish gate assumes two observations a DAY apart. Running more often would collapse
+# that into "twice in one afternoon", which manager/PROMPT.md explicitly forbids the cowork
+# routine from doing. MIN_OBSERVATION_GAP_MS below is what keeps that rule true; do not remove it
+# while this schedule is more frequent than daily.
+
+on:
+  schedule:
+    # Every 6h, deliberately NOT at 07:00 — that hour belongs to the render sweep, and the
+    # cowork routine is scheduled after it.
+    - cron: "0 1,13,19 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  # The SAME group as aggregate.yml, so the two sweeps queue instead of overlapping. Overlap
+  # would matter: AUTO_PUBLISH_MAX is a per-process counter, so two concurrent runs would each
+  # cap independently and publish double what the budget allows.
+  group: aggregator
+  cancel-in-progress: false
+
+jobs:
+  aggregate-json:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60 # JSON endpoints only — the browser sweep is the slow one
+    permissions:
+      contents: read
+    services:
+      flaresolverr:
+        image: ghcr.io/flaresolverr/flaresolverr:latest
+        ports:
+          - 8191:8191
+        env:
+          LOG_LEVEL: warning
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      # Same gate as the render sweep: the suite is offline and Chromium-free on purpose, and a
+      # failing gate must skip the scrape rather than let a broken parser write to the site.
+      - name: Run parser/gate tests
+        run: bun run test:scraper
+
+      - name: Wait for FlareSolverr to be ready
+        run: |
+          for i in $(seq 1 40); do
+            if curl -fsS http://localhost:8191/health >/dev/null 2>&1 || curl -fsS http://localhost:8191/ >/dev/null 2>&1; then
+              echo "FlareSolverr is up"; exit 0
+            fi
+            echo "waiting for FlareSolverr ($i/40)…"; sleep 3
+          done
+          echo "::warning::FlareSolverr never came up — its 3 woo operators will fail safe to 0 draws"
+
+      - name: Scrape the JSON operators → gate → insert drafts
+        id: scrape
+        run: bun run.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FLARESOLVERR_URL: http://localhost:8191/v1
+          DRY_RUN: "false"
+          METHODS: "api,woo,shopify" # everything that is a JSON endpoint; render has its own workflow
+          PUBLISH_STATUS: "draft" # a FIRST sighting is never auto-published
+          AUTO_PUBLISH: "true"
+          # THE GUARD THIS SPLIT DEPENDS ON. Without it, three sweeps a day would let a draft
+          # earn its "second independent observation" six hours after the first — nearly the same
+          # fetch — and the two-observation rule the whole quality model rests on would be
+          # meaningless. 18h keeps it close to the ~24h it was before the split.
+          MIN_OBSERVATION_GAP_MS: "64800000" # 18h
+          # Re-budgeted, NOT copied from the old 50: 3 runs x 12 + 14 on the render sweep keeps
+          # the daily publish ceiling at ~50, the blast radius that value was chosen to bound.
+          AUTO_PUBLISH_MAX: "12"
+          PER_OP_API: "60"
+          BATCHES: "1"
+          MAX_DRAWS: "3500"
+          OP_BUDGET_MS: "480000"
+          RUN_DEADLINE_MIN: "50" # stop cleanly before the 60min job kill
+
+      - name: Auto-expire finished comps (active + draft) → status='ended'
+        if: always() # runs even if the scrape partially failed, so the site stays clean
+        run: bun ended-sweep.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: "false"
+          STATUS: "active,draft"
+
+      # No tripwire step here on purpose. It opens/comments a GitHub issue, and running it four
+      # times a day would comment four times on one bad morning. The render sweep still runs it
+      # daily, and its `freshCount` check spans 24h, so a JSON-sweep breakage is caught there.
