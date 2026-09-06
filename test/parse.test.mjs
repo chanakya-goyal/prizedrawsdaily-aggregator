@@ -702,3 +702,53 @@ describe("resolveShortYear", () => {
     expect(resolveShortYear(5, 9, now)).toBe(2026);
   });
 });
+
+// ---- regressions found by A/B-ing this parser against the previous one on 111 live pages ----
+// Every one of these shipped green unit tests and still moved a date we had already published.
+describe("extractDate / fieldsFromHtml — short-form regressions", () => {
+  const day = (iso) => (iso ? String(iso).slice(0, 10) : iso);
+
+  test("a JSON-LD priceValidUntil is never read as a draw date", () => {
+    // `.single-product` is a class WordPress puts on <body>, so the "summary" scope matched the
+    // whole document; cheerio's .text() then folded in all 28 inline <script> blocks, and the
+    // offer block's "priceValidUntil":"2027-12-31" won. Live on island-competitions.
+    const html = `<html><body class="single-product">
+      <script type="application/ld+json">{"offers":{"priceValidUntil":"2027-12-31"}}</script>
+      <div class="woocommerce-product-details__short-description">Prize: an iPhone 17 Pro. 18th Sep 26</div>
+    </body></html>`;
+    expect(day(fieldsFromHtml({ html, url: "https://x.test/p/1", op: {} }).draw_date)).toBe("2026-09-18");
+  });
+
+  test("an unambiguous date beats a short date even when the short one is better scoped", () => {
+    // waffle-competitions: the real date is a <head> meta the body-scoped summary cannot see,
+    // while the body says "Drawn on Sun 23rd Aug" — already drawn, so a forward-looking year
+    // guess turns it into 2027 and relistDecision would revive a finished competition.
+    // The strong date is document text OUTSIDE <body>, which is exactly the asymmetry: `text` is
+    // built from the whole document, `summaryText` from the matched element (here <body>).
+    const html = `<html><head><title>Instant Win 123 — drawn 23/08/2026</title></head>
+      <body class="single-product">Drawn on Sun 23rd Aug Winners announced</body></html>`;
+    expect(day(fieldsFromHtml({ html, url: "https://x.test/p/2", op: {} }).draw_date)).toBe("2026-08-23");
+  });
+
+  test("a related-competitions carousel does not donate its date", () => {
+    // bigbeastie-competitions prints neighbours' dates in the identical short format.
+    const html = `<html><body>
+      <div class="summary entry-summary">Win £750 Cash. Live draw 30th Oct 26 @ 8:00 PM</div>
+      <section class="related"><h2>Related Competitions</h2>
+        <a>Draw Wed 9th Sep 13 % Sold</a><a>Draw Fri 25th Sep 45 % Sold</a></section>
+    </body></html>`;
+    expect(day(fieldsFromHtml({ html, url: "https://x.test/p/3", op: {} }).draw_date)).toBe("2026-10-30");
+  });
+
+  test("the short-date tier is additive: it never overrides an ISO or numeric date", () => {
+    expect(day(extractDate("Draw Fri 25th Sep @ 8pm ... 2026-10-14T20:00"))).toBe("2026-10-14");
+    expect(day(extractDate("Draw Fri 25th Sep @ 8pm ... closes 14/10/2026"))).toBe("2026-10-14");
+    // ...but it still fills a gap when nothing stronger is present.
+    expect(day(extractDate("Draw Fri 25th Sep 26 @ 8pm"))).toBe("2026-09-25");
+  });
+
+  test("shortForm:false disables the last-resort tier", () => {
+    expect(extractDate("Draw Fri 25th Sep 26 @ 8pm", undefined, { shortForm: false })).toBeNull();
+    expect(day(extractDate("closes 14/10/2026", undefined, { shortForm: false }))).toBe("2026-10-14");
+  });
+});
