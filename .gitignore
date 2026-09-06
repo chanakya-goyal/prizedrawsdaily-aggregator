@@ -43,6 +43,9 @@ discovery/QUEUE.md
 tripwire.md
 
 # manager/patrol local run output (regenerated each run; not source of truth)
+# sweep-scope/stale-date are read by manager/inventory-scorecard.mjs; both are run output.
+sweep-scope.json
+stale-date-report.json
 patrol-worklist.json
 backfill-unknowns.json
 backfill-decisions.json

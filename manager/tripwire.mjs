@@ -299,7 +299,10 @@ if (import.meta.path === Bun.main) {
     reason: baseBySlug[op.slug]
       ? (deadReasons.get(op.slug) || null)
       : "no operators.json entry — not configured for scraping",
-  })).sort((a, b) => (b.days ?? Infinity) - (a.days ?? Infinity));
+  // `days: null` means it has produced NOTHING, ever — the worst case, so it sorts first.
+  // Subtracting two Infinities to express that yields NaN, and a comparator returning NaN
+  // leaves the order unspecified, so rank explicitly instead.
+  })).sort((a, b) => (b.days ?? Number.MAX_SAFE_INTEGER) - (a.days ?? Number.MAX_SAFE_INTEGER));
 
   const scoreboardRows = operatorRoster
     .map((op) => {

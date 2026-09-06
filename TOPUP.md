@@ -28,9 +28,13 @@ bun topup.mjs --write             # insert the draws (as draft)
 bun topup.mjs --write --publish   # also publish the drafts a second scrape agrees with
 ```
 
-It reads the **last completed** Action run, pulls the blocked/silent operators straight out of
-that log, drops the ones this machine also can't reach, and runs the survivors through the
-ordinary pipeline — same adapters, same quality gate, same rules.
+It reads the **last completed run of both aggregator workflows** — `aggregate-json.yml` and
+`aggregate.yml` — pulls the blocked/silent operators straight out of those logs, drops the ones
+this machine also can't reach, and runs the survivors through the ordinary pipeline: same
+adapters, same quality gate, same rules.
+
+Both workflows matter. The scrape is split, and `woo API 403` — the signal this whole tool keys
+off — now appears only in the JSON sweep. Reading the render sweep alone would find nothing.
 
 ## What it will and won't do
 
@@ -40,16 +44,21 @@ ordinary pipeline — same adapters, same quality gate, same rules.
   row that has drifted, lost its date, or stopped being purchasable stays a draft. This flag
   exists because CI can never make that second observation for these operators, so without it
   their drafts stay drafts permanently.
-* `--publish` also turns on `CORRECT_LIVE`, refreshing stored fields on live rows. These
-  operators' draws are otherwise never re-read, and a stale `draw_date` hides a running comp.
+* `CORRECT_LIVE` is on for **every** run, not just `--publish`, so a `--write` refreshes stored
+  fields on live rows too. These operators' draws are otherwise never re-read, and a stale
+  `draw_date` hides a running comp.
+* `--publish` applies an 18h `MIN_OBSERVATION_GAP_MS`, so running this twice in one sitting
+  cannot let the second run act as the "second observation" for drafts the first just wrote.
 * The operator list is **not hardcoded**. It is re-derived from the newest run every time, so as
   sites start or stop blocking us the list follows automatically — no maintenance.
 * It is safe to run repeatedly. Dedup is by `entry_url`, so re-runs refresh rather than duplicate.
 
 ## When to run it
 
-After the daily Action finishes (it starts 07:00 UTC and takes about 45–60 minutes), so it has a
-fresh run to read. Roughly once a day is plenty; skipping days only delays new draws.
+After an Action has finished, so there is a fresh log to read. The JSON sweep runs at 01:00,
+13:00 and 19:00 UTC and takes minutes; the render sweep starts 07:00 UTC and takes about 45–60.
+Any time after ~08:15 UTC reads a fresh copy of both. Roughly once a day is plenty; skipping days
+only delays new draws.
 
 ## The limitation to remember
 
