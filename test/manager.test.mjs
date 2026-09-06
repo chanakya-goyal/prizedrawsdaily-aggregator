@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { fieldFlags, buildHealthReport, reportMarkdown } from "../lib/manager.mjs";
+import { fieldFlags, buildHealthReport, reportMarkdown, classifySilent } from "../lib/manager.mjs";
 import { templateDescription } from "../lib/describe.mjs";
 
 const base = () => ({
@@ -119,5 +119,89 @@ describe("fieldFlags — category policy", () => {
   test("valid category → no category flags", () => {
     const flags = fieldFlags({ ...draw, category: "sports-outdoors", title: "Win a set of Cobra irons" });
     expect(flags.filter((f) => /category/.test(f))).toEqual([]);
+  });
+});
+
+// ---- silent-operator diagnosis ----
+// The old report emitted one flat list, so an operator blocked for a day read exactly like a
+// parser broken for months. Each cause has a different owner, so each must be named.
+describe("classifySilent", () => {
+  test("names an IP refusal as a block, not a broken parser", () => {
+    expect(classifySilent(403)).toMatch(/blocked/);
+    expect(classifySilent(503)).toMatch(/blocked/);
+  });
+  test("451 is called out specifically as a geo-block", () => {
+    expect(classifySilent(451)).toMatch(/geo-blocked/);
+  });
+  test("a dead host is unreachable, not blocked", () => {
+    expect(classifySilent("unreachable")).toMatch(/unreachable/);
+    expect(classifySilent("unreachable")).not.toMatch(/blocked/);
+  });
+  test("a 200 that yielded nothing points at OUR code", () => {
+    expect(classifySilent(200)).toMatch(/parser found nothing/);
+  });
+});
+
+describe("reportMarkdown silent grouping", () => {
+  const report = buildHealthReport({
+    expected: ["a", "b", "c", "d"],
+    counts: [
+      { slug: "a", scraped: 0, silentReason: classifySilent(403) },
+      { slug: "b", scraped: 0, silentReason: classifySilent(403) },
+      { slug: "c", scraped: 0, silentReason: classifySilent(200) },
+      { slug: "d", scraped: 5 },
+    ],
+  });
+  test("only zero-scrape operators are called silent", () => {
+    expect(report.silentOperators).toEqual(["a", "b", "c"]);
+  });
+  test("causes are grouped, largest first, and every silent operator appears", () => {
+    const md = reportMarkdown(report);
+    expect(md).toContain("Silent operators (0 draws) — 3 total");
+    expect(md).toMatch(/blocked \(403[^)]*\)\*\* \(2\): a, b/);
+    expect(md).toMatch(/parser found nothing[^*]*\*\* \(1\): c/);
+    // A healthy operator must not be listed as silent — check the silent block itself, since
+    // "d" legitimately appears in the per-operator table below it (and inside "held-draft").
+    const silentBlock = md.slice(md.indexOf("Silent operators"), md.indexOf("| operator |"));
+    expect(silentBlock).not.toMatch(/\bd\b/);
+  });
+  test("an operator with no determined cause is still reported, never dropped", () => {
+    const md = reportMarkdown(buildHealthReport({ expected: ["z"], counts: [{ slug: "z", scraped: 0 }] }));
+    expect(md).toContain("cause not determined");
+    expect(md).toContain("z");
+  });
+});
+
+// ---- publish funnel ----
+// Scraping is only the first third of the pipeline: a run can capture perfectly and still add
+// nothing, because the publish cap is the binding constraint. That was invisible in this report.
+describe("reportMarkdown publish funnel", () => {
+  const withFunnel = (funnel) => reportMarkdown(buildHealthReport({ expected: ["a"], counts: [{ slug: "a", scraped: 3 }], funnel }));
+
+  test("reports the waiting queue alongside what was published", () => {
+    const md = withFunnel({ draftsWaiting: 761, publishCap: 50, publishedThisRun: 12 });
+    expect(md).toContain("761 draft(s) waiting");
+    expect(md).toContain("12 published this run");
+  });
+
+  test("says plainly when the cap — not the scrape — is the constraint", () => {
+    const md = withFunnel({ draftsWaiting: 761, publishCap: 50, publishedThisRun: 50 });
+    expect(md).toContain("publish cap was reached");
+  });
+
+  test("stays quiet when the cap was not reached", () => {
+    expect(withFunnel({ draftsWaiting: 20, publishCap: 50, publishedThisRun: 3 })).not.toContain("cap was reached");
+  });
+
+  test("omits the cap when auto-publish is off", () => {
+    const md = withFunnel({ draftsWaiting: 20, publishCap: null, publishedThisRun: 0 });
+    expect(md).toContain("20 draft(s) waiting");
+    expect(md).not.toContain("cap ");
+  });
+
+  test("absent funnel changes nothing — the report still renders", () => {
+    const md = reportMarkdown(buildHealthReport({ expected: ["a"], counts: [{ slug: "a", scraped: 3 }] }));
+    expect(md).toContain("Aggregator health report");
+    expect(md).not.toContain("Publish funnel");
   });
 });

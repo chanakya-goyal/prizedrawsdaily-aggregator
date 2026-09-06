@@ -188,3 +188,40 @@ describe("evaluateTripwire — status/date disagreement", () => {
     expect(r.reasons.join(" ")).toContain("120");
   });
 });
+
+// ---- operators that have NEVER produced ----
+// stalledOperators requires >=3 live draws, so an operator that produced nothing from the day
+// it was added qualifies for no alert at all. 21 sat in that state, some for 100+ days.
+describe("deadOperators", () => {
+  const base = { activeCount: 500, floor: 150, scrapeOutcome: "success", freshCount: 20 };
+
+  test("warns, never reddens — 21 known-bad operators must not fail the build daily", () => {
+    const r = evaluateTripwire({
+      ...base,
+      deadOperators: [{ slug: "jammy", days: 100, reason: "blocked (503 — refused our IP)" }],
+    });
+    expect(r.tripped).toBe(false);
+    expect(r.reasons).toEqual([]);
+    expect(r.warnings.join(" ")).toContain("jammy");
+  });
+
+  test("carries the cause, which is what makes it actionable", () => {
+    const r = evaluateTripwire({
+      ...base,
+      deadOperators: [{ slug: "winmore", days: 40, reason: "reachable — parser found nothing (our bug, or no open comps)" }],
+    });
+    expect(r.warnings.join(" ")).toContain("parser found nothing");
+  });
+
+  test("summarises rather than listing all of them", () => {
+    const many = Array.from({ length: 21 }, (_, i) => ({ slug: `op-${i}`, days: 30, reason: "blocked (403 — refused our IP)" }));
+    const w = evaluateTripwire({ ...base, deadOperators: many }).warnings.join(" ");
+    expect(w).toContain("21 operator(s)");
+    expect(w).toContain("+13 more");
+  });
+
+  test("silent when there are none", () => {
+    const r = evaluateTripwire({ ...base, deadOperators: [] });
+    expect(r.warnings.join(" ")).not.toContain("produced none");
+  });
+});

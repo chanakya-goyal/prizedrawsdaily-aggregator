@@ -10,10 +10,11 @@ import { chromium } from "playwright";
 import { renderOperator, wooOperator, shopifyOperator, apiOperator, dedupe, makeContext } from "./extractor.mjs";
 import { gate } from "./gate.mjs";
 import { templateDescription } from "./lib/describe.mjs";
-import { fieldFlags, buildHealthReport, writeStepSummary, checkImage } from "./lib/manager.mjs";
+import { fieldFlags, buildHealthReport, writeStepSummary, checkImage, probeSilentReasons } from "./lib/manager.mjs";
 import { rehostImage } from "./lib/rehost.mjs";
 import { verifyAgainstStored, summarise, relistDecision, correctionDecision } from "./lib/verify.mjs";
 import { permalinkKey } from "./lib/liveness.mjs";
+import { fetchWithRetry } from "./lib/fetcher.mjs";
 import { CATEGORIES } from "./lib/parse.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
@@ -63,7 +64,15 @@ const makeSlug = (title, opSlug) => `${slugify(title).slice(0, Math.max(8, 119 -
 // on 2026-08-14 (the flush after Red Hot Raffles both times).
 const SB_TIMEOUT = { signal: () => AbortSignal.timeout(30000) };
 async function sbGet(path) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: { apikey: READ_KEY, Authorization: `Bearer ${READ_KEY}` }, signal: SB_TIMEOUT.signal() });
+  // Reads are idempotent, and the preload pages through ~4,700 draws — a single transient
+  // Supabase timeout used to kill the WHOLE run before a single operator was scraped, losing
+  // the day's inventory. (Supabase REST here 522s/times out intermittently.) Retry the read;
+  // the init is a factory so each attempt gets a fresh 30s signal.
+  const r = await fetchWithRetry(
+    `${SUPABASE_URL}/rest/v1/${path}`,
+    () => ({ headers: { apikey: READ_KEY, Authorization: `Bearer ${READ_KEY}` }, signal: SB_TIMEOUT.signal() }),
+    { attempts: 3, onRetry: ({ attempt, status, error }) => console.log(`  ↻ Supabase read retry ${attempt} (${status ? `HTTP ${status}` : error})`) },
+  );
   if (!r.ok) throw new Error(`GET ${path} → ${r.status} ${await r.text()}`);
   return r.json();
 }
@@ -418,4 +427,24 @@ if (verdicts.length) {
   for (const [reason, n] of Object.entries(s.heldReasons)) console.log(`     ${String(n).padStart(4)} × ${reason}`);
 }
 
-await writeStepSummary(buildHealthReport({ counts, expected: expectedSlugs }));
+// Before reporting, work out WHY each silent operator was silent. One cheap request per silent
+// operator (typically ~20), nothing next to the scrape itself, and it turns an undifferentiated
+// warning list into actionable ones: blocked (infrastructure), parser found nothing (our bug),
+// unreachable (probably gone).
+{
+  const silent = counts.filter((c) => (c.scraped || 0) === 0);
+  const reasons = await probeSilentReasons(
+    silent.map((c) => ({ slug: c.slug, base: operators.find((o) => o.slug === c.slug)?.base })),
+  );
+  for (const c of silent) c.silentReason = reasons.get(c.slug);
+}
+await writeStepSummary(buildHealthReport({
+  counts,
+  expected: expectedSlugs,
+  // `existing` is the start-of-run snapshot, so this is the queue this run inherited.
+  funnel: {
+    draftsWaiting: existing.filter((d) => d.status === "draft").length,
+    publishCap: AUTO_PUBLISH ? AUTO_PUBLISH_MAX : null,
+    publishedThisRun: counts.reduce((a, c) => a + (c.published || 0), 0),
+  },
+}));
