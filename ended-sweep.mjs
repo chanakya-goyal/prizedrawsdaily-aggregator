@@ -104,15 +104,15 @@ async function isEnded(d) {
       // which covered 56 of easy-living-competitions' newest 100 products.
       if (!p) p = (await wooFeed(op)).get(permalinkKey(d.entry_url)) || null;
       if (!p) return { ended: null, why: "product not found in API or feed" };
-      if (!isPurchasable(p)) return { ended: true, why: `not purchasable (stock: ${p.stock_availability?.text || "?"})` };
-      return { ended: false, why: "purchasable" };
+      if (!isPurchasable(p)) return { ended: true, strength: "strong", why: `not purchasable (stock: ${p.stock_availability?.text || "?"})` };
+      return { ended: false, strength: "strong", why: "purchasable" };
     }
     if (op.method === "shopify") {
       const map = await shopAvail(op);
       if (!map.size) return { ended: null, why: "feed unavailable" };
       if (!map.has(slug.toLowerCase())) return { ended: null, why: "not in product feed (unverified)" }; // conservative: never expire on absence
       const avail = map.get(slug.toLowerCase());
-      return { ended: !avail, why: avail ? "available" : "sold out / no available variant" };
+      return { ended: !avail, strength: "strong", why: avail ? "available" : "sold out / no available variant" };
     }
     // render / other: text probe. This is the ONLY weak signal in this file — Woo's
     // is_purchasable and Shopify's variant availability are the operator's own flags, but
@@ -121,9 +121,14 @@ async function isEnded(d) {
     // do not need: a draw still dated in the future is contrary evidence, and we report it
     // as unverifiable rather than expiring a live draw on a phrase match.
     const html = await (await fetch(d.entry_url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) })).text();
-    if (!saysFinished(html)) return { ended: false, why: "no finished marker" };
-    if (isFutureDated(d)) return { ended: null, why: "page says finished but draw_date is still ahead" };
-    return { ended: true, why: "page says finished" };
+    // "no finished marker in raw HTML" is NOT evidence the comp is open. These operators are
+    // mostly JS-rendered, so the un-executed HTML says nothing either way — Dream Car pages
+    // read "ended" to a browser while this probe sees nothing. Marking such rows "still
+    // purchasable" overstated the evidence and hid genuinely-finished draws in the stale-date
+    // bucket, where nothing ever acted on them.
+    if (!saysFinished(html)) return { ended: false, strength: "weak", why: "no finished marker (raw HTML — unrendered)" };
+    if (isFutureDated(d)) return { ended: null, strength: "weak", why: "page says finished but draw_date is still ahead" };
+    return { ended: true, strength: "weak", why: "page says finished" };
   } catch (e) { return { ended: null, why: `error ${(e.message || "").slice(0, 30)}` }; }
 }
 
@@ -145,10 +150,22 @@ if (unknown.length) { console.log(`\nUNKNOWN (couldn't verify — left as-is): $
 // (measured 2026-08-26), inflating every live-draw count the site derives. Silence is
 // the enemy; this is the cohort nobody was looking at.
 const staleDate = out.filter((x) => x.ended === false && isPastDated(x.d));
-if (staleDate.length) {
-  console.log(`\n📅 STALE DATE (still purchasable, close date already passed — left ACTIVE, date needs correcting): ${staleDate.length}`);
-  for (const x of staleDate.slice(0, 12)) console.log(`  📅 [${x.d.operators?.slug}] ${(x.d.title || "").slice(0, 40)} — closed ${String(x.d.draw_date).slice(0, 10)}`);
-  if (staleDate.length > 12) console.log(`  … and ${staleDate.length - 12} more`);
+// Two very different situations were being reported as one. Only the operator's OWN flag
+// (Woo is_purchasable / Shopify variant availability) supports the claim "still purchasable" —
+// and THAT is hidden inventory, because the site filters listings on draw_date >= now. A weak
+// text probe on unrendered HTML supports nothing, and those rows may simply be finished.
+const staleConfirmed = staleDate.filter((x) => x.strength === "strong");
+const staleUnproven = staleDate.filter((x) => x.strength !== "strong");
+if (staleConfirmed.length) {
+  console.log(`\n📅 HIDDEN LIVE COMPS (operator says still purchasable, but our close date has passed — the site is filtering these out): ${staleConfirmed.length}`);
+  for (const x of staleConfirmed.slice(0, 12)) console.log(`  📅 [${x.d.operators?.slug}] ${(x.d.title || "").slice(0, 40)} — our date ${String(x.d.draw_date).slice(0, 10)}`);
+  if (staleConfirmed.length > 12) console.log(`  … and ${staleConfirmed.length - 12} more`);
+}
+if (staleUnproven.length) {
+  console.log(`\n❔ PAST-DATED, UNVERIFIED (${staleUnproven.length}) — JS-rendered pages where a raw fetch proves nothing either way.`);
+  console.log(`   Not expired (we never expire on absence of evidence) and not counted as live.`);
+  for (const x of staleUnproven.slice(0, 8)) console.log(`  ❔ [${x.d.operators?.slug}] ${(x.d.title || "").slice(0, 40)} — our date ${String(x.d.draw_date).slice(0, 10)}`);
+  if (staleUnproven.length > 8) console.log(`  … and ${staleUnproven.length - 8} more`);
 }
 
 if (!DRY && ended.length) {
