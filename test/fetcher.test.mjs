@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { unwrapBrowserJson } from "../lib/fetcher.mjs";
+import { unwrapBrowserJson, isRetryableStatus, backoffMs, fetchWithRetry } from "../lib/fetcher.mjs";
 
 // Cloudflare-blocked WooCommerce operators can only be reached through FlareSolverr, but
 // FlareSolverr returns what the BROWSER rendered. Chrome's JSON viewer wraps a JSON body in
@@ -50,5 +50,128 @@ describe("unwrapBrowserJson", () => {
     expect(unwrapBrowserJson("")).toBe("");
     expect(unwrapBrowserJson(null)).toBe(null);
     expect(unwrapBrowserJson(undefined)).toBe(undefined);
+  });
+});
+
+// ---- retry policy ----
+// The bug this fixes: a single transient refusal used to cost an operator its whole day,
+// because extractor.mjs bails the operator when listing page 1 fails and nothing retried.
+describe("isRetryableStatus", () => {
+  test("retries the transient refusals we actually see", () => {
+    for (const s of [403, 408, 429, 500, 502, 503, 504]) expect(isRetryableStatus(s)).toBe(true);
+  });
+  test("never retries 451 — a legal geo-block cannot succeed on attempt two", () => {
+    expect(isRetryableStatus(451)).toBe(false);
+  });
+  test("never retries a stable client-side answer", () => {
+    for (const s of [400, 401, 404, 410, 422]) expect(isRetryableStatus(s)).toBe(false);
+  });
+  test("a success is not a retry case", () => {
+    expect(isRetryableStatus(200)).toBe(false);
+  });
+});
+
+describe("backoffMs", () => {
+  test("stays short — run.mjs's operator loop is serial, so delay is additive over ~105 operators", () => {
+    expect(backoffMs(1)).toBe(500);
+    expect(backoffMs(2)).toBe(1500);
+    expect(backoffMs(3)).toBe(4000);
+  });
+  test("is capped, so a long ladder can never eat RUN_DEADLINE_MIN", () => {
+    expect(backoffMs(9)).toBe(4000);
+  });
+});
+
+describe("fetchWithRetry", () => {
+  const stub = (responses) => {
+    const calls = [];
+    const orig = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      calls.push(url);
+      const next = responses[calls.length - 1];
+      if (next instanceof Error) throw next;
+      return new Response("body", { status: next });
+    };
+    return { calls, restore: () => { globalThis.fetch = orig; } };
+  };
+  // baseMs 0 keeps these tests instant — the policy under test is the retry COUNT, not the sleep.
+  const fast = { baseMs: 0, maxMs: 0 };
+
+  test("a transient 403 succeeds on the second attempt", async () => {
+    const s = stub([403, 200]);
+    try {
+      const r = await fetchWithRetry("https://x.test/", {}, { ...fast });
+      expect(r.status).toBe(200);
+      expect(s.calls.length).toBe(2);
+    } finally { s.restore(); }
+  });
+
+  test("gives up after the attempt budget and returns the last response, not a throw", async () => {
+    const s = stub([403, 403, 403]);
+    try {
+      const r = await fetchWithRetry("https://x.test/", {}, { attempts: 3, ...fast });
+      expect(r.status).toBe(403);
+      expect(s.calls.length).toBe(3);
+    } finally { s.restore(); }
+  });
+
+  test("a 451 is returned immediately — retrying a geo-block only burns the run's budget", async () => {
+    const s = stub([451, 200]);
+    try {
+      const r = await fetchWithRetry("https://x.test/", {}, { ...fast });
+      expect(r.status).toBe(451);
+      expect(s.calls.length).toBe(1);
+    } finally { s.restore(); }
+  });
+
+  test("a 404 is not retried", async () => {
+    const s = stub([404, 200]);
+    try {
+      await fetchWithRetry("https://x.test/", {}, { ...fast });
+      expect(s.calls.length).toBe(1);
+    } finally { s.restore(); }
+  });
+
+  test("a network throw is retried, then rethrown if it never recovers", async () => {
+    const s = stub([new Error("ECONNRESET"), new Error("ECONNRESET")]);
+    try {
+      await expect(fetchWithRetry("https://x.test/", {}, { attempts: 2, ...fast })).rejects.toThrow("ECONNRESET");
+      expect(s.calls.length).toBe(2);
+    } finally { s.restore(); }
+  });
+
+  test("a network throw that recovers returns the good response", async () => {
+    const s = stub([new Error("ECONNRESET"), 200]);
+    try {
+      const r = await fetchWithRetry("https://x.test/", {}, { ...fast });
+      expect(r.status).toBe(200);
+    } finally { s.restore(); }
+  });
+});
+
+// The bug this guards: init built ONCE carries an AbortSignal.timeout that stays aborted after
+// it fires, so a timed-out attempt made every retry abort instantly — the retry looked present
+// and did nothing, on precisely the failure (a timeout) it was added to survive.
+describe("fetchWithRetry — init freshness", () => {
+  test("an init factory is re-invoked for every attempt", async () => {
+    const orig = globalThis.fetch;
+    const seen = [];
+    let n = 0;
+    globalThis.fetch = async (_url, init) => { seen.push(init.token); return new Response("", { status: ++n < 3 ? 503 : 200 }); };
+    try {
+      const r = await fetchWithRetry("https://x.test/", () => ({ token: seen.length }), { baseMs: 0, maxMs: 0 });
+      expect(r.status).toBe(200);
+      expect(seen).toEqual([0, 1, 2]); // a fresh init each time, not the same object reused
+    } finally { globalThis.fetch = orig; }
+  });
+
+  test("a plain object init still works, for callers with no signal", async () => {
+    const orig = globalThis.fetch;
+    let n = 0;
+    globalThis.fetch = async () => new Response("", { status: ++n < 2 ? 503 : 200 });
+    try {
+      const r = await fetchWithRetry("https://x.test/", { headers: {} }, { baseMs: 0, maxMs: 0 });
+      expect(r.status).toBe(200);
+    } finally { globalThis.fetch = orig; }
   });
 });
