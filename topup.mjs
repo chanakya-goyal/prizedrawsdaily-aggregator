@@ -20,6 +20,8 @@
 // it can reach; for these operators it never can, so their drafts would otherwise stay drafts
 // forever. This run is that second observation. The agreement check is NOT bypassed — a row that
 // has drifted, lost its date, or is no longer purchasable still fails and stays a draft.
+import { blockedHosts, blockedNames, silentSlugs } from "./lib/runlog.mjs";
+
 const args = new Set(process.argv.slice(2));
 const WRITE = args.has("--write");
 const PUBLISH = args.has("--publish");
@@ -36,23 +38,30 @@ const operators = await Bun.file("operators.json").json().then((j) => (Array.isA
 const bySlug = new Map(operators.map((o) => [o.slug, o]));
 const byHost = new Map(operators.map((o) => [new URL(o.base).hostname.replace(/^www\./, ""), o]));
 
-console.log("Reading the latest aggregator run from GitHub…");
+console.log("Reading the latest aggregator runs from GitHub…");
+// BOTH workflows, because the scrape is split and each half only reports its own operators.
+// The JSON sweep is the one that matters most here — "woo API 403" is the signal this whole
+// script keys off, and after the split it appears ONLY in aggregate-json.yml. Reading just
+// aggregate.yml (render-only) would find nothing and silently do nothing.
 // The in-progress run has no health report yet, so always read the last COMPLETED one.
-const runs = JSON.parse(await sh(["gh", "run", "list", "--workflow=aggregate.yml", "--status", "completed", "--limit", "1", "--json", "databaseId,createdAt"]) || "[]");
-if (!runs.length) { console.error("Could not read any Action run — is `gh` authenticated?"); process.exit(1); }
-const log = await sh(["gh", "run", "view", String(runs[0].databaseId), "--log"]);
-console.log(`  run ${runs[0].databaseId} · ${runs[0].createdAt}\n`);
+const WORKFLOWS = ["aggregate-json.yml", "aggregate.yml"];
+let log = "";
+for (const wf of WORKFLOWS) {
+  const runs = JSON.parse(await sh(["gh", "run", "list", `--workflow=${wf}`, "--status", "completed", "--limit", "1", "--json", "databaseId,createdAt"]) || "[]");
+  if (!runs.length) { console.log(`  ${wf.padEnd(20)} no completed run yet — skipping`); continue; }
+  log += await sh(["gh", "run", "view", String(runs[0].databaseId), "--log"]);
+  console.log(`  ${wf.padEnd(20)} run ${runs[0].databaseId} · ${runs[0].createdAt}`);
+}
+if (!log) { console.error("Could not read any Action run — is `gh` authenticated?"); process.exit(1); }
+console.log();
 
-// Three distinct signals of "CI got nothing", each read straight from the run log.
+// Three distinct signals of "CI got nothing", each read straight from the run log. The parsing
+// is in lib/runlog.mjs so it can be tested — it reads text another file formats, and it broke
+// silently once already when the health report changed shape.
 const blocked = new Set();
-for (const m of log.matchAll(/woo API 403 for https?:\/\/(?:www\.)?([^\s/]+)/g)) {
-  const op = byHost.get(m[1]); if (op) blocked.add(op.slug);
-}
-for (const m of log.matchAll(/── (.+?) \((?:render|woo|shopify|api)\) ──[\s\S]{0,200}?⛔ blocked after retry/g)) {
-  const op = operators.find((o) => o.name === m[1]); if (op) blocked.add(op.slug);
-}
-const silentLine = log.match(/Silent operators \(0 draws[^)]*\):\*\*([^\n]+)/);
-const silent = silentLine ? silentLine[1].split(",").map((s) => s.trim()).filter((s) => bySlug.has(s)) : [];
+for (const host of blockedHosts(log)) { const op = byHost.get(host); if (op) blocked.add(op.slug); }
+for (const name of blockedNames(log)) { const op = operators.find((o) => o.name === name); if (op) blocked.add(op.slug); }
+const silent = silentSlugs(log, (t) => bySlug.has(t));
 
 // Decide who is worth attempting. A plain fetch is NOT the right test on its own: a
 // Cloudflare "challenge" (cf-mitigated: challenge) defeats fetch but a real Chromium often
@@ -94,7 +103,11 @@ const proc = Bun.spawn(["bun", "run.mjs"], {
     ONLY: canDo.join(","),
     DRY_RUN: WRITE ? "false" : "true",
     PER_OP: process.env.PER_OP || "12",
-    ...(PUBLISH ? { AUTO_PUBLISH: "true" } : {}),
+    // Publishing still has to clear the observation gap. These drafts were written by an
+    // EARLIER topup run (CI can never reach these operators), so a real gap has passed — but
+    // running this script twice in one sitting must not let the second run act as the second
+    // observation for drafts the first one just created.
+    ...(PUBLISH ? { AUTO_PUBLISH: "true", MIN_OBSERVATION_GAP_MS: process.env.MIN_OBSERVATION_GAP_MS || "64800000" } : {}),
     // Refresh stored fields on live rows while we are here — these operators' draws are
     // otherwise never re-read, so a stale draw_date can leave a finished comp looking live.
     CORRECT_LIVE: process.env.CORRECT_LIVE || "true",

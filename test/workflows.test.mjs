@@ -9,6 +9,7 @@ const JSON_SWEEP = await read("aggregate-json.yml");
 const num = (yaml, key) => Number((yaml.match(new RegExp(`${key}:\\s*"?(\\d+)"?`)) || [])[1]);
 const cronsOf = (yaml) => [...yaml.matchAll(/-\s*cron:\s*"([^"]+)"/g)].map((m) => m[1]);
 // "0 1,13,19 * * *" → 3 runs a day; "0 7 * * *" → 1.
+const methodsOf = (yaml) => ((yaml.match(/METHODS:\s*"([^"]+)"/) || [])[1] || "").split(",").map((x) => x.trim()).filter(Boolean);
 const runsPerDay = (yaml) => cronsOf(yaml).reduce((n, c) => n + c.split(/\s+/)[1].split(",").length, 0);
 
 describe("split aggregator workflows", () => {
@@ -50,9 +51,21 @@ describe("split aggregator workflows", () => {
   });
 
   test("the two sweeps cover every method between them, with no overlap", () => {
-    const methods = (y) => (y.match(/METHODS:\s*"([^"]+)"/) || [])[1].split(",").map((s) => s.trim());
-    const r = methods(RENDER), j = methods(JSON_SWEEP);
+    const r = methodsOf(RENDER), j = methodsOf(JSON_SWEEP);
     expect(r.some((m) => j.includes(m))).toBe(false);           // no operator scraped twice
     expect([...r, ...j].sort()).toEqual(["api", "render", "shopify", "woo"]); // none dropped
+  });
+
+  test("every ENABLED operator is actually claimed by one of the sweeps", async () => {
+    // The assertion above compares the two workflows to a hardcoded list, which cannot notice an
+    // operator added with a method neither sweep runs — it would simply never be scraped again,
+    // and the only symptom is one more name on the silent-operators list. Check operators.json
+    // itself, so the config and the schedule cannot drift apart.
+    const ops = await Bun.file(new URL("../operators.json", import.meta.url)).json();
+    const covered = new Set([...methodsOf(RENDER), ...methodsOf(JSON_SWEEP)]);
+    const orphans = ops
+      .filter((o) => o.enabled !== false && !covered.has(o.method))
+      .map((o) => `${o.slug} (method=${o.method})`);
+    expect(orphans, "operators no workflow scrapes").toEqual([]);
   });
 });
