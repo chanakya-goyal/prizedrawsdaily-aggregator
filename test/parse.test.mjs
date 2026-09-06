@@ -1,11 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { readFileSync } from "fs";
-import {
-  extractEntries, extractDate, inferCategory, extractPrice, mapOperatorCategory,
-  parseJsonLd, findProductLd, pickTitleImage, load, textOf, fieldsFromHtml, normalizeUkDate,
-  isGenericTitle, cleanPrizeLine, extractGrandPrize, extractPrizeSection, categoryEvidence,
-  CATEGORIES,
-} from "../lib/parse.mjs";
+import { extractEntries, extractDate, inferCategory, extractPrice, mapOperatorCategory, parseJsonLd, findProductLd, pickTitleImage, load, textOf, fieldsFromHtml, normalizeUkDate, isGenericTitle, cleanPrizeLine, extractGrandPrize, extractPrizeSection, categoryEvidence, CATEGORIES, resolveShortYear } from "../lib/parse.mjs";
 
 describe("extractEntries — veto-first, conservative", () => {
   const cases = [
@@ -649,5 +644,61 @@ describe("operators.json category pins", () => {
   }
   test("golf-star-competitions is pinned sports-outdoors", () => {
     expect(list.find((o) => o.slug === "golf-star-competitions")?.category).toBe("sports-outdoors");
+  });
+});
+
+// ---- short-form draw dates ----
+// Seven operators lost 230 draws in ONE run to "missing draw_date" because extractDate required
+// a full month name and a 4-digit year, while their pages print "Live draw 18th Sep 26 @ 9:30 PM".
+describe("extractDate — short form", () => {
+  const day = (iso) => String(iso).slice(0, 10);
+
+  test("reads the real on-page form: abbreviated month, 2-digit year, time", () => {
+    expect(day(extractDate("Live draw 18th Sep 26 @ 9:30 PM"))).toBe("2026-09-18");
+  });
+
+  test("reads a labelled short date with no year at all", () => {
+    expect(day(extractDate("Draw Thu 17th Sep Instant Wins"))).toBe("2026-09-17");
+  });
+
+  test("a trailing percentage is never read as a year", () => {
+    // Live decoy: "Draw Fri 25th Sep 26 % Sold" — the 26 is 26% sold. Reading it as a year
+    // happened to give 2026 here, but the same shape gave 2012 on a sibling card.
+    expect(day(extractDate("Draw Mon 14th Sep 12 % Sold"))).toBe("2026-09-14");
+    expect(day(extractDate("Draw Fri 25th Sep 26 % Sold 1.99 Per Entry"))).toBe("2026-09-25");
+  });
+
+  test("prefers the time-anchored date over an unanchored one", () => {
+    // The product's own date carries "@ 9:30 PM"; carousel siblings usually do not.
+    const text = "Draw Fri 11th Sep 13 % Sold ... Live draw 18th Sep 26 @ 9:30 PM";
+    expect(day(extractDate(text))).toBe("2026-09-18");
+  });
+
+  test("full month name with a 4-digit year still wins — existing behaviour unchanged", () => {
+    expect(day(extractDate("Draw Thu 17th Sep. Draw date: 20th September 2026"))).toBe("2026-09-20");
+  });
+
+  test("does not invent a date out of version strings or prose numbers", () => {
+    expect(extractDate("Chrome/124 Safari/537.36")).toBeNull();
+    expect(extractDate("Sold 5 of 500 tickets")).toBeNull();
+    expect(extractDate("")).toBeNull();
+  });
+
+  test("an unordinalised bare month is not a draw date", () => {
+    // "5 Sep" appears in prose and T&Cs; requiring st/nd/rd/th keeps it out.
+    expect(extractDate("shipped 5 Sep to winners")).toBeNull();
+  });
+});
+
+describe("resolveShortYear", () => {
+  const now = new Date("2026-09-06T12:00:00Z");
+  test("picks this year when the date is still ahead", () => {
+    expect(resolveShortYear(20, 9, now)).toBe(2026);
+  });
+  test("rolls to next year when the date has clearly passed", () => {
+    expect(resolveShortYear(20, 1, now)).toBe(2027);
+  });
+  test("allows a few days' grace so a just-closed draw does not jump twelve months", () => {
+    expect(resolveShortYear(5, 9, now)).toBe(2026);
   });
 });
