@@ -401,6 +401,10 @@ await writeStepSummary(buildHealthReport({
   funnel: {
     draftsWaiting: existing.filter((d) => d.status === "draft").length,
     publishCap: AUTO_PUBLISH ? AUTO_PUBLISH_MAX : null,
-    publishedThisRun: counts.reduce((a, c) => a + (c.published || 0), 0),
+    // `autoPublished`, not the per-operator tally: the tally counts rows that BECAME publish
+    // candidates, while flush() is where AUTO_PUBLISH_MAX and the image proof actually decide.
+    // Reporting the intention would overstate the number the cap decision rests on. In a dry
+    // run nothing publishes, so report the candidate count and let the reader see it is a dry run.
+    publishedThisRun: DRY_RUN ? counts.reduce((a, c) => a + (c.published || 0), 0) : autoPublished,
   },
 }));
