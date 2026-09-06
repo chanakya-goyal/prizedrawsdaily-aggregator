@@ -216,7 +216,9 @@ if (import.meta.path === Bun.main) {
     // (this project hard-caps REST responses at 1000 regardless — the note on `rows()` below
     // documents it), so the category floors and the operator scoreboard were both computed
     // from a truncated, undated sample.
-    rows(`draws?select=operators(slug),categories(slug)&status=eq.active&draw_date=gte.${nowIso}`, { all: true }),
+    // order=id: Range-paging an UNORDERED query can overlap or skip rows between pages, and
+    // this count is what the inventory floor reds the build on.
+    rows(`draws?select=operators(slug),categories(slug)&status=eq.active&draw_date=gte.${nowIso}&order=id`, { all: true }),
     rows(`draws?select=operators(slug)&created_at=gte.${quietSince}&limit=2000`),
     storageBytes(),
     // Operator scoreboard (below): the DB `operators` table is the authoritative roster (99

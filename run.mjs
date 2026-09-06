@@ -12,8 +12,9 @@ import { gate } from "./gate.mjs";
 import { templateDescription } from "./lib/describe.mjs";
 import { fieldFlags, buildHealthReport, writeStepSummary, checkImage, probeSilentReasons } from "./lib/manager.mjs";
 import { rehostImage } from "./lib/rehost.mjs";
-import { verifyAgainstStored, summarise, relistDecision, correctionDecision } from "./lib/verify.mjs";
+import { summarise } from "./lib/verify.mjs";
 import { permalinkKey } from "./lib/liveness.mjs";
+import { routeDraw } from "./lib/route.mjs";
 import { fetchWithRetry } from "./lib/fetcher.mjs";
 import { CATEGORIES } from "./lib/parse.mjs";
 
@@ -49,12 +50,15 @@ const AUTO_PUBLISH_MAX = Number(process.env.AUTO_PUBLISH_MAX || 200);
 // run. CORRECT_LIVE=false stops corrections entirely without touching publishing.
 const CORRECT_LIVE = process.env.CORRECT_LIVE !== "false";
 const CORRECT_MAX = Number(process.env.CORRECT_MAX || 100);
+// Minimum wall-clock between a draft's FIRST sighting and its publication. 0 = off, which is
+// correct for a single daily run (the gap is ~24h by construction). The higher-cadence JSON
+// sweep sets it, or several runs a day would collapse the two-observation rule into one.
+const MIN_OBSERVATION_GAP_MS = Number(process.env.MIN_OBSERVATION_GAP_MS || 0);
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
 const METHODS = process.env.METHODS ? new Set(process.env.METHODS.split(",").map((s) => s.trim())) : null;
 const READ_KEY = SERVICE_KEY || ANON_KEY;
 
 const now = new Date();
-const round2 = (n) => Math.round(n * 100) / 100;
 const slugify = (s) => (s || "draw").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "draw";
 // Match the website's convention: "<title>-<operatorSlug>", regex-safe, <=120 chars.
 const makeSlug = (title, opSlug) => `${slugify(title).slice(0, Math.max(8, 119 - opSlug.length))}-${opSlug}`.slice(0, 120);
@@ -81,8 +85,13 @@ async function sbGet(path) {
 async function sbGetAll(path, pageSize = 1000) {
   const sep = path.includes("?") ? "&" : "?";
   const rows = [];
+  // Paging with limit/offset over an UNORDERED query is unsound: Postgres guarantees no row
+  // order without ORDER BY, so two pages can overlap or skip rows if the plan changes between
+  // requests — and a skipped draw looks brand new, so it gets inserted a second time. Ordering
+  // on the primary key makes the window stable. (Any caller that sets its own order wins.)
+  const order = path.includes("order=") ? "" : "&order=id.asc";
   for (let offset = 0; ; offset += pageSize) {
-    const page = await sbGet(`${path}${sep}limit=${pageSize}&offset=${offset}`);
+    const page = await sbGet(`${path}${sep}limit=${pageSize}&offset=${offset}${order}`);
     rows.push(...page);
     if (page.length < pageSize) return rows;
   }
@@ -145,7 +154,7 @@ const opMap = Object.fromEntries(dbOps.map((o) => [o.slug, o.id]));
 // stored observation against today's fresh scrape (see lib/verify.mjs). `category_id` +
 // `category_source` come back for a second reason — they are the record of a judgment the
 // rules cannot reproduce, so every write path below has to read them before it overwrites.
-const existing = await sbGetAll("draws?select=id,entry_url,slug,status,title,ticket_price,total_entries,total_prize_value,draw_date,image_url,prize_description,category_id,category_source");
+const existing = await sbGetAll("draws?select=id,entry_url,slug,status,title,ticket_price,total_entries,total_prize_value,draw_date,image_url,prize_description,category_id,category_source,created_at");
 const byUrl = new Map(existing.filter((d) => d.entry_url).map((d) => [d.entry_url, d]));
 const takenSlugs = new Set(existing.map((d) => d.slug));
 // Canonical keys of every draw we already hold, so a capped operator still re-reads them.
@@ -275,110 +284,57 @@ for (const op of operators) {
   for (const raw of draws) {
     const { pass, stage, reasons, draw: d } = gate(raw, now);
     if (!pass) { skipped++; console.log(`  ⏭  ${(raw.title || "?").slice(0, 40)} — ${stage}: ${reasons.join(", ")}`); continue; }
-    const tpv = Math.min(round2((d.ticket_price || 0) * (d.total_entries || 0)), 1_000_000_000);
     const ex = byUrl.get(d.entry_url);
-    if (ex) {
-      // Existing draw: refresh data on a DRAFT row (self-heals earlier wrong fields like
-      // the ticket price); never touch a published/ended row.
-      // An ended row whose competition has been RELISTED for a later draw comes back as a
-      // draft; without this the URL is retired permanently, which silently loses every
-      // recurring competition (and every sold-out-awaiting-draw comp ended-sweep closed).
-      if (ex.status === "ended") {
-        const { revive } = relistDecision(ex, d, now);
-        if (!revive) { skipped++; continue; }
-        byUrl.delete(d.entry_url);
-        toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: false, row: {
-          // Never blank a stamped category with a fresh null read — a Claude/manual decision
-          // must survive every subsequent scrape (undefined keys vanish in JSON.stringify).
-          // The same guard blocks the other direction too: a claude/manual row is immune to
-          // rule verdicts, because those categories were judged, not derived, and letting a
-          // rule re-litigate one would flap the category daily.
-          category_id: catMap[d.category] && !["claude", "manual"].includes(ex.category_source) ? catMap[d.category] : undefined,
-          category_source: catMap[d.category] && !["claude", "manual"].includes(ex.category_source) ? "rule" : undefined,
-          title: d.title, grand_prize: d.grand_prize,
-          image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
-          total_prize_value: tpv, draw_date: d.draw_date, status: "draft",
-        } });
-        relisted++; c.inserted++; c.heldDraft++;
-        console.log(`  ↩️ ${d.title.slice(0, 44)} — relisted for ${String(d.draw_date).slice(0, 10)}, back as draft`);
-        continue;
+    // The five-way decision (insert / relist / correct / draft / skip) lives in lib/route.mjs so
+    // it can be unit-tested; everything below is side effects only — pushes, counters, logging.
+    const plan = routeDraw(ex, d, {
+      now, catMap,
+      autoPublish: AUTO_PUBLISH,
+      correctLive: CORRECT_LIVE,
+      correctRemaining: CORRECT_MAX - correctedLive,
+      minObservationGapMs: MIN_OBSERVATION_GAP_MS,
+    });
+    const tpv = plan.tpv;
+
+    if (plan.kind === "skip") {
+      skipped++;
+      // Silent when there's simply nothing to correct; loud when a flagged read was REFUSED,
+      // because that is the parser breaking on a row the public can see.
+      if (plan.reason === "no-correction" && plan.decision.flags.length && plan.decision.fields.length) {
+        console.log(`  🚫 ${d.title.slice(0, 40)} — live row left alone: ${plan.decision.reason.slice(0, 90)}`);
       }
-      // A LIVE row used to be frozen the moment it was published — never re-read, never
-      // corrected. That was tolerable while publishing was a human decision on a small
-      // queue; it is not now that rows publish automatically, because an operator dropping
-      // a ticket price or moving a draw date would leave the wrong number on the public site
-      // indefinitely. Correct the FIELDS in place and leave `status` alone: a data change is
-      // not a reason to yank a live draw off the site, and a comp that has actually finished
-      // is ended-sweep's job. This is a single-observation write onto a PUBLISHED row, so
-      // correctionDecision() holds it to the deterministic half of the publish bar: a flagged
-      // read never overwrites values the site is already showing (lib/verify.mjs).
-      if (ex.status === "active") {
-        if (!CORRECT_LIVE) { skipped++; continue; }
-        const c = correctionDecision(ex, d, { now });
-        if (!c.correct) {
-          skipped++;
-          // Silent when there's simply nothing to correct; loud when a flagged read was
-          // REFUSED, because that is the parser breaking on a row the public can see.
-          if (c.flags.length && c.fields.length) console.log(`  🚫 ${d.title.slice(0, 40)} — live row left alone: ${c.reason.slice(0, 90)}`);
-          continue;
-        }
-        if (correctedLive >= CORRECT_MAX) { skipped++; console.log(`  ⏸ correction cap ${CORRECT_MAX} reached — ${d.title.slice(0, 40)} left for the next run`); continue; }
-        byUrl.delete(d.entry_url);
-        // Patch only what actually moved. A pool-only drift is arithmetic on values we already
-        // agree with, so rewriting title/category/date as well would be unforced risk on a row
-        // the public can see.
-        const row = { total_prize_value: tpv };
-        if (c.fields.some((f) => f !== "total_prize_value")) {
-          Object.assign(row, {
-            title: d.title, grand_prize: d.grand_prize,
-            ticket_price: d.ticket_price, total_entries: d.total_entries, draw_date: d.draw_date,
-          });
-          // Only ever move a live row to a category we actually resolved. `catMap[...] || null`
-          // would blank the category whenever the fresh read had none, dropping the draw out of
-          // its category page as a side effect of a price correction.
-          // A claude/manual row is immune on top of that: those categories were judged, not
-          // derived, so a rule verdict must never re-litigate one (it would flap daily).
-          if (catMap[d.category] && !["claude", "manual"].includes(ex.category_source)) {
-            row.category_id = catMap[d.category];
-            row.category_source = "rule";
-          }
-        }
-        // image_url is deliberately NOT patched. It isn't one of the compared fields, so it is
-        // never the reason we are here, and the stored value is a proven-reachable URL on our
-        // own storage. Overwriting it with the operator's origin would trade that for a
-        // third-party hotlink — and the flush-time image proof only runs on publish candidates,
-        // so nothing downstream would catch it. Image repair belongs to backfill-images.mjs.
-        toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: false, row });
-        correctedLive++;
-        console.log(`  🔄 ${d.title.slice(0, 40)} — live row corrected: ${c.fields.join(", ")}`);
-        continue;
+      if (plan.reason === "correction-cap") {
+        console.log(`  ⏸ correction cap ${CORRECT_MAX} reached — ${d.title.slice(0, 40)} left for the next run`);
       }
-      if (ex.status !== "draft") { skipped++; continue; }
-      byUrl.delete(d.entry_url);
-      // This is the SECOND independent observation of a row we already hold. If it agrees
-      // with what's stored, that draft has been read twice, on different days, by separate
-      // fetches — enough to publish it. The image check is async and runs in flush(), so the
-      // verdict is provisional here and only rows that also pass it go live.
-      const verdict = verifyAgainstStored(ex, d, { now, imageOk: true });
-      const candidate = AUTO_PUBLISH && verdict.publish;
-      verdicts.push(verdict);
-      toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate, row: {
-        // Never blank a stamped category with a fresh null read — a Claude/manual decision
-        // must survive every subsequent scrape (undefined keys vanish in JSON.stringify).
-        // The same guard blocks the other direction too: a claude/manual row is immune to
-        // rule verdicts, because those categories were judged, not derived, and letting a
-        // rule re-litigate one would flap the category daily.
-        category_id: catMap[d.category] && !["claude", "manual"].includes(ex.category_source) ? catMap[d.category] : undefined,
-        category_source: catMap[d.category] && !["claude", "manual"].includes(ex.category_source) ? "rule" : undefined,
-        title: d.title, grand_prize: d.grand_prize,
-        image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
-        total_prize_value: tpv, draw_date: d.draw_date,
-      } });
-      c.inserted++;
-      if (candidate) { c.published++; console.log(`  ✅ ${d.title.slice(0, 44)} | £${d.ticket_price}×${d.total_entries} (verified — publishing)`); }
-      else { c.heldDraft++; console.log(`  ♻️ ${d.title.slice(0, 44)} | £${d.ticket_price}×${d.total_entries} (held: ${verdict.reasons.slice(0, 2).join("; ").slice(0, 80) || "auto-publish off"})`); }
       continue;
     }
+
+    if (plan.kind === "relist") {
+      byUrl.delete(d.entry_url);
+      toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: false, row: plan.row });
+      relisted++; c.inserted++; c.heldDraft++;
+      console.log(`  ↩️ ${d.title.slice(0, 44)} — relisted for ${String(d.draw_date).slice(0, 10)}, back as draft`);
+      continue;
+    }
+
+    if (plan.kind === "correct") {
+      byUrl.delete(d.entry_url);
+      toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: false, row: plan.row });
+      correctedLive++;
+      console.log(`  🔄 ${d.title.slice(0, 40)} — live row corrected: ${plan.decision.fields.join(", ")}`);
+      continue;
+    }
+
+    if (plan.kind === "draft") {
+      byUrl.delete(d.entry_url);
+      verdicts.push(plan.verdict);
+      toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: plan.candidate, row: plan.row });
+      c.inserted++;
+      if (plan.candidate) { c.published++; console.log(`  ✅ ${d.title.slice(0, 44)} | £${d.ticket_price}×${d.total_entries} (verified — publishing)`); }
+      else { c.heldDraft++; console.log(`  ♻️ ${d.title.slice(0, 44)} | £${d.ticket_price}×${d.total_entries} (held: ${plan.verdict.reasons.slice(0, 2).join("; ").slice(0, 80) || "auto-publish off"})`); }
+      continue;
+    }
+
     if (!d.description) d.description = templateDescription(d);
     const slug = (() => { let s = makeSlug(d.title, op.slug), i = 2; const b = s; while (takenSlugs.has(s)) s = `${b}-${i++}`.slice(0, 120); takenSlugs.add(s); return s; })();
     const flags = fieldFlags(d);
