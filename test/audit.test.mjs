@@ -1,7 +1,7 @@
 // The audit writes to LIVE rows, so its failure mode is not "missed a bug" — it is "changed a
 // price on a page the public is reading". These tests are mostly about what it must REFUSE.
 import { test, expect, describe } from "bun:test";
-import { auditDecision, auditPatch, comparableFields, correctableFields, mergeForComparison, readLooksBlocked } from "../lib/audit.mjs";
+import { auditDecision, auditPatch, comparableFields, correctableFields, mergeForComparison, readLooksBlocked, shouldApplyAudit } from "../lib/audit.mjs";
 
 const NOW = new Date("2026-09-07T09:00:00Z");
 const FUTURE = "2026-09-20T20:00:00+01:00";
@@ -173,5 +173,43 @@ describe("auditPatch — what actually reaches the database", () => {
     const p = auditPatch(row({ total_prize_value: 1 }), page(), ["total_prize_value"], comparableFields("render"));
     expect(Object.keys(p)).toEqual(["total_prize_value"]);
     expect(p.total_prize_value).toBe(4950);
+  });
+});
+
+// The write gate. This is the decision that patches rows the public is reading, so every way it
+// can say "no" is asserted individually — a single missing clause here is a live-data incident.
+describe("shouldApplyAudit — four independent locks on the write", () => {
+  const base = { mode: "apply", dry: false, count: 5, max: 60 };
+
+  test("report mode never writes — and it is the default both workflows set", () => {
+    expect(shouldApplyAudit({ ...base, mode: "report" }).apply).toBe(false);
+    expect(shouldApplyAudit({ ...base, mode: undefined }).apply).toBe(false);
+    expect(shouldApplyAudit({ ...base, mode: "" }).apply).toBe(false);
+    expect(shouldApplyAudit({ ...base, mode: "APPLY_LATER" }).apply).toBe(false);
+  });
+
+  test("a dry run never writes, even in apply mode", () => {
+    expect(shouldApplyAudit({ ...base, dry: true }).apply).toBe(false);
+  });
+
+  test("nothing to correct is not a write", () => {
+    expect(shouldApplyAudit({ ...base, count: 0 }).apply).toBe(false);
+  });
+
+  test("past AUDIT_MAX it refuses ENTIRELY rather than writing the first N", () => {
+    // Hundreds of live rows disagreeing on the same morning is a parser change, not hundreds of
+    // operators. Writing "just the first 60" would corrupt 60 rows and hide the cause.
+    const g = shouldApplyAudit({ ...base, count: 500, max: 60 });
+    expect(g.apply).toBe(false);
+    expect(g.reason).toContain("parser change");
+  });
+
+  test("exactly at the ceiling is allowed; one over is not", () => {
+    expect(shouldApplyAudit({ ...base, count: 60, max: 60 }).apply).toBe(true);
+    expect(shouldApplyAudit({ ...base, count: 61, max: 60 }).apply).toBe(false);
+  });
+
+  test("the one combination that writes", () => {
+    expect(shouldApplyAudit(base).apply).toBe(true);
   });
 });
