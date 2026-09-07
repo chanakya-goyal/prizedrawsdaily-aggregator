@@ -14,7 +14,7 @@ import { hydraOperator } from "./lib/adapters/hydra.mjs";
 import { inertiaOperator } from "./lib/adapters/inertia.mjs";
 import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, saysFinished } from "./lib/liveness.mjs";
 import { sbGetAll, sbCount } from "./lib/sb.mjs";
-import { auditDecision, auditPatch, comparableFields } from "./lib/audit.mjs";
+import { auditDecision, auditPatch, comparableFields, shouldApplyAudit } from "./lib/audit.mjs";
 const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
@@ -340,10 +340,11 @@ if (auditRows.length) {
   // A sane ceiling. If a parser regression makes half the catalogue "disagree", the correct
   // response is to stop and shout, not to rewrite 500 live rows on one bad read.
   const MAX = Number(process.env.AUDIT_MAX || 60);
-  if (AUDIT === "apply" && !DRY && corrections.length) {
-    if (corrections.length > MAX) {
-      console.error(`  ⛔ ${corrections.length} corrections exceeds AUDIT_MAX=${MAX} — writing NOTHING. This many live rows disagreeing at once is a parser change, not an operator change.`);
-    } else {
+  const gate = shouldApplyAudit({ mode: AUDIT, dry: DRY, count: corrections.length, max: MAX });
+  if (!gate.apply) {
+    if (corrections.length) console.log(`  ⛔ writing nothing — ${gate.reason}`);
+  } else {
+    {
       let n = 0;
       for (const v of corrections) {
         const x = auditRows.find((r) => r.d.id === v.id);
@@ -357,8 +358,6 @@ if (auditRows.length) {
       }
       console.log(`  ✅ ${n} live row(s) corrected to match their page`);
     }
-  } else if (corrections.length) {
-    console.log(`  (report mode — set AUDIT=apply to write these ${corrections.length} corrections)`);
   }
 }
 

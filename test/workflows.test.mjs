@@ -59,6 +59,17 @@ describe("split aggregator workflows", () => {
     expect([...r, ...j].sort()).toEqual(["api", "render", "shopify", "woo"]); // none dropped
   });
 
+  test("neither sweep is set to WRITE audit corrections", () => {
+    // AUDIT=apply patches rows the public is reading. It is opt-in on purpose, and turning it
+    // on is a decision that needs a measurement behind it — the first design, measured over 956
+    // live rows, proposed 9 corrections and all 9 were wrong. This asserts nobody flips it by
+    // reflex while editing something else.
+    for (const [name, y] of [["render", RENDER], ["json", JSON_SWEEP]]) {
+      const m = (y.match(/AUDIT:\s*"([^"]+)"/) || [])[1];
+      expect(m, `${name} sweep AUDIT mode`).toBe("report");
+    }
+  });
+
   test("every ENABLED operator is actually claimed by one of the sweeps", async () => {
     // The assertion above compares the two workflows to a hardcoded list, which cannot notice an
     // operator added with a method neither sweep runs — it would simply never be scraped again,
