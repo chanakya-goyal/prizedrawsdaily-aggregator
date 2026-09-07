@@ -87,10 +87,11 @@ jobs:
           # and 283 drafts are queued — publishing them all at once would double the site
           # overnight with nobody having looked at a single card. Hold at 50/run until the
           # cowork spot-check has passed 3 days running, then raise to 200.
-          # RE-BUDGETED for the split. 50/run was sized for one run a day; there are now four
-          # (this + 3 JSON sweeps at 12 each), so the daily ceiling stays ~50, not 4x it. The
-          # value is a blast radius, not a throughput knob — raise it deliberately, together.
-          AUTO_PUBLISH_MAX: "14"
+          # 14 → 30. This sweep published 14 of 14 on 2026-09-06 with NOTHING held by the cap,
+          # so it was not the binding constraint here the way it was on the JSON side — but it
+          # was still capping a queue of 512 gate-ready drafts. Budgeted with the JSON sweep,
+          # not separately: 30 + 50 x 3 = ~180/day. See the note in aggregate-json.yml.
+          AUTO_PUBLISH_MAX: "30"
           # A draft must be at least this old before it can publish. Harmless here (this runs
           # once a day, so the gap is ~24h anyway) but set explicitly so a manual re-dispatch
           # cannot hand a draft a same-day "second observation". See lib/verify.mjs.
@@ -109,6 +110,12 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DRY_RUN: "false"
+          # report = check every live row against the page this sweep is already reading, and
+          # write nothing. Measured over 956 live rows on 2026-09-07: every correction the first
+          # design proposed was wrong (a Cloudflare page as a title, dates moving into the past,
+          # sold counters read as caps). AUDIT=apply is deliberately not set — turn it on only
+          # with a measurement behind it. See lib/audit.mjs.
+          AUDIT: "report"
           STATUS: "active,draft" # expire LIVE comps that have finished, plus stale drafts
 
       - name: Render-liveness tally (report mode — counts, does not drop)
@@ -119,6 +126,20 @@ jobs:
             echo '```json' >> "$GITHUB_STEP_SUMMARY"
             head -c 4000 render-finished.json >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Live-row audit (report mode — verifies, does not write)
+        if: always()
+        run: |
+          if [ -f audit-report.json ]; then
+            echo "### Live-row audit" >> "$GITHUB_STEP_SUMMARY"
+            bun -e '
+              const r = require("./audit-report.json");
+              const n = (k) => r.tally[k] || 0;
+              console.log(`**${n("ok")}** live rows verified against their page · **${n("correct")}** corrected · **${n("review")}** need a look · ${n("skip")} not comparable`);
+              const rev = r.verdicts.filter(v => v.action === "review").slice(0, 15);
+              if (rev.length) { console.log("\n| operator | draw | why |\n|---|---|---|"); for (const v of rev) console.log(`| ${v.slug} | ${(v.title||"").slice(0,40)} | ${v.reason.slice(0,70)} |`); }
+            ' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Coverage report (DB operators × config × live counts)

@@ -146,6 +146,60 @@ day would let a draft publish six hours after first sighting — the same-day "s
 `manager/PROMPT.md` forbids the cowork routine from creating. The gap (18h) keeps the rule true.
 Do not remove it while any sweep runs more often than daily.
 
+## Scaling past ~200 operators
+
+Measured 2026-09-06 on 99 operators: **0.84 min/operator** for the render sweep, **0.35** for the
+JSON sweep. Projected against GitHub's job caps:
+
+| roster | render (cap 150m) | JSON (cap 60m) |
+|---|---|---|
+| 150 | ~50m | ~31m |
+| 200 | ~67m | ~42m |
+| **300** | ~101m | **~63m — over the cap** |
+
+The JSON sweep runs out of clock first, at roughly 280 operators. The fix is already built:
+set `SHARD_COUNT` and `SHARD_INDEX` and run the sweep as a matrix, each job taking `1/N` of
+the roster **on the same day** (`lib/shard.mjs`):
+
+```yaml
+strategy:
+  matrix:
+    shard: [0, 1, 2]
+env:
+  SHARD_INDEX: ${{ matrix.shard }}
+  SHARD_COUNT: "3"
+```
+
+Two things that are easy to get wrong, and are handled:
+
+- **`AUTO_PUBLISH_MAX` is a per-PROCESS counter.** Three shards each honouring 50 would publish
+  150 per run against a budget of 50. `shardedPublishCap` divides it, and never to zero.
+- **The shards must PARTITION the roster.** An operator in no shard is simply never scraped
+  again, and the only symptom is one more name on the silent list. `test/shard.test.mjs` asserts
+  completeness and non-overlap for every count from 1 to 16.
+
+Do not confuse `SHARD_COUNT` with `BATCHES`: `BATCHES` scrapes `1/N` of the roster **per day** and
+cycles, buying runtime by giving up freshness. Sharding keeps every operator scraped every day.
+
+## Is what the site is showing still true?
+
+`ended-sweep.mjs` runs an **audit pass** over every `active` row, reusing the page it is already
+fetching (`lib/audit.mjs`). It exists because `run.mjs` only corrects rows it re-reads, and it
+finds rows by crawling the operator's listing — on 2026-09-06, 973 active rows, 359 refreshed, so
+~614 live rows were never re-checked by anything.
+
+**It may only write a value the operator states in a machine-readable field.** That rule was
+earned: the first design, measured over 956 live rows, proposed 9 corrections and every one was
+wrong — a Cloudflare interstitial as a competition title, five draw dates moving backwards into
+the past (which would have deleted those comps from a site that lists on `draw_date >= now`), and
+three entry caps "moving" (63,300 → 1,233) that were sold counters being read as caps. All nine
+came from text parses; zero from the structured woo price, and 333 rows matched exactly.
+
+So `comparableFields` is what a source can be checked against, and `correctableFields` — much
+smaller — is what may be written unattended. Render is report-only. `AUDIT=report` is the
+default; `AUDIT=apply` writes, bounded by `AUDIT_MAX`, which refuses entirely past a ceiling
+because many live rows disagreeing at once is a parser change, not an operator change.
+
 ⚠️ The workflow's test gate is `bun run test:scraper` (= `bun test test/`) on purpose:
 everything in `test/` must stay **offline-deterministic** (no network, no Chromium, no
 ffmpeg) because a failing gate skips the day's scrape — carousel suites doing exactly that
