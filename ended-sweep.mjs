@@ -14,6 +14,7 @@ import { hydraOperator } from "./lib/adapters/hydra.mjs";
 import { inertiaOperator } from "./lib/adapters/inertia.mjs";
 import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, saysFinished } from "./lib/liveness.mjs";
 import { sbGetAll, sbCount } from "./lib/sb.mjs";
+import { auditDecision, auditPatch, comparableFields } from "./lib/audit.mjs";
 const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
@@ -40,7 +41,10 @@ const opBy = Object.fromEntries(ops.map((o) => [o.slug, o]));
 const scope = await sbCount(`draws?select=id&status=in.(${STATUS.join(",")})`, { key: READ, base: URL });
 let draws;
 try {
-  draws = await sbGetAll(`draws?status=in.(${STATUS.join(",")})&select=id,title,entry_url,draw_date,operators(slug,name)`, { key: READ, base: URL });
+  // The extra columns are for the audit pass at the bottom: it re-checks LIVE rows against the
+  // page this sweep is already reading. image_url and prize_description are not compared — they
+  // are there because fieldFlags inspects them, and a partial payload would flag every row.
+  draws = await sbGetAll(`draws?status=in.(${STATUS.join(",")})&select=id,title,entry_url,draw_date,status,ticket_price,total_entries,total_prize_value,image_url,category_id,prize_description,operators(slug,name)`, { key: READ, base: URL });
 } catch (e) {
   console.error(e.message);
   process.exit(1);
@@ -166,8 +170,14 @@ async function isEnded(d) {
       // a second request. Same parser (extractDate + op.patterns) as the original ingest.
       const wooText = textOf([p.name, p.description, p.short_description].filter(Boolean).join(" "));
       const freshDate = extractDate(wooText, op.patterns);
-      if (!isPurchasable(p)) return { ended: true, why: `not purchasable (stock: ${p.stock_availability?.text || "?"})`, purchasable: false, freshDate, reachable: true, source: "woo" };
-      return { ended: false, why: "purchasable", purchasable: true, freshDate, reachable: true, source: "woo" };
+      // The Store API price is what the customer is actually charged, and extractPrice gives
+      // that structured value absolute precedence at ingest — so this is the same number, read
+      // the same way, and is safe for the audit to compare. The entry CAP is deliberately not
+      // derived here: it lives on the product page, not in this payload (see lib/audit.mjs).
+      const minor = p.prices?.currency_minor_unit ?? 2;
+      const fresh = { ticket_price: p.prices?.price != null ? Number((Number(p.prices.price) / 10 ** minor).toFixed(2)) : null };
+      if (!isPurchasable(p)) return { ended: true, why: `not purchasable (stock: ${p.stock_availability?.text || "?"})`, purchasable: false, freshDate, fresh, reachable: true, source: "woo" };
+      return { ended: false, why: "purchasable", purchasable: true, freshDate, fresh, reachable: true, source: "woo" };
     }
     if (op.method === "shopify") {
       const map = await shopAvail(op);
@@ -218,10 +228,13 @@ async function isEnded(d) {
     // function that produced the stored value. A text-only scan missed the date on 303 of 406
     // readable rows in the first cut of this — a second, weaker definition of "the draw date"
     // is exactly what this was supposed to avoid.
-    const freshDate = fieldsFromHtml({ html, url: d.entry_url, op })?.draw_date ?? null;
-    if (!saysFinished(html)) return { ended: false, why: "no finished marker", purchasable: true, freshDate, reachable: true, source: "render" };
-    if (isFutureDated(d)) return { ended: null, why: "page says finished but draw_date is still ahead", purchasable: null, freshDate, reachable: true, source: "render" };
-    return { ended: true, why: "page says finished", purchasable: false, freshDate, reachable: true, source: "render" };
+    // Keep the WHOLE parse, not just the date: this is the same function over the same page that
+    // produced the stored row, so every field it returns is comparable at ingest authority.
+    const fresh = fieldsFromHtml({ html, url: d.entry_url, op }) || null;
+    const freshDate = fresh?.draw_date ?? null;
+    if (!saysFinished(html)) return { ended: false, why: "no finished marker", purchasable: true, freshDate, fresh, reachable: true, source: "render" };
+    if (isFutureDated(d)) return { ended: null, why: "page says finished but draw_date is still ahead", purchasable: null, freshDate, fresh, reachable: true, source: "render" };
+    return { ended: true, why: "page says finished", purchasable: false, freshDate, fresh, reachable: true, source: "render" };
   } catch (e) { return { ended: null, why: `error ${(e.message || "").slice(0, 30)}`, purchasable: null, freshDate: null, reachable: false, source: op.method || null }; }
 }
 
@@ -284,6 +297,69 @@ if (staleDate.length) {
     generatedAt: new Date(NOW_MS).toISOString(), dry: DRY, total: staleDate.length, tally, verdicts,
   }, null, 2));
   console.log(`  → stale-date-report.json written (${verdicts.length} verdicts)`);
+}
+
+// ---- AUDIT: does what the site is SHOWING still match the page? -------------------------
+//
+// run.mjs corrects live rows, but only ones it re-reads, and it finds rows by crawling the
+// operator's listing. Measured 2026-09-06: 973 active rows, 359 refreshed by that day's two
+// scrapes — so ~614 live rows were carrying whatever they were written with, and nothing in the
+// pipeline would ever have noticed if a price or a cap was wrong. This sweep already reads every
+// one of them; the audit is that same read, checked.
+//
+// Only `active` rows: a draft is not on the public site, and the publish gate re-proves it
+// anyway. AUDIT=apply is what makes it write; the default reports and touches nothing, because
+// a bad audit is worse than no audit — it would rewrite good rows.
+const AUDIT = (process.env.AUDIT || "report").toLowerCase();
+const auditRows = out.filter((x) => x.d.status === "active" && x.ended !== true);
+if (auditRows.length) {
+  const verdicts = auditRows.map((x) => {
+    const v = auditDecision(x.d, x.fresh, { reachable: x.reachable, source: x.source }, { now: new Date(NOW_MS) });
+    return { id: x.d.id, slug: x.d.operators?.slug ?? null, title: x.d.title ?? null, entry_url: x.d.entry_url, source: x.source ?? null, ...v };
+  });
+  const tally = verdicts.reduce((a, v) => { a[v.action] = (a[v.action] || 0) + 1; return a; }, {});
+  const corrections = verdicts.filter((v) => v.action === "correct");
+  const reviews = verdicts.filter((v) => v.action === "review");
+
+  console.log(`\n🔍 AUDIT of ${auditRows.length} live row(s) — ` + Object.entries(tally).map(([k, n]) => `${k}:${n}`).join(" "));
+  // The rate is the number to watch. Live rows are re-read every day, so a healthy catalogue
+  // drifts a little and settles; a sudden jump means a PARSER changed, not 900 operators.
+  const checked = (tally.ok || 0) + corrections.length + reviews.length;
+  if (checked) console.log(`   ${((corrections.length / checked) * 100).toFixed(1)}% of readable rows disagree with their page`);
+  for (const v of corrections.slice(0, 12)) {
+    console.log(`  🔄 [${v.slug}] ${(v.title || "").slice(0, 36)} — ${v.fields.map((f) => `${f} ${JSON.stringify(v.drift[f]?.[0])}→${JSON.stringify(v.drift[f]?.[1])}`).join(", ")}`);
+  }
+  if (corrections.length > 12) console.log(`  … and ${corrections.length - 12} more`);
+  for (const v of reviews.slice(0, 6)) console.log(`  👀 [${v.slug}] ${(v.title || "").slice(0, 36)} — ${v.reason.slice(0, 70)}`);
+
+  await Bun.write("audit-report.json", JSON.stringify({
+    generatedAt: new Date(NOW_MS).toISOString(), mode: AUDIT, dry: DRY, checked, tally, verdicts,
+  }, null, 2));
+  console.log(`  → audit-report.json written (${verdicts.length} verdicts)`);
+
+  // A sane ceiling. If a parser regression makes half the catalogue "disagree", the correct
+  // response is to stop and shout, not to rewrite 500 live rows on one bad read.
+  const MAX = Number(process.env.AUDIT_MAX || 60);
+  if (AUDIT === "apply" && !DRY && corrections.length) {
+    if (corrections.length > MAX) {
+      console.error(`  ⛔ ${corrections.length} corrections exceeds AUDIT_MAX=${MAX} — writing NOTHING. This many live rows disagreeing at once is a parser change, not an operator change.`);
+    } else {
+      let n = 0;
+      for (const v of corrections) {
+        const x = auditRows.find((r) => r.d.id === v.id);
+        const row = auditPatch(x.d, x.fresh, v.fields, comparableFields(v.source));
+        const pr = await fetch(`${URL}/rest/v1/draws?id=eq.${v.id}`, {
+          method: "PATCH",
+          headers: { ...H, "Content-Type": "application/json", Prefer: "return=minimal" },
+          body: JSON.stringify(row),
+        });
+        if (pr.ok) n++; else console.error(`  ! audit patch failed for ${v.id}: ${pr.status}`);
+      }
+      console.log(`  ✅ ${n} live row(s) corrected to match their page`);
+    }
+  } else if (corrections.length) {
+    console.log(`  (report mode — set AUDIT=apply to write these ${corrections.length} corrections)`);
+  }
 }
 
 if (!DRY && ended.length) {
