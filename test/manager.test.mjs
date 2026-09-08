@@ -205,3 +205,34 @@ describe("reportMarkdown publish funnel", () => {
     expect(md).not.toContain("Publish funnel");
   });
 });
+
+// Operators that scrape fine and then shed individual draws because their product pages were
+// refused. Reported apart from silence on purpose: the remedy is a different egress IP, not a
+// selector, and for months this loss was attributed to the parser instead.
+describe("reportMarkdown — refused product pages", () => {
+  const withBlocks = (pageBlocks) => reportMarkdown(buildHealthReport({
+    counts: [{ slug: "golf-star-competitions", scraped: 100, inserted: 3, published: 1, heldDraft: 2, pageBlocks }],
+    expected: ["golf-star-competitions"],
+  }));
+
+  test("names the operator, the share refused and the cause", () => {
+    const md = withBlocks({ ok: 13, blocked: 87, causes: { "HTTP 403": 80, "challenge/empty": 7 } });
+    expect(md).toContain("Product pages refused — 87 page(s) across 1 operator(s)");
+    expect(md).toContain("`golf-star-competitions` — 87 of 100 refused (HTTP 403×80, challenge/empty×7)");
+  });
+
+  test("says the cause is the IP, so the reader does not go hunting for a selector bug", () => {
+    expect(withBlocks({ ok: 1, blocked: 9, causes: { "HTTP 403": 9 } })).toContain("the egress IP, not the parser");
+  });
+
+  test("an operator whose pages all read adds no section at all", () => {
+    const md = withBlocks({ ok: 100, blocked: 0, causes: {} });
+    expect(md).not.toContain("Product pages refused");
+  });
+
+  test("the section is absent when nothing reports page blocks — old callers render unchanged", () => {
+    expect(withBlocks(null)).not.toContain("Product pages refused");
+    expect(reportMarkdown(buildHealthReport({ counts: [{ slug: "a", scraped: 1 }], expected: ["a"] })))
+      .not.toContain("Product pages refused");
+  });
+});

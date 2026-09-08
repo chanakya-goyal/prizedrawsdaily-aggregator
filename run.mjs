@@ -7,7 +7,7 @@
 // run re-reads the same URL and agrees with it (lib/verify.mjs) — publishing is this script's
 // job now, not the cowork routine's, which QAs the result and rewrites descriptions.
 import { chromium } from "playwright";
-import { renderOperator, wooOperator, shopifyOperator, apiOperator, dedupe, makeContext, renderLivenessMode } from "./extractor.mjs";
+import { renderOperator, wooOperator, shopifyOperator, apiOperator, dedupe, makeContext, renderLivenessMode, pageBlocks } from "./extractor.mjs";
 import { gate } from "./gate.mjs";
 import { templateDescription } from "./lib/describe.mjs";
 import { fieldFlags, buildHealthReport, writeStepSummary, checkImage, probeSilentReasons } from "./lib/manager.mjs";
@@ -300,7 +300,11 @@ for (const op of operators) {
     // `onFinished` mirrors dedupe's onDrop below: a removal of inventory that nobody counts
     // is the same silence that let dedupe destroy two thirds of a car operator's catalogue.
     else draws = await withBudget(renderOperator(ctx, op, PER_OP, { onFinished: (hit) => renderFinished.push(hit) }), OP_BUDGET_MS);
-  } catch (e) { console.log(`  FAILED: ${(e.message || "").slice(0, 80)}`); continue; }
+  } catch (e) { console.log(`  FAILED: ${(e.message || "").slice(0, 80)}`); c.pageBlocks = pageBlocks.get(op.slug) || null; continue; }
+  // Product pages the WAF refused. Carried onto the per-operator count so the health report
+  // can say "the cap was unreadable from this IP" instead of leaving 420 draws/day looking
+  // like a parser that cannot find a number (see readProductPage in extractor.mjs).
+  c.pageBlocks = pageBlocks.get(op.slug) || null;
   pages += draws.length;
   c.scraped = draws.length;
   // Report collapses. This was silent for months while it was destroying two thirds of a car

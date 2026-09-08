@@ -39,6 +39,47 @@ const BLOCK_RE = /just a moment|attention required|cf-browser-verification|enabl
 // low (80) so a terse-but-valid product page isn't mistaken for a block.
 export function looksBlocked(text) { return !text || text.replace(/\s+/g, " ").trim().length < 80 || BLOCK_RE.test(text); }
 
+// ---- product-page readability (woo / shopify) ----
+// Both JSON adapters fetch the product PAGE for the fields the API payload does not carry: on
+// most WooCommerce themes the ticket cap and the close date exist only in the page body. The
+// response used to be consumed whatever its status, so a WAF's 403 challenge page was handed
+// to fieldsFromHtml AS the product — no cap, no date, and requiredGate dropped the draw as
+// "missing total_entries". For months that read as a parser gap. It is not a parser gap.
+// Measured 8 Sep 2026, same commit and the same operator on the same day: Golf Star lost 32
+// draws to it on the GitHub runner and zero from a residential IP, and the whole fleet lost
+// 420 draws in one day to that one reason. The render path has guarded its own fetches with
+// looksBlocked() since it was written (see renderOperator below); this gives the JSON paths
+// the same guard, and COUNTS the refusals so the run report can name the cause instead of
+// leaving it to look like our parsing.
+export const pageBlocks = new Map(); // slug → { ok, blocked, causes: { "HTTP 403": n, ... } }
+export function resetPageBlocks() { pageBlocks.clear(); }
+function notePage(op, cause) {
+  const key = op.slug || op.base || "?";
+  const t = pageBlocks.get(key) || { ok: 0, blocked: 0, causes: {} };
+  if (cause) { t.blocked++; t.causes[cause] = (t.causes[cause] || 0) + 1; } else t.ok++;
+  pageBlocks.set(key, t);
+}
+// Returns "" for anything we must not parse. "" is what both call sites already handled when
+// the fetch threw, so an unreadable page degrades exactly as a missing one always has: the
+// API description is still used, and the draw is dropped only if the gate says so.
+export async function readProductPage(url, op) {
+  try {
+    const r = await fetchHtml(url, op, PER_PRODUCT_RETRY);
+    if (!r.ok) { notePage(op, `HTTP ${r.status}`); return ""; }
+    if (looksBlocked(r.text)) { notePage(op, "challenge/empty"); return ""; }
+    notePage(op, null);
+    return r.text;
+  } catch { notePage(op, "network"); return ""; }
+}
+// Pure, so the wording is testable offline. The slug is in the line on purpose: topup.mjs
+// re-derives the affected operators from the Action log, and a display name would not resolve.
+export function pageBlockNote(slug, tally) {
+  if (!tally || !tally.blocked) return null;
+  const total = tally.ok + tally.blocked;
+  const causes = Object.entries(tally.causes).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c}×${n}`).join(", ");
+  return `[${slug}] ${tally.blocked} of ${total} product pages unreadable (${causes}) — the on-page ticket cap and close date cannot be read from this IP`;
+}
+
 // ---- headless render. Returns { text, html (post-JS DOM), ogImage, links }. ----
 // `hard` = the try-harder pass: wait for network idle + longer settle (passes many soft
 // JS challenges). We never solve CAPTCHAs — a still-blocked page is skipped by the caller.
@@ -257,13 +298,13 @@ export async function wooOperator(op, perOp = 6, { knownUrls = new Set() } = {})
       const apiCategories = Array.isArray(p.categories) ? p.categories.map((c) => c.name).filter(Boolean) : [];
       const sm = String(p.stock_availability?.text || "").match(/([\d,]+)\s*in\s*stock/i);
       const apiStock = sm ? Number(sm[1].replace(/,/g, "")) : null;
-      let html = "";
-      try { html = (await fetchHtml(p.permalink, op, PER_PRODUCT_RETRY)).text; } catch { /* API desc still usable */ }
+      const html = await readProductPage(p.permalink, op); // "" when blocked — API desc still usable
       if (!sawZap && detectZap(html)) sawZap = true;
       return { id: p.id, draw: fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText, apiCategories, apiStock }) };
     } catch (e) { console.log(`  ! ${(p.permalink || p.name || "?").slice(-42)} parse failed: ${(e.message || "").slice(0, 50)}`); return null; }
   });
   const kept = pairs.filter((x) => x && x.draw);
+  { const n = pageBlockNote(op.slug || op.base, pageBlocks.get(op.slug || op.base)); if (n) console.log(`  ⚠️ ${n}`); }
   // Zap/craic-competitions family: cap + close date exist only behind a public admin-ajax
   // call (the pages paint them client-side) — one batched request fills every gap.
   if (sawZap && kept.some((x) => x.draw.total_entries == null || !x.draw.draw_date)) {
@@ -306,11 +347,11 @@ export async function shopifyOperator(op, perOp = 6, { knownUrls = new Set() } =
       const prizeText = p.body_html || null; // cleanest grand_prize source
       // Shopify product_type + tags are the operator's taxonomy (no reliable inventory count here).
       const apiCategories = [p.product_type, ...(Array.isArray(p.tags) ? p.tags : [])].filter(Boolean);
-      let html = "";
-      try { html = (await fetchHtml(url, op, PER_PRODUCT_RETRY)).text; } catch { /* body_html still usable */ }
+      const html = await readProductPage(url, op); // "" when blocked — body_html still usable
       return fieldsFromHtml({ html, url, op, knownTitle: p.title, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText, apiCategories });
     } catch (e) { console.log(`  ! ${(p.handle || p.title || "?")} parse failed: ${(e.message || "").slice(0, 50)}`); return null; }
   });
+  { const n = pageBlockNote(op.slug || op.base, pageBlocks.get(op.slug || op.base)); if (n) console.log(`  ⚠️ ${n}`); }
   return draws.filter(Boolean);
 }
 
