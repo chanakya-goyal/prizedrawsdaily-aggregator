@@ -26,13 +26,16 @@ describe("split aggregator workflows", () => {
     expect(renderHours.some((h) => jsonHours.includes(h))).toBe(false);
   });
 
-  test("the DAILY publish ceiling stays at the budgeted ~50, not 4x it", () => {
-    // 50/run was sized for one run a day. Copying it into every sweep — the obvious edit —
-    // would quietly quadruple the blast radius a scoring mistake gets before anyone looks.
+  test("the DAILY publish ceiling stays one deliberate number, not a per-sweep copy", () => {
+    // The failure this catches is not "the cap is too high" — it is raising one sweep's cap
+    // without noticing there are four runs a day, so the real ceiling silently becomes 4x the
+    // intended one. The caps are budgeted together (30 + 50 x 3 = 180/day as of 2026-09-07);
+    // DAILY_CEILING is the number manager/PROMPT.md always named as the destination.
+    const DAILY_CEILING = 200;
     const daily = num(RENDER, "AUTO_PUBLISH_MAX") * runsPerDay(RENDER)
                 + num(JSON_SWEEP, "AUTO_PUBLISH_MAX") * runsPerDay(JSON_SWEEP);
     expect(daily).toBeGreaterThan(0);
-    expect(daily).toBeLessThanOrEqual(60);
+    expect(daily, `daily publish ceiling is ${daily}`).toBeLessThanOrEqual(DAILY_CEILING);
   });
 
   test("any sweep running more than once a day MUST set an observation gap", () => {
@@ -54,6 +57,17 @@ describe("split aggregator workflows", () => {
     const r = methodsOf(RENDER), j = methodsOf(JSON_SWEEP);
     expect(r.some((m) => j.includes(m))).toBe(false);           // no operator scraped twice
     expect([...r, ...j].sort()).toEqual(["api", "render", "shopify", "woo"]); // none dropped
+  });
+
+  test("neither sweep is set to WRITE audit corrections", () => {
+    // AUDIT=apply patches rows the public is reading. It is opt-in on purpose, and turning it
+    // on is a decision that needs a measurement behind it — the first design, measured over 956
+    // live rows, proposed 9 corrections and all 9 were wrong. This asserts nobody flips it by
+    // reflex while editing something else.
+    for (const [name, y] of [["render", RENDER], ["json", JSON_SWEEP]]) {
+      const m = (y.match(/AUDIT:\s*"([^"]+)"/) || [])[1];
+      expect(m, `${name} sweep AUDIT mode`).toBe("report");
+    }
   });
 
   test("every ENABLED operator is actually claimed by one of the sweeps", async () => {

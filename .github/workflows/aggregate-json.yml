@@ -83,9 +83,23 @@ jobs:
           # fetch — and the two-observation rule the whole quality model rests on would be
           # meaningless. 18h keeps it close to the ~24h it was before the split.
           MIN_OBSERVATION_GAP_MS: "64800000" # 18h
-          # Re-budgeted, NOT copied from the old 50: 3 runs x 12 + 14 on the render sweep keeps
-          # the daily publish ceiling at ~50, the blast radius that value was chosen to bound.
-          AUTO_PUBLISH_MAX: "12"
+          # RAISED 12 → 50 on 2026-09-07, with a measurement behind it. In the 2026-09-06 run,
+          # 167 rows cleared the entire publish gate and 155 of them were held ONLY because the
+          # cap was reached — the cap was discarding 93% of already-qualified inventory, while
+          # 215 drafts had already reached their draw date unpublished and were lost for good.
+          #
+          # The cap was never a quality filter; the gate is. Every row it releases has been seen
+          # by two independent scrapes at least 18h apart agreeing on price, cap, draw day and
+          # title, with clean field flags, a category, and an image proven to load. What the cap
+          # bounds is how much a SCORING mistake could reach before someone noticed — and the
+          # audit pass now re-checks every live row against its page daily, which is a far
+          # better bound than a small number.
+          #
+          # 50 x 3 runs + 30 on the render sweep = ~180/day, inside the 200/run ceiling
+          # manager/PROMPT.md always intended as the destination.
+          # ROLLBACK TRIGGER: audit-report.json review count climbing run over run, or the
+          # tripwire's publishable-drafts warning inverting into a live-inventory drop.
+          AUTO_PUBLISH_MAX: "50"
           PER_OP_API: "60"
           BATCHES: "1"
           MAX_DRAWS: "3500"
@@ -99,6 +113,12 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DRY_RUN: "false"
+          # report = check every live row against the page this sweep is already reading, and
+          # write nothing. Measured over 956 live rows on 2026-09-07: every correction the first
+          # design proposed was wrong (a Cloudflare page as a title, dates moving into the past,
+          # sold counters read as caps). AUDIT=apply is deliberately not set — turn it on only
+          # with a measurement behind it. See lib/audit.mjs.
+          AUDIT: "report"
           STATUS: "active,draft"
 
       # No tripwire step here on purpose. It opens/comments a GitHub issue, and running it four

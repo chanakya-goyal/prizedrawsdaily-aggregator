@@ -54,3 +54,6 @@ stale-date-report.json
 # migration snapshots — hold the OLD project service key, needed 15 Sep
 *.pre-migration.bak
 render-finished.json
+
+# audit pass output (regenerated every sweep)
+audit-report.json

@@ -15,6 +15,7 @@ import { rehostImage } from "./lib/rehost.mjs";
 import { summarise } from "./lib/verify.mjs";
 import { permalinkKey } from "./lib/liveness.mjs";
 import { routeDraw } from "./lib/route.mjs";
+import { shardConfig, shardOf, shardedPublishCap } from "./lib/shard.mjs";
 import { fetchWithRetry } from "./lib/fetcher.mjs";
 import { CATEGORIES } from "./lib/parse.mjs";
 
@@ -135,8 +136,19 @@ const expectedSlugs = operators.map((o) => o.slug);
 const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 864e5);
 const batch = dayOfYear % BATCHES;
 if (!ONLY && BATCHES > 1) operators = operators.filter((_, i) => i % BATCHES === batch);
+// PARALLEL sharding, which is the opposite trade to BATCHES above: BATCHES scrapes 1/N of the
+// roster each DAY and cycles, buying runtime by giving up freshness; a shard is 1/N of the
+// roster scraped TODAY, alongside the other shards, buying runtime with concurrency. Needed
+// past ~200 operators: measured 0.35 min/op, the JSON sweep projects to ~63 min at 300
+// operators against a 60 min job cap. Defaults to 1 shard, i.e. today's behaviour exactly.
+const SHARD = shardConfig(process.env);
+if (!ONLY && SHARD.count > 1) operators = shardOf(operators, SHARD.index, SHARD.count);
+// AUTO_PUBLISH_MAX is a per-PROCESS counter. Without dividing it, N shards running at once
+// would each publish up to the full cap and the day's real ceiling would be N times what was
+// budgeted — the same mistake the workflow split had to avoid, one level down.
+const PUBLISH_CAP = shardedPublishCap(AUTO_PUBLISH_MAX, SHARD.count);
 
-console.log(`${DRY_RUN ? "DRY RUN" : "LIVE"} — ${now.toISOString()} | keyless | methods ${METHODS ? [...METHODS].join("+") : "all"} | batch ${batch + 1}/${BATCHES} | ${operators.length} operators | PER_OP ${PER_OP} | status '${PUBLISH_STATUS}'\n`);
+console.log(`${DRY_RUN ? "DRY RUN" : "LIVE"} — ${now.toISOString()} | keyless | methods ${METHODS ? [...METHODS].join("+") : "all"} | batch ${batch + 1}/${BATCHES}${SHARD.count > 1 ? ` | shard ${SHARD.index + 1}/${SHARD.count}` : ""} | ${operators.length} operators | PER_OP ${PER_OP} | status '${PUBLISH_STATUS}'\n`);
 if (!DRY_RUN && !SERVICE_KEY) { console.error("DRY_RUN=false needs SUPABASE_SERVICE_ROLE_KEY"); process.exit(1); }
 
 const cats = await sbGet("categories?select=id,slug");
@@ -245,14 +257,14 @@ async function flush() {
   const candidates = toUpdate.filter((u) => u.candidate);
   if (candidates.length) {
     const checks = await Promise.all(candidates.map(async (u) => {
-      if (autoPublished >= AUTO_PUBLISH_MAX) return { u, ok: false, why: "run publish cap reached" };
+      if (autoPublished >= PUBLISH_CAP) return { u, ok: false, why: "run publish cap reached" };
       try {
         const img = await raced(checkImage(u.row.image_url), 15_000, "image check");
         return { u, ok: img.ok === true, why: `image ${img.reason}` };
       } catch { return { u, ok: false, why: "image check timed out" }; }
     }));
     for (const { u, ok, why } of checks) {
-      if (ok && autoPublished < AUTO_PUBLISH_MAX) { u.row.status = "active"; autoPublished++; }
+      if (ok && autoPublished < PUBLISH_CAP) { u.row.status = "active"; autoPublished++; }
       else console.log(`  ⏸ held back at publish: ${u.slug.slice(0, 44)} — ${why}`);
     }
   }
@@ -401,7 +413,7 @@ if (verdicts.length) {
   // as "would publish" rather than claiming rows went live.
   console.log(DRY_RUN
     ? `\n🔎 publish verification: ${s.published} would publish, ${s.held} held (of ${verdicts.length} re-observed drafts)`
-    : `\n🔎 publish verification: ${autoPublished} published, ${verdicts.length - autoPublished} held (${AUTO_PUBLISH ? `cap ${AUTO_PUBLISH_MAX}` : "AUTO_PUBLISH=false"})`);
+    : `\n🔎 publish verification: ${autoPublished} published, ${verdicts.length - autoPublished} held (${AUTO_PUBLISH ? `cap ${PUBLISH_CAP}` : "AUTO_PUBLISH=false"})`);
   for (const [reason, n] of Object.entries(s.heldReasons)) console.log(`     ${String(n).padStart(4)} × ${reason}`);
 }
 
@@ -422,7 +434,7 @@ await writeStepSummary(buildHealthReport({
   // `existing` is the start-of-run snapshot, so this is the queue this run inherited.
   funnel: {
     draftsWaiting: existing.filter((d) => d.status === "draft").length,
-    publishCap: AUTO_PUBLISH ? AUTO_PUBLISH_MAX : null,
+    publishCap: AUTO_PUBLISH ? PUBLISH_CAP : null,
     // `autoPublished`, not the per-operator tally: the tally counts rows that BECAME publish
     // candidates, while flush() is where AUTO_PUBLISH_MAX and the image proof actually decide.
     // Reporting the intention would overstate the number the cap decision rests on. In a dry
