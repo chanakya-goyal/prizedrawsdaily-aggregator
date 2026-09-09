@@ -251,7 +251,7 @@ await Promise.all(Array.from({ length: 8 }, w));
 // operator relists the URL, routeDraw's relist branch revives the row (lib/route.mjs).
 for (const x of out) {
   if (x.ended === true) continue;
-  const v = deadDraftDecision(x.d, new Date(NOW_MS));
+  const v = deadDraftDecision(x.d, x, new Date(NOW_MS)); // x carries the fresh evidence isEnded() just gathered
   if (v.end) { x.ended = true; x.why = v.reason; x.deadDraft = true; }
 }
 const deadDrafts = out.filter((x) => x.deadDraft);

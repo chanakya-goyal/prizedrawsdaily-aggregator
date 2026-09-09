@@ -194,6 +194,14 @@ const toInsert = [];
 const toUpdate = [];
 const counts = [];
 const verdicts = [];
+// Publish candidates for the WHOLE run, settled once at the end. They used to be settled inside
+// each flush(), which meant urgency only applied within an arbitrary 25-row batch while the cap
+// counter was run-wide: an early flush could spend the budget on a draw closing in three weeks
+// before a later operator's draw closing tomorrow had even been scraped. Sorting once, over
+// everything, is the only way the cap is genuinely a budget for the run. (Raised in review on
+// PR #40.) Rows sit in the DB as draft until settled, so nothing is half-published if the run
+// dies; the next run simply re-verifies them.
+const publishQueue = [];
 let pages = 0, skipped = 0, autoPublished = 0, relisted = 0, correctedLive = 0;
 // Render-path comps whose page visibly says the competition has finished. In `report` mode
 // these are counted and kept; in `enforce` they are counted and dropped. Either way the
@@ -259,23 +267,9 @@ async function flush() {
   // re-hosting above has just rewritten image_url to our own storage — checking the operator's
   // original URL would test the wrong thing. Anything that isn't a clean 2xx stays draft and
   // gets another chance tomorrow; we never publish a card we can't prove renders.
-  // Sorted, not first-come. The cap is a budget for the run, and the honest way to spend it is
-  // on the draws closest to closing — skipping those kills them, while a draw three weeks out
-  // gets another chance tomorrow. See byPublishUrgency for the measurement that forced this.
-  const candidates = toUpdate.filter((u) => u.candidate).sort(byPublishUrgency);
-  if (candidates.length) {
-    const checks = await Promise.all(candidates.map(async (u) => {
-      if (autoPublished >= PUBLISH_CAP) return { u, ok: false, why: "run publish cap reached" };
-      try {
-        const img = await raced(checkImage(u.row.image_url), 15_000, "image check");
-        return { u, ok: img.ok === true, why: `image ${img.reason}` };
-      } catch { return { u, ok: false, why: "image check timed out" }; }
-    }));
-    for (const { u, ok, why } of checks) {
-      if (ok && autoPublished < PUBLISH_CAP) { u.row.status = "active"; autoPublished++; }
-      else console.log(`  ⏸ held back at publish: ${u.slug.slice(0, 44)} — ${why}`);
-    }
-  }
+  // Queued, not settled here — see publishQueue. The image is checked at settle time rather
+  // than now, so only the rows that actually win the budget cost a request.
+  for (const u of toUpdate) if (u.candidate) publishQueue.push(u);
   let refreshed = 0;
   for (const u of toUpdate) { try { await raced(sbUpdate(u.id, u.row), 60_000, "update"); refreshed++; } catch (e) { console.log(`  ! update failed: ${(e.message || "").slice(0, 70)}`); } }
   updated += refreshed;
@@ -290,6 +284,31 @@ const OP_BUDGET_MS = Number(process.env.OP_BUDGET_MS || 8 * 60_000);
 const DEADLINE_MIN = Number(process.env.RUN_DEADLINE_MIN || 0); // 0 = no deadline
 const deadlineAt = DEADLINE_MIN ? now.getTime() + DEADLINE_MIN * 60_000 : Infinity;
 const withBudget = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`op budget ${Math.round(ms / 1000)}s exceeded — skipping operator`)), ms))]);
+
+// Spend the run's publish budget on the draws closest to closing. Skipping those kills them —
+// 277 drafts died unpublished with a median 3.5-day window — while a draw three weeks out gets
+// another chance tomorrow. The rows are already written (as draft); this only flips status, so
+// a failure here costs nothing but a day.
+async function settlePublish() {
+  if (DRY_RUN || !AUTO_PUBLISH || !publishQueue.length) return;
+  publishQueue.sort(byPublishUrgency);
+  let capped = 0;
+  for (const u of publishQueue) {
+    if (autoPublished >= PUBLISH_CAP) { capped++; continue; }
+    let ok = false, why = "image check timed out";
+    try { const img = await raced(checkImage(u.row.image_url), 15_000, "image check"); ok = img.ok === true; why = `image ${img.reason}`; }
+    catch { /* keep the timeout reason */ }
+    if (!ok) { console.log(`  ⏸ held back at publish: ${u.slug.slice(0, 44)} — ${why}`); continue; }
+    try { await raced(sbUpdate(u.id, { status: "active" }), 60_000, "publish"); u.row.status = "active"; autoPublished++; }
+    catch (e) { console.log(`  ! publish failed ${u.slug.slice(0, 40)}: ${(e.message || "").slice(0, 60)}`); }
+  }
+  // One line, not one per row: at 110/run against ~190 candidates this would otherwise bury the
+  // report. The soonest-closing draw that still missed out is the number worth seeing.
+  if (capped) {
+    const first = publishQueue[autoPublished]?.row?.draw_date;
+    console.log(`  ⏸ ${capped} candidate(s) held by the run publish cap (${PUBLISH_CAP})` + (first ? ` — soonest missed closes ${String(first).slice(0, 10)}` : ""));
+  }
+}
 
 for (const op of operators) {
   if (pages >= MAX_PAGES) { console.log(`\n⏹ hit MAX_PAGES cap (${MAX_PAGES}) — remaining operators run next time`); break; }
@@ -402,6 +421,7 @@ for (const op of operators) {
 }
 if (browser) await browser.close();
 await flush();
+await settlePublish();
 
 if (renderFinished.length) {
   const mode = renderLivenessMode();

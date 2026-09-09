@@ -15,33 +15,54 @@ const iso = (d) => new Date(NOW.getTime() + d * 864e5).toISOString();
 
 describe("deadDraftDecision", () => {
   test("ends a draft whose own draw date has passed", () => {
-    const v = deadDraftDecision({ status: "draft", draw_date: iso(-3) }, NOW);
+    const v = deadDraftDecision({ status: "draft", draw_date: iso(-3) }, {}, NOW);
     expect(v.end).toBe(true);
     expect(v.reason).toContain("3d ago");
   });
 
   test("leaves an enterable draft alone", () => {
-    expect(deadDraftDecision({ status: "draft", draw_date: iso(2) }, NOW).end).toBe(false);
+    expect(deadDraftDecision({ status: "draft", draw_date: iso(2) }, {}, NOW).end).toBe(false);
   });
 
   // The whole asymmetry: a live row is ON the site, so removing it on a bad date parse is
   // visible damage and needs the operator's own evidence. A draft is not and never was.
   test("NEVER ends an active row, however stale — that needs the operator's own evidence", () => {
-    const v = deadDraftDecision({ status: "active", draw_date: iso(-40) }, NOW);
+    const v = deadDraftDecision({ status: "active", draw_date: iso(-40) }, {}, NOW);
     expect(v.end).toBe(false);
     expect(v.reason).toContain("operator's own evidence");
   });
 
   test("never ends an already-ended row, and never guesses without a date", () => {
-    expect(deadDraftDecision({ status: "ended", draw_date: iso(-9) }, NOW).end).toBe(false);
-    expect(deadDraftDecision({ status: "draft", draw_date: null }, NOW).end).toBe(false);
-    expect(deadDraftDecision({ status: "draft", draw_date: "not a date" }, NOW).end).toBe(false);
-    expect(deadDraftDecision(null, NOW).end).toBe(false);
+    expect(deadDraftDecision({ status: "ended", draw_date: iso(-9) }, {}, NOW).end).toBe(false);
+    expect(deadDraftDecision({ status: "draft", draw_date: null }, {}, NOW).end).toBe(false);
+    expect(deadDraftDecision({ status: "draft", draw_date: "not a date" }, {}, NOW).end).toBe(false);
+    expect(deadDraftDecision(null, {}, NOW).end).toBe(false);
+  });
+
+  // The defect review caught on PR #40, before it could become the normal case: the sweep has
+  // already read the operator's live data by the time this is asked, and deciding from the
+  // stored row alone throws that away. A stale stored date on a comp the operator is still
+  // selling is a DATE problem (staleDateDecision's extend path), not a dead draw.
+  test("does NOT end a draft the operator is still selling, however stale the stored date", () => {
+    const stale = { status: "draft", draw_date: iso(-12) };
+    expect(deadDraftDecision(stale, { purchasable: true, freshDate: iso(9) }, NOW).end).toBe(false);
+    expect(deadDraftDecision(stale, { purchasable: true, freshDate: null }, NOW).end).toBe(false);
+    expect(deadDraftDecision(stale, { purchasable: true }, NOW).reason).toContain("still selling");
+  });
+
+  // `=== true`, not `!== false`. "We could not read it" is not a reprieve — an unreadable draft
+  // whose own advertised date has passed is precisely the case this rule exists to clear.
+  test("unknown or absent evidence is not a reprieve", () => {
+    const stale = { status: "draft", draw_date: iso(-12) };
+    expect(deadDraftDecision(stale, { purchasable: null, reachable: false }, NOW).end).toBe(true);
+    expect(deadDraftDecision(stale, { purchasable: false }, NOW).end).toBe(true);
+    expect(deadDraftDecision(stale, {}, NOW).end).toBe(true);
+    expect(deadDraftDecision(stale, undefined, NOW).end).toBe(true);
   });
 
   test("a draw closing later today is still enterable — the boundary is the timestamp, not the day", () => {
-    expect(deadDraftDecision({ status: "draft", draw_date: iso(0.4) }, NOW).end).toBe(false);
-    expect(deadDraftDecision({ status: "draft", draw_date: iso(-0.01) }, NOW).end).toBe(true);
+    expect(deadDraftDecision({ status: "draft", draw_date: iso(0.4) }, {}, NOW).end).toBe(false);
+    expect(deadDraftDecision({ status: "draft", draw_date: iso(-0.01) }, {}, NOW).end).toBe(true);
   });
 });
 
