@@ -406,6 +406,11 @@ if (import.meta.path === Bun.main) {
   });
 
   const body = [
+    // Marks the file as machine-written. A hand-edit here is lost on the next
+    // daily run and the person who made it never finds out — so ci-checks.mjs
+    // fails the build if this header goes missing.
+    "<!-- GENERATED — do not edit. Written by manager/tripwire.mjs on every run. -->",
+    "",
     `## ${tripped ? "🔴" : "🟢"} Aggregator tripwire — ${new Date().toISOString().slice(0, 10)}`,
     "",
     ...(reasons.length ? ["**Broken:**", ...reasons.map((x) => `- ${x}`), ""] : []),
