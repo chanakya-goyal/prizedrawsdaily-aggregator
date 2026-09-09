@@ -107,3 +107,34 @@ describe("redactProxyUrl — for printing a RAW env value we do not control", ()
     expect(redactProxyUrl(undefined)).toBe("");
   });
 });
+
+// Both found by review on #44, both real, both verified before fixing.
+describe("hostile proxy values", () => {
+  // The credential boundary is the LAST @ in the authority. A password may contain an
+  // unescaped @, and splitting on the first one printed the rest of it.
+  test("an embedded @ in the password does not survive redaction", () => {
+    const out = redactProxyUrl("http://alice:pass@word@proxy:8080");
+    expect(out).toBe("http://***:***@proxy:8080");
+    expect(out).not.toContain("word");
+    expect(out).not.toContain("alice");
+  });
+  test("an @ later in the path is not mistaken for the credential boundary", () => {
+    expect(redactProxyUrl("http://proxy:8080/route@v2")).toBe("http://proxy:8080/route@v2");
+    expect(redactProxyUrl("http://alice:s3cret@proxy:8080/route@v2")).toBe("http://***:***@proxy:8080/route@v2");
+  });
+  test("a non-url string is returned untouched rather than mangled", () => {
+    expect(redactProxyUrl("not a url")).toBe("not a url");
+  });
+
+  // new URL() accepts a malformed escape in the credentials; only the DECODE throws. Since
+  // chromiumLaunchOptions calls proxyFromEnv on the way to launch, an unguarded throw here
+  // would take down every chromium launch in the repo.
+  test("a malformed percent escape yields null instead of throwing", () => {
+    expect(() => proxyFromEnv({ HTTPS_PROXY: "http://a:%zz@proxy:8080" })).not.toThrow();
+    expect(proxyFromEnv({ HTTPS_PROXY: "http://a:%zz@proxy:8080" })).toBe(null);
+  });
+  test("and the launch path survives it, falling back to no proxy", () => {
+    expect(() => chromiumLaunchOptions({ headless: true }, { HTTPS_PROXY: "http://a:%zz@proxy:8080" })).not.toThrow();
+    expect(chromiumLaunchOptions({ headless: true }, { HTTPS_PROXY: "http://a:%zz@proxy:8080" })).toEqual({ headless: true });
+  });
+});
