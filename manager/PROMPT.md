@@ -84,10 +84,8 @@ whatever happens, always produce the step-5 report.
    replacements. Never hand-write a render script; if you think you need one, the doctor's output
    is the thing to report instead.
 
-   Shell gotcha, met for real on 2026-09-09: **never name a shell variable `HOME`** (a run used
-   it for the home-garden category UUID). It shadows the real `$HOME`, and `bun` then writes its
-   install cache into a junk directory in the repo root, which the stop hook flags as untracked
-   files. Prefix category variables — `CAT_HOME`, `CAT_CASH`.
+   Shell gotcha, met for real twice on 2026-09-09 and repeated at step 2b where it actually
+   bites: **never name a shell variable `HOME`.**
 
 1. **Ended sweep.** `STATUS=active,draft DRY_RUN=false bun ended-sweep.mjs`
    Marks finished comps (not-purchasable / "finished" text) as status=ended so no dead comp is
@@ -150,6 +148,11 @@ whatever happens, always produce the step-5 report.
    (`categories` lookup: `…/rest/v1/categories?select=id,slug`.) If genuinely undecidable, leave
    it and count it in the report — never force one. NEVER touch rows whose category_source is
    already claude or manual. Cap: 40 rows/run; oldest first beyond that.
+   ⚠️ **Name the category variables `CAT_HOME`, `CAT_CASH`, … — never bare `HOME`.** This is the
+   step where that shell script gets written, and two separate runs on 2026-09-09 used `HOME`
+   for the home-garden UUID anyway, with the same warning sitting up in step 0. `HOME` shadows
+   the real one, `bun` then writes its install cache into a directory named after the UUID in
+   the repo root, and the stop hook blocks the run on untracked files at the very end.
 
 3. **Enrichment — descriptions on live draws (workers).** The gate requires ≥20 characters, so
    what you will find is the deterministic template, not emptiness. Fetch live rows and pick the
