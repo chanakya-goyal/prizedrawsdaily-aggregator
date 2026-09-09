@@ -20,7 +20,7 @@
 // it can reach; for these operators it never can, so their drafts would otherwise stay drafts
 // forever. This run is that second observation. The agreement check is NOT bypassed — a row that
 // has drifted, lost its date, or is no longer purchasable still fails and stays a draft.
-import { blockedHosts, blockedNames, silentSlugs } from "./lib/runlog.mjs";
+import { blockedHosts, blockedNames, silentSlugs, pageBlockedSlugs } from "./lib/runlog.mjs";
 
 const args = new Set(process.argv.slice(2));
 const WRITE = args.has("--write");
@@ -62,6 +62,23 @@ const blocked = new Set();
 for (const host of blockedHosts(log)) { const op = byHost.get(host); if (op) blocked.add(op.slug); }
 for (const name of blockedNames(log)) { const op = operators.find((o) => o.name === name); if (op) blocked.add(op.slug); }
 const silent = silentSlugs(log, (t) => bySlug.has(t));
+// A fourth signal, and the one that hid the longest: operators CI reaches perfectly well at the
+// listing level whose PRODUCT PAGES the same WAF refuses. They never appear silent — they
+// scrape, and then shed individual draws, because the ticket cap and close date exist only in
+// the page body. On 8 Sep 2026 that was 420 draws in a day, reported by the gate as
+// "missing total_entries" and therefore read as a parser gap for months. This machine's
+// residential IP is the entire remedy, which is what topup already is.
+// Keyed on draws LOST, not pages refused. An operator whose API description already carried
+// the cap and date loses nothing even with every page refused, and re-running it here would be
+// pure waste. The floor keeps one flaky page from dragging an otherwise healthy operator in.
+const PAGE_BLOCK_FLOOR = Number(process.env.PAGE_BLOCK_FLOOR || 3);
+const pageBlocked = pageBlockedSlugs(log, (t) => bySlug.has(t)).filter((x) => x.lost >= PAGE_BLOCK_FLOOR);
+if (pageBlocked.length) {
+  const lost = pageBlocked.reduce((a, x) => a + x.lost, 0);
+  console.log(`Product pages refused: ${lost} draw(s) lost across ${pageBlocked.length} operator(s) that otherwise scraped fine:`);
+  for (const x of pageBlocked.slice(0, 12)) console.log(`  ${x.slug.padEnd(30)} ${x.lost} lost · ${x.blocked} of ${x.total} pages refused`);
+  console.log();
+}
 
 // Decide who is worth attempting. A plain fetch is NOT the right test on its own: a
 // Cloudflare "challenge" (cf-mitigated: challenge) defeats fetch but a real Chromium often
@@ -82,8 +99,8 @@ const classify = async (op) => {
   return { go: false, why: `HTTP ${r.status}` };
 };
 
-const candidates = [...new Set([...blocked, ...silent])].sort();
-console.log(`CI came back empty for ${candidates.length} operators. Working out which are worth retrying here…\n`);
+const candidates = [...new Set([...blocked, ...silent, ...pageBlocked.map((x) => x.slug)])].sort();
+console.log(`CI came back empty or partial for ${candidates.length} operators. Working out which are worth retrying here…\n`);
 const verdicts = await Promise.all(candidates.map(async (s) => [s, await classify(bySlug.get(s))]));
 
 const canDo = verdicts.filter(([, v]) => v.go).map(([s]) => s);

@@ -39,6 +39,81 @@ const BLOCK_RE = /just a moment|attention required|cf-browser-verification|enabl
 // low (80) so a terse-but-valid product page isn't mistaken for a block.
 export function looksBlocked(text) { return !text || text.replace(/\s+/g, " ").trim().length < 80 || BLOCK_RE.test(text); }
 
+// ---- product-page readability (woo / shopify) ----
+// Both JSON adapters fetch the product PAGE for the fields the API payload does not carry: on
+// most WooCommerce themes the ticket cap and the close date exist only in the page body. The
+// response used to be consumed whatever its status, so a WAF's 403 challenge page was handed
+// to fieldsFromHtml AS the product — no cap, no date, and requiredGate dropped the draw as
+// "missing total_entries". For months that read as a parser gap. It is not a parser gap.
+// Measured 8 Sep 2026, same commit and the same operator on the same day: Golf Star lost 32
+// draws to it on the GitHub runner and zero from a residential IP, and the whole fleet lost
+// 420 draws in one day to that one reason. The render path has guarded its own fetches with
+// looksBlocked() since it was written (see renderOperator below); this gives the JSON paths
+// the same guard, and COUNTS the refusals so the run report can name the cause instead of
+// leaving it to look like our parsing.
+//
+// Two counters, deliberately, because they are not the same number and conflating them would
+// overstate the damage: `blocked` is pages refused, `starved` is draws that ended up with no
+// cap or no date BECAUSE the page was refused. They diverge often and in our favour — the
+// operator's API description sometimes carries a labelled cap, and the woo zap/craic ajax
+// fills cap+date for whole operators after the fetch. Only `starved` is a lost draw, so only
+// `starved` may drive the report's headline or topup's retry list.
+export const pageBlocks = new Map(); // slug → { ok, blocked, starved, causes: { "HTTP 403": n } }
+export function resetPageBlocks() { pageBlocks.clear(); }
+const tallyFor = (op) => {
+  const key = op.slug || op.base || "?";
+  const t = pageBlocks.get(key) || { ok: 0, blocked: 0, starved: 0, causes: {} };
+  pageBlocks.set(key, t);
+  return t;
+};
+function notePage(op, cause) {
+  const t = tallyFor(op);
+  if (cause) { t.blocked++; t.causes[cause] = (t.causes[cause] || 0) + 1; } else t.ok++;
+}
+// Counted once per operator, AFTER every rescue path has had its turn (for woo that means
+// after the zap ajax merge), so it can only ever describe a draw we actually lost.
+function noteStarved(op, n) { tallyFor(op).starved += n; }
+// Returns { html, refused }. html is "" for anything we must not parse — which is what both
+// call sites already did when the fetch threw, so an unreadable page degrades exactly as a
+// missing one always has: the API description is still used, and the draw is dropped only if
+// the gate says so. `refused` is what lets the caller tell "we lost the page" apart from
+// "we lost the draw".
+// `retry` is injectable for one reason only: the offline tests stub a 403 and would otherwise
+// sit through a real backoff sleep on every case. A failing `bun run test:scraper` SKIPS the
+// day's scrape (README), so a suite whose runtime depends on wall-clock sleeps is a liability.
+// Production passes nothing and gets PER_PRODUCT_RETRY, and one test still exercises that path.
+export async function readProductPage(url, op, retry = PER_PRODUCT_RETRY) {
+  try {
+    const r = await fetchHtml(url, op, retry);
+    if (!r.ok) { notePage(op, `HTTP ${r.status}`); return { html: "", refused: true }; }
+    if (looksBlocked(r.text)) { notePage(op, "challenge/empty"); return { html: "", refused: true }; }
+    notePage(op, null);
+    return { html: r.text, refused: false };
+  } catch { notePage(op, "network"); return { html: "", refused: true }; }
+}
+// Co-occurrence, and the wording downstream says so: the page was refused AND the draw came
+// out without a cap or a date. We cannot know counterfactually that the page would have
+// supplied it — some operators publish no cap anywhere — so this is an upper bound on the
+// damage, never a proof of cause. What makes the attribution credible is the operator-level
+// comparison (golf-star: 32 lost on the runner, 0 on a residential IP), not this per-draw test.
+// Pure, so the rule is testable offline and lives in one place.
+export function starvedByPage(refused, draw) {
+  return Boolean(refused) && (draw?.total_entries == null || !draw?.draw_date);
+}
+// Pure, so the wording is testable offline. The slug is in the line on purpose: topup.mjs
+// re-derives the affected operators from the Action log, and a display name would not resolve.
+// Silent when nothing was refused; still printed when pages were refused but every draw
+// survived, because that is the reading that says "this operator does not need a topup run".
+export function pageBlockNote(slug, tally) {
+  if (!tally || !tally.blocked) return null;
+  const total = tally.ok + tally.blocked;
+  const causes = Object.entries(tally.causes).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c}×${n}`).join(", ");
+  const lost = tally.starved
+    ? `${tally.starved} left a draw with no cap or date`
+    : `no draw left short — the API payload carried the cap and date`;
+  return `[${slug}] ${tally.blocked} of ${total} product pages unreadable (${causes}) — ${lost}`;
+}
+
 // ---- headless render. Returns { text, html (post-JS DOM), ogImage, links }. ----
 // `hard` = the try-harder pass: wait for network idle + longer settle (passes many soft
 // JS challenges). We never solve CAPTCHAs — a still-blocked page is skipped by the caller.
@@ -257,10 +332,9 @@ export async function wooOperator(op, perOp = 6, { knownUrls = new Set() } = {})
       const apiCategories = Array.isArray(p.categories) ? p.categories.map((c) => c.name).filter(Boolean) : [];
       const sm = String(p.stock_availability?.text || "").match(/([\d,]+)\s*in\s*stock/i);
       const apiStock = sm ? Number(sm[1].replace(/,/g, "")) : null;
-      let html = "";
-      try { html = (await fetchHtml(p.permalink, op, PER_PRODUCT_RETRY)).text; } catch { /* API desc still usable */ }
+      const { html, refused } = await readProductPage(p.permalink, op); // "" when blocked — API desc still usable
       if (!sawZap && detectZap(html)) sawZap = true;
-      return { id: p.id, draw: fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText, apiCategories, apiStock }) };
+      return { id: p.id, refused, draw: fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText, apiCategories, apiStock }) };
     } catch (e) { console.log(`  ! ${(p.permalink || p.name || "?").slice(-42)} parse failed: ${(e.message || "").slice(0, 50)}`); return null; }
   });
   const kept = pairs.filter((x) => x && x.draw);
@@ -272,6 +346,10 @@ export async function wooOperator(op, perOp = 6, { knownUrls = new Set() } = {})
     for (const x of kept) { const before = x.draw.draw_date; mergeZap(x.draw, rows[x.id]); if (x.draw.draw_date !== before || x.draw.total_entries != null) filled++; }
     if (filled) console.log(`  ⚡ zap ajax filled cap/date for ${filled} draw(s)`);
   }
+  // Counted here, after the zap rescue, so a refused page the ajax made good is not reported
+  // as a lost draw. Trade Tool is exactly that case: pages refused, nothing actually lost.
+  noteStarved(op, kept.filter((x) => starvedByPage(x.refused, x.draw)).length);
+  { const n = pageBlockNote(op.slug || op.base, pageBlocks.get(op.slug || op.base)); if (n) console.log(`  ⚠️ ${n}`); }
   return kept.map((x) => x.draw);
 }
 
@@ -306,11 +384,13 @@ export async function shopifyOperator(op, perOp = 6, { knownUrls = new Set() } =
       const prizeText = p.body_html || null; // cleanest grand_prize source
       // Shopify product_type + tags are the operator's taxonomy (no reliable inventory count here).
       const apiCategories = [p.product_type, ...(Array.isArray(p.tags) ? p.tags : [])].filter(Boolean);
-      let html = "";
-      try { html = (await fetchHtml(url, op, PER_PRODUCT_RETRY)).text; } catch { /* body_html still usable */ }
-      return fieldsFromHtml({ html, url, op, knownTitle: p.title, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText, apiCategories });
+      const { html, refused } = await readProductPage(url, op); // "" when blocked — body_html still usable
+      const draw = fieldsFromHtml({ html, url, op, knownTitle: p.title, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText, apiCategories });
+      if (starvedByPage(refused, draw)) noteStarved(op, 1);
+      return draw;
     } catch (e) { console.log(`  ! ${(p.handle || p.title || "?")} parse failed: ${(e.message || "").slice(0, 50)}`); return null; }
   });
+  { const n = pageBlockNote(op.slug || op.base, pageBlocks.get(op.slug || op.base)); if (n) console.log(`  ⚠️ ${n}`); }
   return draws.filter(Boolean);
 }
 

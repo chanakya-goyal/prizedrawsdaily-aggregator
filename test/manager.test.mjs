@@ -205,3 +205,49 @@ describe("reportMarkdown publish funnel", () => {
     expect(md).not.toContain("Publish funnel");
   });
 });
+
+// Operators that scrape fine and then shed individual draws because their product pages were
+// refused. Reported apart from silence on purpose: the remedy is a different egress IP, not a
+// selector, and for months this loss was attributed to the parser instead.
+//
+// The headline must be draws LOST, never pages refused. Counting pages would overstate the
+// damage — an operator whose API payload already carried the cap loses nothing even with every
+// page refused, and reporting that as loss would send topup after an operator that is fine.
+describe("reportMarkdown — refused product pages", () => {
+  const withBlocks = (...pageBlocks) => reportMarkdown(buildHealthReport({
+    counts: pageBlocks.map((pb, i) => ({ slug: `op-${i}`, scraped: 100, inserted: 3, published: 1, heldDraft: 2, pageBlocks: pb })),
+    expected: pageBlocks.map((_, i) => `op-${i}`),
+  }));
+  const hurt = { ok: 13, blocked: 87, starved: 41, causes: { "HTTP 403": 80, "challenge/empty": 7 } };
+  const unhurt = { ok: 0, blocked: 60, starved: 0, causes: { "HTTP 403": 60 } };
+
+  test("headlines the draws lost, not the pages refused", () => {
+    const md = withBlocks(hurt);
+    expect(md).toContain("Product pages refused — 41 draw(s) left without a cap or date, across 1 operator(s)");
+    expect(md).toContain("`op-0` — **41 draw(s) left short** · 87 of 100 pages refused (HTTP 403×80, challenge/empty×7)");
+  });
+
+  test("says the cause is the IP, so the reader does not go hunting for a selector bug", () => {
+    expect(withBlocks(hurt)).toContain("0 from a residential IP");
+  });
+
+  test("an operator that lost nothing is shown as such, and is not counted in the headline", () => {
+    const md = withBlocks(hurt, unhurt);
+    expect(md).toContain("41 draw(s) left without a cap or date, across 1 operator(s)"); // 1, not 2
+    expect(md).toContain("`op-1` — no draw left short · 60 of 60 pages refused");
+  });
+
+  test("pages refused but nothing lost raises no section at all", () => {
+    expect(withBlocks(unhurt)).not.toContain("Product pages refused");
+  });
+
+  test("an operator whose pages all read adds no section", () => {
+    expect(withBlocks({ ok: 100, blocked: 0, starved: 0, causes: {} })).not.toContain("Product pages refused");
+  });
+
+  test("the section is absent when nothing reports page blocks — old callers render unchanged", () => {
+    expect(withBlocks(null)).not.toContain("Product pages refused");
+    expect(reportMarkdown(buildHealthReport({ counts: [{ slug: "a", scraped: 1 }], expected: ["a"] })))
+      .not.toContain("Product pages refused");
+  });
+});
