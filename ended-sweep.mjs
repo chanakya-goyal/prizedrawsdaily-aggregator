@@ -12,7 +12,7 @@ import { staleDateDecision, deadDraftDecision } from "./lib/verify.mjs";
 import { raffleEngineOperator } from "./lib/adapters/raffle-engine.mjs";
 import { hydraOperator } from "./lib/adapters/hydra.mjs";
 import { inertiaOperator } from "./lib/adapters/inertia.mjs";
-import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, saysFinished } from "./lib/liveness.mjs";
+import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, pickProductForUrl, saysFinished } from "./lib/liveness.mjs";
 import { sbGetAll, sbCount } from "./lib/sb.mjs";
 import { auditDecision, auditPatch, comparableFields, shouldApplyAudit } from "./lib/audit.mjs";
 const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
@@ -65,6 +65,11 @@ const slugFromUrl = productSlug;
 // carry `available` — load it once per operator and map handle → available.
 // Woo: same idea, for the products ?slug= can't resolve. One paged pass per operator,
 // cached, keyed on permalink. Bounded at 5 pages — this is a fallback, not a full crawl.
+// Operators whose `?slug=` endpoint answered with a product we did not ask for. Silent by
+// nature — the payload is valid and the operator cannot tell us — so it is counted and printed,
+// otherwise the next occurrence is as invisible as the first one was.
+const wrongProductByOp = new Map();
+
 const wooCache = new Map();
 async function wooFeed(op) {
   if (wooCache.has(op.slug)) return wooCache.get(op.slug);
@@ -159,7 +164,16 @@ async function isEnded(d) {
       if (!isPercentLiteralSlug(slug)) {
         const r = await fetch(`${op.base}/wp-json/wc/store/v1/products?slug=${encodeURIComponent(slug)}`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) });
         const arr = await r.json();
-        p = Array.isArray(arr) ? arr[0] : null;
+        // NOT arr[0]. `?slug=` is a filter on a cacheable collection endpoint, not a lookup by
+        // identity: an operator whose CDN leaves the query string out of its cache key answers
+        // every slug with one cached body, and taking position 0 on trust binds THIS row to a
+        // stranger's price, draw date and purchasability. pickProductForUrl checks that the
+        // product we got back is the one we asked about; a mismatch falls through to the
+        // listing feed below, which matches on permalink and is correct by construction.
+        p = pickProductForUrl(arr, d.entry_url);
+        if (!p && Array.isArray(arr) && arr.length) {
+          wrongProductByOp.set(op.slug, (wrongProductByOp.get(op.slug) || 0) + 1);
+        }
       }
       // Fall back to the listing feed, matched on permalink. Without this, any product
       // ?slug= can't find stays "unverifiable" forever and is therefore never expired —
@@ -259,6 +273,14 @@ if (deadDrafts.length) console.log(`\nDEAD DRAFTS (never published, own draw dat
 const ended = out.filter((x) => x.ended === true);
 const unknown = out.filter((x) => x.ended === null);
 console.log(`ENDED (finished comps in the draft queue): ${ended.length}`);
+
+// Loud on purpose. This is an operator-side fault we can only detect, never fix, and it stays
+// invisible unless it is named: the row simply gets someone else's numbers.
+if (wrongProductByOp.size) {
+  const total = [...wrongProductByOp.values()].reduce((a, b) => a + b, 0);
+  console.log(`\n⚠️  ?slug= returned a DIFFERENT product for ${total} row(s) — their CDN is ignoring the query string. Verified against the listing feed instead:`);
+  for (const [slug, n] of [...wrongProductByOp].sort((a, b) => b[1] - a[1])) console.log(`     ${slug}: ${n}`);
+}
 for (const x of ended.filter((e) => !e.deadDraft)) console.log(`  ⛔ [${x.d.operators?.slug}] ${(x.d.title || "").slice(0, 44)} — ${x.why}`);
 // Dead drafts are summarised by operator rather than listed row by row — there can be hundreds,
 // and the per-row detail adds nothing once the rule is "its own date passed".

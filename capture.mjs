@@ -1,6 +1,7 @@
 // Dev helper (read-only): snapshot a live operator's pages into test/fixtures/ so parser
 // tests can run offline. Usage: bun capture.mjs <slug>
 import { chromium } from "playwright";
+import { chromiumLaunchOptions } from "./lib/browser.mjs";
 import { makeContext, renderPage, UA } from "./extractor.mjs";
 
 const slug = process.argv[2];
@@ -23,7 +24,7 @@ if (op.method === "woo") {
   const h = data.products?.[0]?.handle;
   if (h) await save(`${slug}.product.html`, await (await fetch(`${op.base}/products/${h}`, { headers: { "User-Agent": UA } })).text());
 } else {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(chromiumLaunchOptions({ headless: true }));
   const ctx = await makeContext(browser);
   const listing = await renderPage(ctx, op.listing || op.base, op.wait || 4000);
   await save(`${slug}.listing.html`, listing.html);

@@ -2,6 +2,7 @@
 // added manually (blocked / no findable draws)? Writes probe-results.json + prints a skip-list.
 // Uses NO LLM — pure fetch + headless render — so it costs nothing against the AI quota.
 import { chromium } from "playwright";
+import { chromiumLaunchOptions } from "./lib/browser.mjs";
 
 const SB = "https://ilnegxrsalmzpljotgpe.supabase.co";
 const ANON = process.env.SUPABASE_PUBLISHABLE_KEY || "";
@@ -33,7 +34,7 @@ const ops = await (await fetch(`${SB}/rest/v1/operators?select=name,slug,website
 const targets = ops.filter((o) => o.website_url && !EXCLUDE.has(o.slug));
 console.log(`Probing ${targets.length} operators (excluded ${EXCLUDE.size}, already-automated ${DONE.size})\n`);
 
-const browser = await chromium.launch({ headless: true, args: ["--disable-blink-features=AutomationControlled"] });
+const browser = await chromium.launch(chromiumLaunchOptions({ headless: true, args: ["--disable-blink-features=AutomationControlled"] }));
 const ctx = await browser.newContext({ userAgent: UA, viewport: { width: 1280, height: 900 }, locale: "en-GB", timezoneId: "Europe/London" });
 await ctx.addInitScript(() => { Object.defineProperty(navigator, "webdriver", { get: () => undefined }); });
 

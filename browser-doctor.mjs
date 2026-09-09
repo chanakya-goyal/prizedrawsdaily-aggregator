@@ -1,0 +1,59 @@
+// Can this machine render an operator page at all? Usage: bun browser-doctor.mjs [url]
+//
+// WHY THIS EXISTS. In the cloud routine sandbox on 2026-09-09 every Playwright navigation died
+// with `net::ERR_CONNECTION_RESET` while plain `curl` to the SAME url returned HTTP 200. The
+// routine spent six turns hand-writing a render script, adding a proxy to it, and retrying,
+// then gave up and swapped its sample rows — a correct fallback, but the diagnosis never got
+// written down, so the next run would have started from zero.
+//
+// This prints, in one command, every fact needed to tell the three candidate causes apart:
+//   * proxy not being used        → curl ok, chromium reset, no proxy in the env
+//   * proxy present but refusing  → ERR_TUNNEL_CONNECTION_FAILED / ERR_PROXY_*
+//   * egress genuinely blocked    → both curl and chromium fail
+// Report its output verbatim rather than describing it.
+import { chromium } from "playwright";
+import { chromiumLaunchOptions, proxyFromEnv } from "./lib/browser.mjs";
+import { UA } from "./lib/parse.mjs";
+
+const url = process.argv[2] || "https://example.com/";
+const proxy = proxyFromEnv();
+
+console.log("── environment ─────────────────────────────────────────────");
+for (const k of ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy"]) {
+  console.log(`  ${k.padEnd(12)} ${process.env[k] || "(unset)"}`);
+}
+console.log(`  resolved proxy for chromium: ${proxy ? JSON.stringify(proxy) : "none — chromium will connect directly"}`);
+
+console.log("\n── control: fetch() / curl path ────────────────────────────");
+// Bun's fetch honours the proxy env vars, exactly as curl does. If this succeeds and chromium
+// does not, the network is fine and the browser is the problem.
+try {
+  const r = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(25000) });
+  console.log(`  fetch  → HTTP ${r.status}, ${(await r.text()).length} bytes`);
+} catch (e) {
+  console.log(`  fetch  → FAILED: ${(e.message || "").split("\n")[0].slice(0, 120)}`);
+}
+
+console.log("\n── chromium ────────────────────────────────────────────────");
+let browser = null;
+try {
+  browser = await chromium.launch(chromiumLaunchOptions({ headless: true, args: ["--disable-blink-features=AutomationControlled"] }));
+  console.log(`  launched ok (playwright ${(await import("playwright/package.json", { with: { type: "json" } })).default.version})`);
+  const page = await (await browser.newContext({ userAgent: UA })).newPage();
+  const res = await page.goto(url, { timeout: 30000, waitUntil: "domcontentloaded" });
+  console.log(`  goto   → HTTP ${res ? res.status() : "no response"}, ${(await page.content()).length} bytes`);
+  console.log("\n  ✅ chromium can reach the web from here.");
+} catch (e) {
+  const msg = (e.message || "").split("\n")[0];
+  console.log(`  goto   → FAILED: ${msg.slice(0, 160)}`);
+  const hint = /ERR_(TUNNEL_CONNECTION_FAILED|PROXY)/.test(msg)
+    ? "the proxy is being used but refused the tunnel — check its allowlist/auth"
+    : /ERR_CONNECTION_RESET|ERR_CONNECTION_REFUSED|ERR_ADDRESS_UNREACHABLE/.test(msg)
+      ? (proxy
+        ? "chromium was given a proxy and STILL reset — the reset is downstream of the proxy, not a missing proxy"
+        : "no proxy is set and the connection was reset — if fetch() above succeeded, set HTTPS_PROXY so chromium uses the same route fetch did")
+      : /ERR_CERT/.test(msg)
+        ? "TLS interception — the proxy's CA is not trusted by chromium"
+        : "unclassified; paste this output into the report rather than summarising it";
+  console.log(`\n  ❌ diagnosis: ${hint}`);
+} finally { await browser?.close(); }

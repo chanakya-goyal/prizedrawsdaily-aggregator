@@ -1,5 +1,6 @@
 // One-off: re-read each already-stored draw's page and correct its draw_date with the fixed logic.
 import { chromium } from "playwright";
+import { chromiumLaunchOptions } from "./lib/browser.mjs";
 import { renderPage, makeContext, sleep } from "./extractor.mjs";
 import { fieldsFromHtml } from "./lib/parse.mjs";
 
@@ -13,7 +14,7 @@ const rows = await (await fetch(`${SB}/rest/v1/draws?select=id,title,status,draw
 const mine = rows.filter((r) => r.entry_url && DOMAINS.some((d) => r.entry_url.includes(d)));
 console.log(`Re-dating ${mine.length} draws (from our 4 operators)\n`);
 
-const browser = await chromium.launch({ headless: true, args: ["--disable-blink-features=AutomationControlled"] });
+const browser = await chromium.launch(chromiumLaunchOptions({ headless: true, args: ["--disable-blink-features=AutomationControlled"] }));
 const ctx = await makeContext(browser);
 let fixed = 0;
 for (const r of mine) {

@@ -11,6 +11,7 @@
 // Cascade (cheapest first): woo → shopify → render → aiAssist (server-rendered SPA) →
 // blocked (retry via FlareSolverr if FLARESOLVERR_URL is set) → dead.
 import { chromium } from "playwright";
+import { chromiumLaunchOptions } from "./lib/browser.mjs";
 import { renderPage, makeContext, pickDrawLinks, DRAW_RE, BAD_LINK, CATEGORY_TAIL, looksBlocked } from "./extractor.mjs";
 import { fetchHtml } from "./lib/fetcher.mjs";
 import { load, parseJsonLd, findProductLd } from "./lib/parse.mjs";
@@ -106,7 +107,7 @@ function emitEntry(name, slug, base, r, insecure) {
 }
 
 async function runOne(base, slug, name, insecure) {
-  const browser = await chromium.launch({ headless: true, args: ["--disable-blink-features=AutomationControlled"] });
+  const browser = await chromium.launch(chromiumLaunchOptions({ headless: true, args: ["--disable-blink-features=AutomationControlled"] }));
   const ctx = await makeContext(browser, { insecureTLS: insecure });
   let r; try { r = await classify(base, ctx, { insecureTLS: insecure }); } catch (e) { r = { method: "error", detail: (e.message || "").slice(0, 60) }; }
   await browser.close();
@@ -125,7 +126,7 @@ async function runAll() {
   const ops = await (await fetch(`${SB}/rest/v1/operators?select=name,slug,website_url&order=name`, { headers: { apikey: ANON } })).json();
   const targets = (Array.isArray(ops) ? ops : []).filter((o) => o.website_url);
   console.log(`Classifying ${targets.length} operators${FLARESOLVERR_URL ? " (FlareSolverr on)" : ""}\n`);
-  const browser = await chromium.launch({ headless: true, args: ["--disable-blink-features=AutomationControlled"] });
+  const browser = await chromium.launch(chromiumLaunchOptions({ headless: true, args: ["--disable-blink-features=AutomationControlled"] }));
   const ctx = await makeContext(browser);
   const results = [];
   for (const op of targets) {
