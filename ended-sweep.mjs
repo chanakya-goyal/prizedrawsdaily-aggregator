@@ -12,7 +12,8 @@ import { staleDateDecision, deadDraftDecision } from "./lib/verify.mjs";
 import { raffleEngineOperator } from "./lib/adapters/raffle-engine.mjs";
 import { hydraOperator } from "./lib/adapters/hydra.mjs";
 import { inertiaOperator } from "./lib/adapters/inertia.mjs";
-import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, pickProductForUrl, saysFinished } from "./lib/liveness.mjs";
+import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, saysFinished } from "./lib/liveness.mjs";
+import { wooProductForUrl } from "./lib/woo.mjs";
 import { sbGetAll, sbCount } from "./lib/sb.mjs";
 import { auditDecision, auditPatch, comparableFields, shouldApplyAudit } from "./lib/audit.mjs";
 const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
@@ -70,26 +71,9 @@ const slugFromUrl = productSlug;
 // otherwise the next occurrence is as invisible as the first one was.
 const wrongProductByOp = new Map();
 
-const wooCache = new Map();
-async function wooFeed(op) {
-  if (wooCache.has(op.slug)) return wooCache.get(op.slug);
-  const map = new Map();
-  try {
-    for (let page = 1; page <= 5; page++) {
-      const url = op.apiStyle === "rest_route"
-        ? `${op.base}/?rest_route=/wc/store/v1/products&per_page=100&page=${page}`
-        : `${op.base}/wp-json/wc/store/v1/products?per_page=100&page=${page}`;
-      const arr = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) }).then((r) => r.json());
-      if (!Array.isArray(arr) || !arr.length) break;
-      for (const p of arr) map.set(permalinkKey(p.permalink), p);
-      if (arr.length < 100) break;
-    }
-  } catch { /* partial or empty map → those draws stay unverified, never wrongly expired */ }
-  wooCache.set(op.slug, map);
-  return map;
-}
+// wooFeed moved to lib/woo.mjs so qa-fix resolves products the same way this does.
 
-// API operators: the same idea as wooFeed/shopAvail, one catalogue fetch per operator.
+// API operators: the same idea as wooFeed (lib/woo.mjs)/shopAvail, one catalogue fetch per operator.
 //
 // These three adapters already ask the operator's own API for the LIVE set — raffle-engine
 // passes include_finished=false, hydra and inertia filter server-side — so presence in the
@@ -158,27 +142,11 @@ async function isEnded(d) {
   const slug = slugFromUrl(d.entry_url);
   try {
     if (op.method === "woo") {
-      let p = null;
-      // ?slug= is one cheap request, but it cannot resolve percent-literal slugs at all —
-      // skip straight to the feed for those rather than spend a request proving it.
-      if (!isPercentLiteralSlug(slug)) {
-        const r = await fetch(`${op.base}/wp-json/wc/store/v1/products?slug=${encodeURIComponent(slug)}`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) });
-        const arr = await r.json();
-        // NOT arr[0]. `?slug=` is a filter on a cacheable collection endpoint, not a lookup by
-        // identity: an operator whose CDN leaves the query string out of its cache key answers
-        // every slug with one cached body, and taking position 0 on trust binds THIS row to a
-        // stranger's price, draw date and purchasability. pickProductForUrl checks that the
-        // product we got back is the one we asked about; a mismatch falls through to the
-        // listing feed below, which matches on permalink and is correct by construction.
-        p = pickProductForUrl(arr, d.entry_url);
-        if (!p && Array.isArray(arr) && arr.length) {
-          wrongProductByOp.set(op.slug, (wrongProductByOp.get(op.slug) || 0) + 1);
-        }
-      }
-      // Fall back to the listing feed, matched on permalink. Without this, any product
-      // ?slug= can't find stays "unverifiable" forever and is therefore never expired —
-      // which covered 56 of easy-living-competitions' newest 100 products.
-      if (!p) p = (await wooFeed(op)).get(permalinkKey(d.entry_url)) || null;
+      // One resolver for "which product is this row about", shared with qa-fix. It asks
+      // `?slug=`, CHECKS the answer is actually ours, and falls back to the permalink-matched
+      // listing feed otherwise — see lib/woo.mjs and pickProductForUrl for why that check has
+      // to exist at all.
+      const p = await wooProductForUrl(op, d.entry_url, { ua: UA, onMismatch: (slug) => wrongProductByOp.set(slug, (wrongProductByOp.get(slug) || 0) + 1) });
       if (!p) return { ended: null, why: "product not found in API or feed", purchasable: null, freshDate: null, reachable: false, source: "woo" };
       // The product payload is already in hand — parse the date from it rather than spending
       // a second request. Same parser (extractDate + op.patterns) as the original ingest.

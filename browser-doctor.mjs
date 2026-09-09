@@ -12,17 +12,22 @@
 //   * egress genuinely blocked    → both curl and chromium fail
 // Report its output verbatim rather than describing it.
 import { chromium } from "playwright";
-import { chromiumLaunchOptions, proxyFromEnv } from "./lib/browser.mjs";
+import { chromiumLaunchOptions, proxyFromEnv, redactProxyUrl } from "./lib/browser.mjs";
 import { UA } from "./lib/parse.mjs";
 
 const url = process.argv[2] || "https://example.com/";
 const proxy = proxyFromEnv();
 
+// Everything printed here is meant to be pasted verbatim into the QA report (see
+// manager/PROMPT.md step 0), which is then pushed as a notification — so a proxy URL carrying
+// credentials must be masked on the way out, not trusted to be credential-free.
 console.log("── environment ─────────────────────────────────────────────");
 for (const k of ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy"]) {
-  console.log(`  ${k.padEnd(12)} ${process.env[k] || "(unset)"}`);
+  console.log(`  ${k.padEnd(12)} ${process.env[k] ? redactProxyUrl(process.env[k]) : "(unset)"}`);
 }
-console.log(`  resolved proxy for chromium: ${proxy ? JSON.stringify(proxy) : "none — chromium will connect directly"}`);
+console.log(`  resolved proxy for chromium: ${proxy
+  ? `${proxy.server}${proxy.username ? "  (credentials present, withheld)" : ""}${proxy.bypass ? `  bypass=${proxy.bypass}` : ""}`
+  : "none — chromium will connect directly"}`);
 
 console.log("\n── control: fetch() / curl path ────────────────────────────");
 // Bun's fetch honours the proxy env vars, exactly as curl does. If this succeeds and chromium

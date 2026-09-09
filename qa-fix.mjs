@@ -10,7 +10,7 @@
 //
 //   DRY_RUN=true (default) report old→new;  DRY_RUN=false apply PATCHes.  ONLY=slug to scope.
 import { UA, categoryEvidence } from "./lib/parse.mjs";
-import { pickProductForUrl } from "./lib/liveness.mjs";
+import { wooProductForUrl } from "./lib/woo.mjs";
 const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
@@ -25,7 +25,6 @@ if (!READ) {
 const H = { apikey: READ, Authorization: `Bearer ${READ}` };
 const ops = await Bun.file("operators.json").json();
 const opBy = Object.fromEntries(ops.map((o) => [o.slug, o]));
-const slugFromUrl = (u) => (u || "").replace(/[#?].*$/, "").replace(/\/+$/, "").split("/").pop() || "";
 const clean = (h) => (h || "").replace(/<[^>]+>/g, " ").replace(/&#8211;|&#8217;|&pound;/g, (m) => ({ "&#8211;": "–", "&#8217;": "’", "&pound;": "£" }[m])).replace(/&[a-z]+;/g, " ").replace(/\s+/g, " ").trim();
 
 // ---- category ----
@@ -71,12 +70,12 @@ function realGrandPrize(desc, title) {
   return { value: null, how: "no clear main prize in description" };
 }
 
-async function fetchComp(op, slug, entry_url) {
+async function fetchComp(op, entry_url) {
   if (op.method === "woo") {
-    const arr = await (await fetch(`${op.base}/wp-json/wc/store/v1/products?slug=${encodeURIComponent(slug)}`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) })).json().catch(() => []);
-    // Same trap as ended-sweep: `?slug=` is a filter on a cacheable endpoint, so a CDN that
-    // ignores the query string hands back one product for every slug. See pickProductForUrl.
-    const p = pickProductForUrl(arr, entry_url);
+    // Shared with ended-sweep: asks `?slug=`, checks the answer is actually ours, and falls
+    // back to the permalink-matched listing feed otherwise. Skipping the row on a mismatch —
+    // which is what this did before — left exactly the rows most likely to be wrong unaudited.
+    const p = await wooProductForUrl(op, entry_url, { ua: UA });
     if (!p) return null;
     const remTxt = p.stock_availability?.text || "";
     const rem = /(\d[\d,]*)\s*in stock/i.test(remTxt) ? +remTxt.match(/(\d[\d,]*)\s*in stock/i)[1].replace(/,/g, "") : null;
@@ -97,7 +96,7 @@ const flags = [];
 for (const d of draws) {
   const op = opBy[d.operators?.slug];
   if (!op || op.method !== "woo") { skipped++; continue; }
-  const c = await fetchComp(op, slugFromUrl(d.entry_url), d.entry_url);
+  const c = await fetchComp(op, d.entry_url);
   if (!c) { skipped++; continue; }
   const patch = {}; const notes = [];
 
