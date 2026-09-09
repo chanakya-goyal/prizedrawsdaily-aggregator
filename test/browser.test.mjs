@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { proxyFromEnv, chromiumLaunchOptions } from "../lib/browser.mjs";
+import { proxyFromEnv, chromiumLaunchOptions, redactProxyUrl } from "../lib/browser.mjs";
 
 // ── Playwright does not inherit the shell's proxy ───────────────────────────────────────
 // Measured in the cloud routine sandbox 2026-09-09: every operator page died with
@@ -58,5 +58,83 @@ describe("chromiumLaunchOptions", () => {
   });
   test("called with no arguments it still returns usable options", () => {
     expect(chromiumLaunchOptions()).toBeTruthy();
+  });
+});
+
+// ── credentials must never reach a printed report ───────────────────────────────────────
+// browser-doctor prints the proxy, and manager/PROMPT.md tells the routine to paste that output
+// verbatim into a QA report which is then pushed as a notification. A proxy URL of the form
+// http://user:pass@host would carry the password into every one of those.
+describe("proxy credentials", () => {
+  test("user:pass are split out of server into playwright's own fields", () => {
+    const p = proxyFromEnv({ HTTPS_PROXY: "http://alice:s3cret@proxy.internal:8080" });
+    expect(p.server).toBe("http://proxy.internal:8080");
+    expect(p.server).not.toContain("s3cret");
+    expect(p.username).toBe("alice");
+    expect(p.password).toBe("s3cret");
+  });
+  test("percent-encoded credentials are decoded for playwright", () => {
+    const p = proxyFromEnv({ HTTPS_PROXY: "http://a%40b:p%3Aw@proxy:8080" });
+    expect(p.username).toBe("a@b");
+    expect(p.password).toBe("p:w");
+    expect(p.server).toBe("http://proxy:8080");
+  });
+  test("a username with no password still leaves server clean", () => {
+    const p = proxyFromEnv({ HTTPS_PROXY: "http://alice@proxy:8080" });
+    expect(p.server).toBe("http://proxy:8080");
+    expect(p.username).toBe("alice");
+    expect(p).not.toHaveProperty("password");
+  });
+  test("no credentials → no username/password keys at all", () => {
+    expect(proxyFromEnv({ HTTPS_PROXY: "http://proxy:8080" })).toEqual({ server: "http://proxy:8080" });
+  });
+  test("a path on the proxy url is preserved, a bare trailing slash is not invented", () => {
+    expect(proxyFromEnv({ HTTPS_PROXY: "http://proxy:8080/" }).server).toBe("http://proxy:8080");
+    expect(proxyFromEnv({ HTTPS_PROXY: "http://proxy:8080/path" }).server).toBe("http://proxy:8080/path");
+  });
+});
+
+describe("redactProxyUrl — for printing a RAW env value we do not control", () => {
+  test("masks user and password", () => {
+    expect(redactProxyUrl("http://alice:s3cret@proxy:8080")).toBe("http://***:***@proxy:8080");
+  });
+  test("masks a lone username", () => {
+    expect(redactProxyUrl("http://alice@proxy:8080")).toBe("http://***@proxy:8080");
+  });
+  test("leaves a credential-free url and empty values alone", () => {
+    expect(redactProxyUrl("http://127.0.0.1:41489")).toBe("http://127.0.0.1:41489");
+    expect(redactProxyUrl("")).toBe("");
+    expect(redactProxyUrl(undefined)).toBe("");
+  });
+});
+
+// Both found by review on #44, both real, both verified before fixing.
+describe("hostile proxy values", () => {
+  // The credential boundary is the LAST @ in the authority. A password may contain an
+  // unescaped @, and splitting on the first one printed the rest of it.
+  test("an embedded @ in the password does not survive redaction", () => {
+    const out = redactProxyUrl("http://alice:pass@word@proxy:8080");
+    expect(out).toBe("http://***:***@proxy:8080");
+    expect(out).not.toContain("word");
+    expect(out).not.toContain("alice");
+  });
+  test("an @ later in the path is not mistaken for the credential boundary", () => {
+    expect(redactProxyUrl("http://proxy:8080/route@v2")).toBe("http://proxy:8080/route@v2");
+    expect(redactProxyUrl("http://alice:s3cret@proxy:8080/route@v2")).toBe("http://***:***@proxy:8080/route@v2");
+  });
+  test("a non-url string is returned untouched rather than mangled", () => {
+    expect(redactProxyUrl("not a url")).toBe("not a url");
+  });
+
+  // new URL() accepts a malformed escape in the credentials; only the DECODE throws. Since
+  // chromiumLaunchOptions calls proxyFromEnv on the way to launch, an unguarded throw here
+  // would take down every chromium launch in the repo.
+  test("a malformed percent escape yields null instead of throwing", () => {
+    expect(() => proxyFromEnv({ HTTPS_PROXY: "http://a:%zz@proxy:8080" })).not.toThrow();
+    expect(proxyFromEnv({ HTTPS_PROXY: "http://a:%zz@proxy:8080" })).toBe(null);
+  });
+  test("and the launch path survives it, falling back to no proxy", () => {
+    expect(() => chromiumLaunchOptions({ headless: true }, { HTTPS_PROXY: "http://a:%zz@proxy:8080" })).not.toThrow();
+    expect(chromiumLaunchOptions({ headless: true }, { HTTPS_PROXY: "http://a:%zz@proxy:8080" })).toEqual({ headless: true });
   });
 });
