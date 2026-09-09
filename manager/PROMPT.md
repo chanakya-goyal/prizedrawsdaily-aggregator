@@ -74,6 +74,21 @@ whatever happens, always produce the step-5 report.
    to PATH, retry. If SUPABASE_SERVICE_ROLE_KEY is unset, stop and report — nothing else works.
    Do NOT run `bun test` (CI owns tests; a data run can't act on failures).
 
+   Then `bun browser-doctor.mjs` — ONCE, here, before anything else. It answers whether this
+   machine can render a page at all, which decides how step 2 verifies JS-rendered operators.
+   Find that out now, not seven turns into the spot-check: on 2026-09-09 a run discovered it
+   mid-sample, hand-wrote a render script, added a proxy to it, retried twice and still ended up
+   swapping its rows — and the diagnosis was never written down, so the next run began from
+   zero. **Paste its output verbatim under "Environment" in the report** whether it passes or
+   fails. If it fails, do not render anything this run: mark JS-rendered rows UNVERIFIED and draw
+   replacements. Never hand-write a render script; if you think you need one, the doctor's output
+   is the thing to report instead.
+
+   Shell gotcha, met for real on 2026-09-09: **never name a shell variable `HOME`** (a run used
+   it for the home-garden category UUID). It shadows the real `$HOME`, and `bun` then writes its
+   install cache into a junk directory in the repo root, which the stop hook flags as untracked
+   files. Prefix category variables — `CAT_HOME`, `CAT_CASH`.
+
 1. **Ended sweep.** `STATUS=active,draft DRY_RUN=false bun ended-sweep.mjs`
    Marks finished comps (not-purchasable / "finished" text) as status=ended so no dead comp is
    live. Failure: retry once, then continue and note it in the report.
@@ -155,7 +170,11 @@ whatever happens, always produce the step-5 report.
 4. **Tripwire triage.** `gh issue list --label tripwire --state open` (skip if `gh` isn't
    authenticated). Get today's state yourself with `bun manager/tripwire.mjs` — read-only
    against the DB, writes `tripwire.md`, exits 1 only when something is genuinely broken
-   (scrape failed / active inventory under the floor / no new draw in 24h). For each open issue:
+   (scrape failed / active inventory under the floor / no new draw in 24h). Running it here,
+   outside the pipeline, correctly reports `scrape outcome not checked` as a WARNING and exits 0
+   — `SCRAPE_OUTCOME` is supplied by the workflow and only the workflow. You do not need to set
+   it, and you should not: two runs in a row (2026-09-09) lost turns to a red "Broken: scrape
+   outcome was 'unknown'" that only meant "you are not the Action". For each open issue:
    compare its body with today's state and comment a DIAGNOSIS with evidence (counts, the
    failing operator, the Action run URL) — never "still broken". Close it when today's run is
    green and the condition it names has cleared. Warnings (below target, drafts past their draw
