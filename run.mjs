@@ -12,10 +12,10 @@ import { gate } from "./gate.mjs";
 import { templateDescription } from "./lib/describe.mjs";
 import { fieldFlags, buildHealthReport, writeStepSummary, checkImage, probeSilentReasons } from "./lib/manager.mjs";
 import { rehostImage } from "./lib/rehost.mjs";
-import { summarise } from "./lib/verify.mjs";
+import { summarise, byPublishUrgency } from "./lib/verify.mjs";
 import { permalinkKey } from "./lib/liveness.mjs";
 import { routeDraw } from "./lib/route.mjs";
-import { shardConfig, shardOf, shardedPublishCap } from "./lib/shard.mjs";
+import { shardConfig, shardOf, shardedPublishCap, rotateRoster, rosterOffset } from "./lib/shard.mjs";
 import { fetchWithRetry } from "./lib/fetcher.mjs";
 import { CATEGORIES } from "./lib/parse.mjs";
 
@@ -143,6 +143,11 @@ if (!ONLY && BATCHES > 1) operators = operators.filter((_, i) => i % BATCHES ===
 // operators against a 60 min job cap. Defaults to 1 shard, i.e. today's behaviour exactly.
 const SHARD = shardConfig(process.env);
 if (!ONLY && SHARD.count > 1) operators = shardOf(operators, SHARD.index, SHARD.count);
+// Rotate the run order. Every scarce resource in this run — the publish cap, RUN_DEADLINE_MIN,
+// MAX_PAGES — is spent in roster order, and operators.json order never changes, so the back of
+// the list was permanently excluded rather than occasionally unlucky. Applied AFTER sharding so
+// shard membership stays stable and only the order inside a shard moves.
+if (!ONLY) operators = rotateRoster(operators, rosterOffset(now));
 // AUTO_PUBLISH_MAX is a per-PROCESS counter. Without dividing it, N shards running at once
 // would each publish up to the full cap and the day's real ceiling would be N times what was
 // budgeted — the same mistake the workflow split had to avoid, one level down.
@@ -254,7 +259,10 @@ async function flush() {
   // re-hosting above has just rewritten image_url to our own storage — checking the operator's
   // original URL would test the wrong thing. Anything that isn't a clean 2xx stays draft and
   // gets another chance tomorrow; we never publish a card we can't prove renders.
-  const candidates = toUpdate.filter((u) => u.candidate);
+  // Sorted, not first-come. The cap is a budget for the run, and the honest way to spend it is
+  // on the draws closest to closing — skipping those kills them, while a draw three weeks out
+  // gets another chance tomorrow. See byPublishUrgency for the measurement that forced this.
+  const candidates = toUpdate.filter((u) => u.candidate).sort(byPublishUrgency);
   if (candidates.length) {
     const checks = await Promise.all(candidates.map(async (u) => {
       if (autoPublished >= PUBLISH_CAP) return { u, ok: false, why: "run publish cap reached" };

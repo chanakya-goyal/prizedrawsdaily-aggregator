@@ -8,7 +8,7 @@
 //
 //   DRY_RUN=true (default) → report only.  DRY_RUN=false → set status='ended' on the finished ones.
 import { UA, textOf, extractDate, fieldsFromHtml } from "./lib/parse.mjs";
-import { staleDateDecision } from "./lib/verify.mjs";
+import { staleDateDecision, deadDraftDecision } from "./lib/verify.mjs";
 import { raffleEngineOperator } from "./lib/adapters/raffle-engine.mjs";
 import { hydraOperator } from "./lib/adapters/hydra.mjs";
 import { inertiaOperator } from "./lib/adapters/inertia.mjs";
@@ -243,10 +243,30 @@ let i = 0; const out = [];
 async function w() { while (i < draws.length) { const d = draws[i++]; out.push({ d, ...(await isEnded(d)) }); } }
 await Promise.all(Array.from({ length: 8 }, w));
 
+// Drafts that died in the queue. The evidence rule above ("only purchasability ends a comp")
+// protects LIVE rows, where a bad date parse would pull a running competition off the site. A
+// draft is not on the site and never was, so that risk does not exist — while keeping it costs
+// a permanently stuck queue entry and makes "drafts waiting" a number nobody can act on.
+// Measured 9 Sep 2026: 277 of 883 drafts had already passed their own draw date. If the
+// operator relists the URL, routeDraw's relist branch revives the row (lib/route.mjs).
+for (const x of out) {
+  if (x.ended === true) continue;
+  const v = deadDraftDecision(x.d, new Date(NOW_MS));
+  if (v.end) { x.ended = true; x.why = v.reason; x.deadDraft = true; }
+}
+const deadDrafts = out.filter((x) => x.deadDraft);
+if (deadDrafts.length) console.log(`\nDEAD DRAFTS (never published, own draw date passed): ${deadDrafts.length}`);
 const ended = out.filter((x) => x.ended === true);
 const unknown = out.filter((x) => x.ended === null);
 console.log(`ENDED (finished comps in the draft queue): ${ended.length}`);
-for (const x of ended) console.log(`  ⛔ [${x.d.operators?.slug}] ${(x.d.title || "").slice(0, 44)} — ${x.why}`);
+for (const x of ended.filter((e) => !e.deadDraft)) console.log(`  ⛔ [${x.d.operators?.slug}] ${(x.d.title || "").slice(0, 44)} — ${x.why}`);
+// Dead drafts are summarised by operator rather than listed row by row — there can be hundreds,
+// and the per-row detail adds nothing once the rule is "its own date passed".
+if (deadDrafts.length) {
+  const byOp = {};
+  for (const x of deadDrafts) { const k = x.d.operators?.slug || "?"; byOp[k] = (byOp[k] || 0) + 1; }
+  for (const [k, n] of Object.entries(byOp).sort((a, b) => b[1] - a[1]).slice(0, 15)) console.log(`  ⌛ ${String(n).padStart(4)} ${k}`);
+}
 if (unknown.length) { console.log(`\nUNKNOWN (couldn't verify — left as-is): ${unknown.length}`); for (const x of unknown.slice(0, 12)) console.log(`  ? [${x.d.operators?.slug}] ${(x.d.title || "").slice(0, 40)} — ${x.why}`); }
 
 // Rows whose close date has already passed. NOT expired here: this sweep only ever writes

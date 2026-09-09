@@ -29,9 +29,22 @@ describe("split aggregator workflows", () => {
   test("the DAILY publish ceiling stays one deliberate number, not a per-sweep copy", () => {
     // The failure this catches is not "the cap is too high" — it is raising one sweep's cap
     // without noticing there are four runs a day, so the real ceiling silently becomes 4x the
-    // intended one. The caps are budgeted together (30 + 50 x 3 = 180/day as of 2026-09-07);
-    // DAILY_CEILING is the number manager/PROMPT.md always named as the destination.
-    const DAILY_CEILING = 200;
+    // intended one. It caught exactly that on 2026-09-09, when AUTO_PUBLISH_MAX was set to 200
+    // per run on the reading that manager/PROMPT.md's "raise 50 -> 200" was a per-run number.
+    // It was written when there was ONE run a day. Changing this constant is how the ceiling is
+    // meant to move: deliberately, in one place, with the reason written down.
+    //
+    // 200 -> 400 on 2026-09-09 (60 render + 110 x 3 json = 390/day). Why: the cap was not
+    // bounding risk, it was choosing winners. Spent first-come over a roster order that never
+    // changes, it went to whoever was scraped first, every run — the first half of the JSON
+    // roster held 361 live draws against the last half's 155, with the same number of drafts
+    // dying in the queue, and 277 drafts had died unpublished (84% of them with a category and
+    // nothing else wrong). Ordering is now fixed (rotateRoster + byPublishUrgency); this raise
+    // clears the backlog those two cannot, since they only change WHICH rows win a fixed budget.
+    // Evidence for the risk side: the live-row audit re-reads every active row against its own
+    // page at the end of every sweep and has returned 0 corrections on ~1,100 rows, twice.
+    // ROLLBACK: audit review count climbing run over run, or live inventory falling.
+    const DAILY_CEILING = 400;
     const daily = num(RENDER, "AUTO_PUBLISH_MAX") * runsPerDay(RENDER)
                 + num(JSON_SWEEP, "AUTO_PUBLISH_MAX") * runsPerDay(JSON_SWEEP);
     expect(daily).toBeGreaterThan(0);
