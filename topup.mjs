@@ -68,12 +68,15 @@ const silent = silentSlugs(log, (t) => bySlug.has(t));
 // the page body. On 8 Sep 2026 that was 420 draws in a day, reported by the gate as
 // "missing total_entries" and therefore read as a parser gap for months. This machine's
 // residential IP is the entire remedy, which is what topup already is.
-// The floor of 3 keeps one flaky page from dragging a healthy operator into the retry list.
+// Keyed on draws LOST, not pages refused. An operator whose API description already carried
+// the cap and date loses nothing even with every page refused, and re-running it here would be
+// pure waste. The floor keeps one flaky page from dragging an otherwise healthy operator in.
 const PAGE_BLOCK_FLOOR = Number(process.env.PAGE_BLOCK_FLOOR || 3);
-const pageBlocked = pageBlockedSlugs(log, (t) => bySlug.has(t)).filter((x) => x.blocked >= PAGE_BLOCK_FLOOR);
+const pageBlocked = pageBlockedSlugs(log, (t) => bySlug.has(t)).filter((x) => x.lost >= PAGE_BLOCK_FLOOR);
 if (pageBlocked.length) {
-  console.log(`Product pages refused for ${pageBlocked.length} operator(s) that otherwise scraped fine:`);
-  for (const x of pageBlocked.slice(0, 12)) console.log(`  ${x.slug.padEnd(30)} ${x.blocked} of ${x.total} pages`);
+  const lost = pageBlocked.reduce((a, x) => a + x.lost, 0);
+  console.log(`Product pages refused: ${lost} draw(s) lost across ${pageBlocked.length} operator(s) that otherwise scraped fine:`);
+  for (const x of pageBlocked.slice(0, 12)) console.log(`  ${x.slug.padEnd(30)} ${x.lost} lost · ${x.blocked} of ${x.total} pages refused`);
   console.log();
 }
 

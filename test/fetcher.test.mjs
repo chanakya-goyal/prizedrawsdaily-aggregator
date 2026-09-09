@@ -60,6 +60,11 @@ describe("isRetryableStatus", () => {
   test("retries the transient refusals we actually see", () => {
     for (const s of [403, 408, 429, 500, 502, 503, 504]) expect(isRetryableStatus(s)).toBe(true);
   });
+  // Cloudflare's origin-side range. A single trade-tool-giveaways run took 14 × 520 under load
+  // and lost 14 draws outright, with no retry even attempted, because 52x was absent from the set.
+  test("retries Cloudflare's 52x origin errors — they describe the upstream, not the resource", () => {
+    for (const s of [520, 521, 522, 523, 524, 525, 526, 527]) expect(isRetryableStatus(s)).toBe(true);
+  });
   test("never retries 451 — a legal geo-block cannot succeed on attempt two", () => {
     expect(isRetryableStatus(451)).toBe(false);
   });
