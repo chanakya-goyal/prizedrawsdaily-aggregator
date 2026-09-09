@@ -51,7 +51,14 @@ try {
 } catch (e) {
   const msg = (e.message || "").split("\n")[0];
   console.log(`  goto   → FAILED: ${msg.slice(0, 160)}`);
-  const hint = /ERR_(TUNNEL_CONNECTION_FAILED|PROXY)/.test(msg)
+  // The real answer on 2026-09-09, found the first time this ran in the cloud routine sandbox:
+  // not the network at all. `bun install` pulls playwright 1.61.0, which wants chromium build
+  // 1228, while the sandbox image ships 1194 (dated 31 Mar). Playwright says so plainly in its
+  // launch error, so classify it rather than filing it under "unclassified" — the remedy is one
+  // command and belongs next to the symptom.
+  const hint = /Executable doesn't exist|Looks like Playwright.*was just installed or updated|browserType\.launch.*ENOENT/i.test(msg)
+    ? "the browser binary playwright expects is not installed here (version skew between the playwright package and the image's pre-installed build). Remedy: `bunx playwright install chromium` — or, durably, add that to the environment's setup script. Do NOT point executablePath at an older pre-installed build: a run tried that and got ERR_CONNECTION_RESET from the stale binary."
+    : /ERR_(TUNNEL_CONNECTION_FAILED|PROXY)/.test(msg)
     ? "the proxy is being used but refused the tunnel — check its allowlist/auth"
     : /ERR_CONNECTION_RESET|ERR_CONNECTION_REFUSED|ERR_ADDRESS_UNREACHABLE/.test(msg)
       ? (proxy
