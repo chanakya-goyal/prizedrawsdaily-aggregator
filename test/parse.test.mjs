@@ -752,3 +752,32 @@ describe("extractDate / fieldsFromHtml — short-form regressions", () => {
     expect(day(extractDate("closes 14/10/2026", undefined, { shortForm: false }))).toBe("2026-10-14");
   });
 });
+
+// The cash-prizes keyword list rejected its own plurals: the trailing \b cannot sit between
+// "credit" and "s", so "Site Credits", "2 vouchers", "gift cards" and "jackpots" all returned
+// null and sat as uncategorised drafts forever. Same words, counted properly — not a loosening.
+describe("cash-prizes matches plurals as well as singulars", () => {
+  const cat = (title) => inferCategory({ title });
+  test("both forms of every noun resolve to cash-prizes", () => {
+    for (const t of ["£50 Site Credit", "£50 Site Credits", "£25 store credit", "£25 store credits",
+                     "a voucher", "Win 2 vouchers", "gift card", "£100 gift cards",
+                     "jackpot", "jackpots", "bank transfer", "bank transfers", "e-gift", "e-gifts"]) {
+      expect(cat(t), t).toBe("cash-prizes");
+    }
+  });
+
+  // The guard that matters: this must not have widened into a catch-all. The reason the rule is
+  // strict at all is that an old `?? "cash-prizes"` fallback filled the Cash page with golf bags.
+  test("nothing else drifted into cash-prizes", () => {
+    expect(cat("Win a Shark vacuum")).toBe("tech-giveaways");
+    expect(cat("LEGO Technic Ferrari")).toBe("collectibles");
+    expect(cat("Win this BMW M3")).toBe("car-draws");
+    expect(cat("£40,000")).toBe(null);                 // a bare amount is still no evidence
+    expect(cat("Credit Suisse memorabilia")).not.toBe("cash-prizes"); // "credit" alone is not the keyword
+  });
+
+  test("operator taxonomy labels handle plurals too", () => {
+    expect(mapOperatorCategory(["Site Credits"])).toBe("cash-prizes");
+    expect(mapOperatorCategory(["Jackpots"])).toBe("cash-prizes");
+  });
+});
