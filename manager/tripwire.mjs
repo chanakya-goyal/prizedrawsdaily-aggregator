@@ -24,7 +24,8 @@ const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 export function evaluateTripwire({
   activeCount,
   floor,
-  scrapeOutcome,
+  scrapeOutcome,          // "success" | "failure" | "skipped" | … ; null/""/"unknown" = NOT OBSERVED
+  requireScrapeOutcome = false, // true in CI, where "not observed" means the workflow lost its wiring
   freshCount = null,
   minFresh = 1,
   target = null,
@@ -44,7 +45,24 @@ export function evaluateTripwire({
   const reasons = [];   // → exit 1, opens/comments the tripwire issue
   const warnings = [];  // → reported in tripwire.md, run stays green
 
-  if (scrapeOutcome !== "success") reasons.push(`scrape step outcome was '${scrapeOutcome}' (expected 'success')`);
+  // SCRAPE_OUTCOME comes from the workflow (`steps.scrape.outcome`) and from nowhere else, so
+  // ANY run outside the pipeline had no way to supply it — and the old `!== "success"` test read
+  // that silence as a failure. The daily QA routine runs this file standalone, so from
+  // 2026-09-09 it opened every report with "🔴 Broken: scrape step outcome was 'unknown'" while
+  // all four of that day's Action runs had in fact succeeded. This file's own header explains
+  // why that is the worst possible bug in an alarm: one that is red every day carries no
+  // information. Absence of the measurement is now reported as absence — the same rule
+  // activeCount and freshCount already follow, where null means "not measured" and never reds
+  // the run. `requireScrapeOutcome` keeps the check hard where it is actually load-bearing: in
+  // CI, an unsupplied outcome means someone deleted the env line and the alarm went blind.
+  const scrapeObserved = scrapeOutcome != null && !["", "unknown"].includes(String(scrapeOutcome).trim().toLowerCase());
+  if (scrapeObserved) {
+    if (scrapeOutcome !== "success") reasons.push(`scrape step outcome was '${scrapeOutcome}' (expected 'success')`);
+  } else if (requireScrapeOutcome) {
+    reasons.push("scrape step outcome was not supplied (SCRAPE_OUTCOME unset inside CI — the workflow lost its wiring)");
+  } else {
+    warnings.push("scrape outcome not checked — SCRAPE_OUTCOME is set by the pipeline and this run is outside it; every other check below still applies");
+  }
   if (activeCount != null && activeCount < floor) reasons.push(`live inventory ${activeCount} is under the floor of ${floor}`);
   if (freshCount != null && freshCount < minFresh) {
     reasons.push(`only ${freshCount} new draw(s) in the last 24h (expected at least ${minFresh}) — the scrape ran but produced nothing`);
@@ -217,7 +235,11 @@ if (import.meta.path === Bun.main) {
   // still means what it says.
   const target = Number(process.env.TRIPWIRE_TARGET || 350);
   const minFresh = Number(process.env.TRIPWIRE_MIN_FRESH || 1);
-  const scrapeOutcome = process.env.SCRAPE_OUTCOME || "unknown";
+  // null, not "unknown": everything else in this file uses null for "not measured".
+  const scrapeOutcome = process.env.SCRAPE_OUTCOME || null;
+  // GITHUB_ACTIONS is set by the runner itself, so it cannot be lost along with the env line
+  // this is guarding.
+  const requireScrapeOutcome = !!process.env.GITHUB_ACTIONS;
   const since = new Date(Date.now() - 24 * 3600e3).toISOString();
   const nowIso = new Date().toISOString();
 
@@ -374,7 +396,7 @@ if (import.meta.path === Bun.main) {
   ].join("\n");
 
   const { tripped, reasons, warnings } = evaluateTripwire({
-    activeCount, floor, scrapeOutcome, freshCount, minFresh, target, expiredDrafts, publishableDrafts,
+    activeCount, floor, scrapeOutcome, requireScrapeOutcome, freshCount, minFresh, target, expiredDrafts, publishableDrafts,
     byCategory, categoryFloors: CATEGORY_FLOORS, stalledOperators, deadOperators,
     storageBytes: storeBytes,
     storageQuotaBytes: Number(process.env.STORAGE_QUOTA_BYTES || 1073741824),
@@ -389,7 +411,7 @@ if (import.meta.path === Bun.main) {
     ...(reasons.length ? ["**Broken:**", ...reasons.map((x) => `- ${x}`), ""] : []),
     ...(warnings.length ? ["**Watch:**", ...warnings.map((x) => `- ${x}`), ""] : []),
     `Enterable draws: **${activeCount ?? "unknown"}** (active with a future draw_date; floor ${floor}, target ${target}) · `
-      + `new in 24h: **${freshCount ?? "unknown"}** · scrape outcome: **${scrapeOutcome}**`,
+      + `new in 24h: **${freshCount ?? "unknown"}** · scrape outcome: **${scrapeOutcome ?? "not checked (run outside the pipeline)"}**`,
     ...(staleActive ? [`Also holding **${staleActive}** active row(s) whose draw_date has passed — excluded from the count above.`] : []),
     "",
     "Check the run's coverage-report step summary for the per-operator picture.",
@@ -402,5 +424,5 @@ if (import.meta.path === Bun.main) {
 
   for (const w of warnings) console.log(`⚠️  ${w}`);
   if (tripped) { console.error(reasons.join("; ")); process.exit(1); }
-  console.log(`tripwire ok — enterable ${activeCount} (+${staleActive ?? 0} stale-dated), ${freshCount} new in 24h, scrape ${scrapeOutcome}`);
+  console.log(`tripwire ok — enterable ${activeCount} (+${staleActive ?? 0} stale-dated), ${freshCount} new in 24h, scrape ${scrapeOutcome ?? "not checked"}`);
 }

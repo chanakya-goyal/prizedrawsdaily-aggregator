@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { isPurchasable, hasAvailableVariant, productSlug, isPercentLiteralSlug, permalinkKey, FINISHED_RE, saysFinished } from "../lib/liveness.mjs";
+import { isPurchasable, hasAvailableVariant, productSlug, isPercentLiteralSlug, permalinkKey, pickProductForUrl, FINISHED_RE, saysFinished } from "../lib/liveness.mjs";
 
 describe("isPurchasable — the Woo Store API type bug", () => {
   test("boolean true/false behave as expected", () => {
@@ -158,5 +158,70 @@ describe("saysFinished — the marker must come from VISIBLE text", () => {
     expect(saysFinished(`<body><p>Enter now before this competition sells out!</p></body>`)).toBe(false);
     expect(saysFinished("")).toBe(false);
     expect(saysFinished(null)).toBe(false);
+  });
+});
+
+// ── The CloudFront cache-key bug ────────────────────────────────────────────────────────
+// Measured on lucky-day-competitions 2026-09-09: `/wp-json/wc/store/v1/products?slug=…` sits
+// behind a CDN that does NOT include the query string in its cache key, so ONE cached body is
+// served for every slug — including a slug that does not exist. Within ten minutes the same
+// endpoint returned, for EVERY slug asked:
+//     age=16     → [ samsung-galaxy-s26… ]   (one real product, the wrong one)
+//     age=15995  → [ ]                        (empty)
+// ended-sweep took `arr[0]` on trust, so ~10 different draws were each bound to whichever
+// product happened to be cached — and that product then decided their price (the audit
+// proposed one identical ticket_price across all of them), their draw date, and, far worse,
+// their PURCHASABILITY: one cached sold-out product would have expired the operator's entire
+// live catalogue. Identity has to be checked; position in the array proves nothing.
+describe("pickProductForUrl — never trust a product you did not ask for", () => {
+  const ninjaUrl = "https://www.luckydaycompetitions.com/product/ninja-luxe-cafe-pro-series/";
+  const ninja = { slug: "ninja-luxe-cafe-pro-series", permalink: "https://luckydaycompetitions.com/product/ninja-luxe-cafe-pro-series/" };
+  const samsung = { slug: "samsung-galaxy-s26-256-gb", permalink: "https://luckydaycompetitions.com/product/samsung-galaxy-s26-256-gb/" };
+
+  test("returns the product when the slug matches what we asked for", () => {
+    expect(pickProductForUrl([ninja], ninjaUrl)).toBe(ninja);
+  });
+
+  // THE REGRESSION. A single wrong product is exactly what the cache serves.
+  test("returns null when the ONLY product returned is a different one", () => {
+    expect(pickProductForUrl([samsung], ninjaUrl)).toBe(null);
+  });
+
+  test("picks the matching product out of a multi-product response", () => {
+    expect(pickProductForUrl([samsung, ninja], ninjaUrl)).toBe(ninja);
+  });
+
+  test("an empty response is null, not a throw", () => {
+    expect(pickProductForUrl([], ninjaUrl)).toBe(null);
+    expect(pickProductForUrl(null, ninjaUrl)).toBe(null);
+    expect(pickProductForUrl(undefined, ninjaUrl)).toBe(null);
+  });
+
+  // operators.json holds the apex base while stored entry_urls carry www (lucky-day is exactly
+  // this shape), so a strict permalink comparison would reject the CORRECT product and cost us
+  // verification coverage on a real operator. Identity is the path, not the host.
+  test("www vs apex on the permalink does not reject a correct product", () => {
+    expect(pickProductForUrl([ninja], ninjaUrl)).toBe(ninja);
+    const wwwPermalink = { slug: "ninja-luxe-cafe-pro-series", permalink: "https://www.luckydaycompetitions.com/product/ninja-luxe-cafe-pro-series/" };
+    expect(pickProductForUrl([wwwPermalink], "https://luckydaycompetitions.com/product/ninja-luxe-cafe-pro-series")).toBe(wwwPermalink);
+  });
+
+  test("trailing slash and query string on the stored url do not matter", () => {
+    expect(pickProductForUrl([ninja], "https://www.luckydaycompetitions.com/product/ninja-luxe-cafe-pro-series?ref=fb")).toBe(ninja);
+  });
+
+  test("slug comparison is case-insensitive", () => {
+    expect(pickProductForUrl([{ slug: "Ninja-Luxe-Cafe-Pro-Series" }], ninjaUrl)).toBeTruthy();
+  });
+
+  // Some Woo builds omit `slug` from the Store API payload; the permalink still identifies it.
+  test("falls back to the permalink path when the product has no slug field", () => {
+    const noSlug = { permalink: "https://luckydaycompetitions.com/product/ninja-luxe-cafe-pro-series/" };
+    expect(pickProductForUrl([noSlug], ninjaUrl)).toBe(noSlug);
+    expect(pickProductForUrl([{ permalink: "https://luckydaycompetitions.com/product/something-else/" }], ninjaUrl)).toBe(null);
+  });
+
+  test("a product carrying neither slug nor permalink can never match", () => {
+    expect(pickProductForUrl([{ name: "Ninja Luxe Cafe Pro Series" }], ninjaUrl)).toBe(null);
   });
 });

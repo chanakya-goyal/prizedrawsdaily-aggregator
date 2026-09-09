@@ -1,5 +1,6 @@
 // Discovery: render each JS operator like a real browser, then report what draw links exist.
 import { chromium } from "playwright";
+import { chromiumLaunchOptions } from "./lib/browser.mjs";
 
 const OPS = [
   ["7Days Performance", "https://7daysperformance.co.uk"],
@@ -10,7 +11,7 @@ const OPS = [
 ];
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch(chromiumLaunchOptions({ headless: true }));
 const ctx = await browser.newContext({ userAgent: UA, viewport: { width: 1280, height: 900 } });
 
 for (const [name, base] of OPS) {

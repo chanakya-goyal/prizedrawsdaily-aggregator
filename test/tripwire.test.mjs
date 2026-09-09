@@ -253,3 +253,55 @@ describe("publishableDrafts", () => {
     expect(r.warnings.some((w) => w.includes("still enterable and unpublished"))).toBe(true);
   });
 });
+
+// ── "unknown" is not a failure ──────────────────────────────────────────────────────────
+// SCRAPE_OUTCOME is set by the workflow (`steps.scrape.outcome`) and by nothing else. The CLI
+// defaulted it to the string "unknown" and the check was `!== "success"`, so ANY run outside
+// the pipeline reported 🔴 Broken. That matters now the daily QA routine runs tripwire.mjs
+// standalone every day: on 2026-09-09 it opened with "🔴 Broken: scrape step outcome was
+// 'unknown'" while all four of that day's Action runs had in fact succeeded. An alarm that is
+// red every single day is the exact failure this file's own header warns about.
+//
+// So absence of the measurement is reported as absence — the same rule the file already applies
+// to activeCount and freshCount, where null means "not measured" and never reds the run.
+describe("evaluateTripwire — an UNOBSERVED scrape outcome", () => {
+  const noOutcome = { activeCount: 400, floor: 150, target: 350, freshCount: 20 };
+
+  test("null does not trip — running outside the pipeline is not a broken pipeline", () => {
+    const r = evaluateTripwire({ ...noOutcome, scrapeOutcome: null });
+    expect(r.tripped).toBe(false);
+    expect(r.reasons).toEqual([]);
+  });
+
+  test("the literal string 'unknown' is treated as unobserved, not as a failure", () => {
+    expect(evaluateTripwire({ ...noOutcome, scrapeOutcome: "unknown" }).tripped).toBe(false);
+  });
+
+  test("an empty string is unobserved too", () => {
+    expect(evaluateTripwire({ ...noOutcome, scrapeOutcome: "" }).tripped).toBe(false);
+  });
+
+  test("but it says so in the warnings, so a green report never implies the scrape was checked", () => {
+    const r = evaluateTripwire({ ...noOutcome, scrapeOutcome: null });
+    expect(r.warnings.join(" ")).toMatch(/scrape outcome not checked/i);
+  });
+
+  // The protection this must NOT lose. If someone deletes the SCRAPE_OUTCOME line from
+  // aggregate.yml, the alarm would silently stop watching the thing it was built to watch.
+  test("in CI an unobserved outcome still trips — the workflow lost its wiring", () => {
+    const r = evaluateTripwire({ ...noOutcome, scrapeOutcome: null, requireScrapeOutcome: true });
+    expect(r.tripped).toBe(true);
+    expect(r.reasons.join(" ")).toMatch(/not supplied/i);
+  });
+
+  test("a real failure still trips whether or not it is required", () => {
+    expect(evaluateTripwire({ ...noOutcome, scrapeOutcome: "failure" }).tripped).toBe(true);
+    expect(evaluateTripwire({ ...noOutcome, scrapeOutcome: "skipped", requireScrapeOutcome: true }).tripped).toBe(true);
+  });
+
+  test("success is still success, and adds no warning", () => {
+    const r = evaluateTripwire({ ...noOutcome, scrapeOutcome: "success", requireScrapeOutcome: true });
+    expect(r.tripped).toBe(false);
+    expect(r.warnings.join(" ")).not.toMatch(/scrape outcome not checked/i);
+  });
+});

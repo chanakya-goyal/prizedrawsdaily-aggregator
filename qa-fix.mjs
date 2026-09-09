@@ -10,6 +10,7 @@
 //
 //   DRY_RUN=true (default) report old→new;  DRY_RUN=false apply PATCHes.  ONLY=slug to scope.
 import { UA, categoryEvidence } from "./lib/parse.mjs";
+import { pickProductForUrl } from "./lib/liveness.mjs";
 const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
@@ -73,7 +74,9 @@ function realGrandPrize(desc, title) {
 async function fetchComp(op, slug, entry_url) {
   if (op.method === "woo") {
     const arr = await (await fetch(`${op.base}/wp-json/wc/store/v1/products?slug=${encodeURIComponent(slug)}`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) })).json().catch(() => []);
-    const p = Array.isArray(arr) ? arr[0] : null;
+    // Same trap as ended-sweep: `?slug=` is a filter on a cacheable endpoint, so a CDN that
+    // ignores the query string hands back one product for every slug. See pickProductForUrl.
+    const p = pickProductForUrl(arr, entry_url);
     if (!p) return null;
     const remTxt = p.stock_availability?.text || "";
     const rem = /(\d[\d,]*)\s*in stock/i.test(remTxt) ? +remTxt.match(/(\d[\d,]*)\s*in stock/i)[1].replace(/,/g, "") : null;

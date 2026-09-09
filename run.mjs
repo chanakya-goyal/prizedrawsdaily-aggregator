@@ -7,6 +7,7 @@
 // run re-reads the same URL and agrees with it (lib/verify.mjs) — publishing is this script's
 // job now, not the cowork routine's, which QAs the result and rewrites descriptions.
 import { chromium } from "playwright";
+import { chromiumLaunchOptions } from "./lib/browser.mjs";
 import { renderOperator, wooOperator, shopifyOperator, apiOperator, dedupe, makeContext, renderLivenessMode, pageBlocks } from "./extractor.mjs";
 import { gate } from "./gate.mjs";
 import { templateDescription } from "./lib/describe.mjs";
@@ -187,7 +188,7 @@ const knownUrls = new Set(existing.filter((d) => d.entry_url).map((d) => permali
 console.log(`loaded ${cats.length} cats, ${dbOps.length} operators, ${existing.length} existing draws\n`);
 
 const needsBrowser = operators.some((o) => o.method === "render");
-const browser = needsBrowser ? await chromium.launch({ headless: true, args: ["--disable-blink-features=AutomationControlled"] }) : null;
+const browser = needsBrowser ? await chromium.launch(chromiumLaunchOptions({ headless: true, args: ["--disable-blink-features=AutomationControlled"] })) : null;
 const ctx = browser ? await makeContext(browser) : null;
 
 const toInsert = [];

@@ -91,6 +91,15 @@ whatever happens, always produce the step-5 report.
    — for woo operators prefer the clean source:
    `curl -s -A "Mozilla/5.0" "<operator base>/wp-json/wc/store/v1/products?slug=<last URL segment>"`
    (some need the query form: `<base>/?rest_route=/wc/store/v1/products&slug=<segment>`).
+   ⚠️ **CHECK THAT THE PRODUCT THAT COMES BACK IS THE ONE YOU ASKED FOR** — compare its `slug`
+   field against the segment you sent, and discard the response if they differ. `?slug=` is a
+   filter on a cacheable collection endpoint, not a lookup: an operator whose CDN leaves the
+   query string out of its cache key serves ONE cached body for every slug. Measured on
+   lucky-day-competitions 2026-09-09, the same endpoint answered every slug — including one that
+   does not exist — with a single unrelated product, which is how ~10 rows came to be "verified"
+   against a stranger's price. If the slug does not match, fall back to the listing feed
+   (`<base>/wp-json/wc/store/v1/products?per_page=100`) and match on `permalink`, or read the
+   product page itself. A payload that looks perfectly valid is not evidence that it is yours.
    Check five things: **title** (entity/emoji/whitespace churn and an appended " - AUTO DRAW"
    are not mismatches), **ticket_price** (R2), **draw DAY** (R3), **image_url** loads
    (`curl -sI` → 2xx and an image content-type), **entry_url** loads (2xx/3xx and is still the
@@ -98,6 +107,12 @@ whatever happens, always produce the step-5 report.
    FAIL(<field>: row says X, page says Y).
    - Bot-blocked (403/challenge) with nothing else suspicious is NOT a fail: mark it UNVERIFIED
      and draw a replacement so the sample is still 10 checked draws.
+   - JS-rendered operators (UKCC, 7Days, Lucky Day…) need a browser, and a browser does not
+     always have one. Do NOT hand-write a render script and retry it: run `bun browser-doctor.mjs
+     "<entry_url>"` ONCE. If it reports chromium cannot reach the web, stop rendering for the
+     whole run, mark those rows UNVERIFIED, draw replacements, and paste the doctor's output
+     verbatim into the report under "Environment" — that output is the diagnosis, and guessing
+     at it has already cost one run six turns.
    - FAIL → patch the ONE proven-wrong field from the page:
      `bun manager/draw-update.mjs <id> '{"ticket_price":2.5}'`. If the page can't be read
      cleanly, or more than one field is wrong, send the row back to the gate instead:

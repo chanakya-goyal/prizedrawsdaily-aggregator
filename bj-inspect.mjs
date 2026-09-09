@@ -1,5 +1,6 @@
 // What do Bounty + Jammy actually render through the stealth browser?
 import { chromium } from "playwright";
+import { chromiumLaunchOptions } from "./lib/browser.mjs";
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
 const OPS = [
@@ -7,7 +8,7 @@ const OPS = [
   ["Jammy", "https://www.jammy.co.uk"],
 ];
 
-const browser = await chromium.launch({ headless: true, args: ["--disable-blink-features=AutomationControlled"] });
+const browser = await chromium.launch(chromiumLaunchOptions({ headless: true, args: ["--disable-blink-features=AutomationControlled"] }));
 const ctx = await browser.newContext({
   userAgent: UA,
   viewport: { width: 1280, height: 900 },
