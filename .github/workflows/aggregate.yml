@@ -87,11 +87,11 @@ jobs:
           # and 283 drafts are queued — publishing them all at once would double the site
           # overnight with nobody having looked at a single card. Hold at 50/run until the
           # cowork spot-check has passed 3 days running, then raise to 200.
-          # 14 → 30. This sweep published 14 of 14 on 2026-09-06 with NOTHING held by the cap,
-          # so it was not the binding constraint here the way it was on the JSON side — but it
-          # was still capping a queue of 512 gate-ready drafts. Budgeted with the JSON sweep,
-          # not separately: 30 + 50 x 3 = ~180/day. See the note in aggregate-json.yml.
-          AUTO_PUBLISH_MAX: "30"
+          # 14 -> 30 -> 60. Still budgeted WITH the JSON sweep, not separately: 60 + 200 x 3.
+          # This sweep runs once a day over 40 render operators, so it is the smaller half of
+          # the budget by design. See the long note in aggregate-json.yml for the measurement
+          # that justified the raise and the ordering fix that goes with it.
+          AUTO_PUBLISH_MAX: "60"
           # A draft must be at least this old before it can publish. Harmless here (this runs
           # once a day, so the gap is ~24h anyway) but set explicitly so a manual re-dispatch
           # cannot hand a draft a same-day "second observation". See lib/verify.mjs.

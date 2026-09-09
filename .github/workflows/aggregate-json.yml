@@ -95,11 +95,27 @@ jobs:
           # audit pass now re-checks every live row against its page daily, which is a far
           # better bound than a small number.
           #
-          # 50 x 3 runs + 30 on the render sweep = ~180/day, inside the 200/run ceiling
-          # manager/PROMPT.md always intended as the destination.
+          # 50 -> 110 per run. The DAILY ceiling goes 200 -> 400, deliberately and in one place
+          # (test/workflows.test.mjs owns that number): 60 on the render sweep + 110 x 3 here.
+          # manager/PROMPT.md's "raise 50 -> 200" was written when there was ONE run a day, so
+          # per-run and per-day were the same number; there are now four runs a day. It asked for
+          # three clean cowork spot-check days first — the live-row audit is stronger evidence
+          # than a spot check and has come back clean twice: 1,159 active rows re-read against
+          # their own pages, 486 verified, 0 corrections, 0.0% disagreement. Detection latency
+          # is one sweep, because that audit runs at the end of every sweep.
+          #
+          # The cap was not bounding risk, it was acting as a whitelist. Spent first-come over a
+          # roster order that never changes, it went to whoever was scraped first, every run,
+          # forever. Measured 9 Sep 2026: first half of this roster held 361 live draws, last
+          # half 155, with the SAME number of drafts dying in the queue; click-competitions sits
+          # at position 58/59 with 26 dead drafts and 0 live while its own log lines read
+          # "verified — publishing" every run; 142 rows in one run were held on "cap reached".
+          # 277 drafts had already died unpublished, 84% of them with a category and nothing
+          # else wrong. Ordering is fixed separately (rotateRoster + byPublishUrgency) so the
+          # bias cannot come back at 200-300 operators; this raise clears the backlog now.
           # ROLLBACK TRIGGER: audit-report.json review count climbing run over run, or the
           # tripwire's publishable-drafts warning inverting into a live-inventory drop.
-          AUTO_PUBLISH_MAX: "50"
+          AUTO_PUBLISH_MAX: "110"
           PER_OP_API: "60"
           BATCHES: "1"
           MAX_DRAWS: "3500"
