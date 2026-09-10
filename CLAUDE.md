@@ -9,6 +9,14 @@ Default to using Bun instead of Node.js.
 - Use `bunx <package> <command>` instead of `npx <package> <command>`
 - Bun automatically loads .env, so don't use dotenv.
 
+## Docs
+
+- **This file** — how the system works *today*.
+- **[`DECISIONS.md`](DECISIONS.md)** — the standing laws this pipeline may not break (a past date never ends a draw; absence from a feed is not evidence; `total_entries` is required), each with what would reverse it. **Read before changing anything in `lib/verify.mjs` or `ended-sweep.mjs`.**
+- **[`../pdd-seo-tools/docs/LESSONS.md`](../pdd-seo-tools/docs/LESSONS.md)** — the fleet-wide mistakes log. Every entry names the mechanical check that now catches the trap.
+- `tripwire.md` is **generated** — edit `manager/tripwire.mjs`, not the file.
+
+
 ## APIs
 
 - `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
