@@ -13,6 +13,7 @@ import { toDrawSlide } from "./format.mjs";
 import { GLOBAL, workDir } from "./config.mjs";
 import { withRetry } from "./util.mjs";
 import { upsertPost, todayLondon, getPost } from "./state.mjs";
+import { uploadHeaders } from "../lib/storage.mjs";
 
 const DIR = workDir();
 const OUT = `${DIR}/out`;
@@ -84,7 +85,7 @@ async function ensureBucket() {
 async function upload(path, buf, contentType = "image/jpeg") {
   const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
     method: "POST",
-    headers: { apikey: KEY, Authorization: "Bearer " + KEY, "Content-Type": contentType, "x-upsert": "true" },
+    headers: uploadHeaders({ serviceKey: KEY, contentType }),
     body: buf,
   });
   if (!r.ok) throw new Error(`upload ${path} failed ${r.status}: ${(await r.text()).slice(0, 160)}`);

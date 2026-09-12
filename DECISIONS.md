@@ -136,3 +136,46 @@ header is therefore a message to whoever opens it, not a gate. That is also why
 
 **Reverses if:** the file stops being regenerated, at which point it should be deleted
 rather than maintained.
+
+---
+
+## 2026-09-12 · Every Storage upload carries a long-lived `Cache-Control`.
+
+**Decided:** all uploads go through `uploadHeaders()` (`lib/storage.mjs`), which sets
+`cache-control: public, max-age=31536000`. A body-carrying write to Storage that
+hand-rolls its own headers is a test failure (`test/storage.test.mjs`).
+
+**Rejected:** leaving it to each call site. Three sites (`lib/rehost.mjs`,
+`compress-images.mjs`, `carousel/publish.mjs`) each built their own header object and
+**all three** omitted cache-control. This is not a thing people remember.
+
+**Evidence:** an upload with no cache-control header is stored by Supabase as
+`cacheControl: "no-cache"`. On 2026-09-12 that was **100% of the bucket** — 5,397
+objects, 596 MB, not one exception. The site renders every image through
+images.weserv.nl, and weserv honours the origin:
+
+| origin `cache-control` | weserv          | consequence                              |
+|------------------------|-----------------|------------------------------------------|
+| `no-cache` (ours)      | `BYPASS`        | re-downloads the **full-size original** from Supabase on **every impression** |
+| `public, max-age=…`    | `MISS` (storable) | downloads once                         |
+
+So a 205 KB original was re-fetched from Supabase every time anyone loaded a card
+showing its 76 KB thumbnail. 596 MB of stored images produced **6.37 GB of egress**
+against a 5 GB free-tier limit — 12.7x the size of the entire bucket — and put the org
+over quota with restriction scheduled for 12 Oct 2026. Storage was never the problem:
+file storage sat at 0.40/1 GB the whole time.
+
+**Verified before shipping, not assumed:** a probe object uploaded with the header
+served `public, max-age=31536000` on GET and flipped weserv from BYPASS to MISS.
+
+**Trap this cost us once:** `curl -I` (HEAD) against Supabase Storage reports
+`no-cache` even for a correctly-cached object — only a **GET** shows the true header.
+The first read of this incident was nearly abandoned on that false signal. Always
+verify a Storage cache header with GET.
+
+**Not `immutable`:** these keys are upserted in place (`compress-images.mjs` rewrites
+the same path; a re-ingest can replace a draw's photo), so a client that chooses to
+revalidate must still be able to pick up replaced bytes.
+
+**Reverses if:** images stop being served through a shared proxy AND move to a host
+whose egress is free, at which point the TTL stops being load-bearing — not before.
