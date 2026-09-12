@@ -41,6 +41,7 @@ export function evaluateTripwire({
   storageRedPct = 90,
   staleActive = null,  // status='active' but draw_date already passed — counted as live, isn't
   futureEnded = null,  // status='ended' but draw_date still ahead — expired early
+  imageCache = null,   // { checked, uncacheable, sample } — see uncacheableImages()
 }) {
   const reasons = [];   // → exit 1, opens/comments the tripwire issue
   const warnings = [];  // → reported in tripwire.md, run stays green
@@ -159,6 +160,40 @@ export function evaluateTripwire({
     }
   }
 
+  // EGRESS is the other quota that restricts the whole org, and unlike storage it is
+  // invisible in the dashboard until it is already spent. On 2026-09-12 egress hit
+  // 6.37 GB of the 5 GB free allowance while file storage sat at a comfortable
+  // 0.40/1 GB — the bucket was small, it was just being sent out over and over.
+  //
+  // Cause: an object uploaded with no cache-control header is stored `no-cache`, and
+  // images.weserv.nl (which the site proxies every image through) then answers BYPASS
+  // and re-downloads the FULL-SIZE original from Supabase on EVERY impression. 596 MB
+  // of images produced 6.37 GB of egress — 12.7x the whole bucket.
+  //
+  // lib/storage.mjs makes that unforgettable for new uploads and a unit test guards the
+  // call sites, but neither can see the live bucket: a backfill that silently failed, a
+  // restored-from-backup object, or an upload path added outside this repo would all be
+  // invisible. This samples what the CDN actually serves.
+  //
+  // Must be measured with GET — HEAD against Supabase Storage reports `no-cache` even
+  // for a correctly-cached object.
+  if (imageCache != null && imageCache.checked > 0) {
+    const { checked, uncacheable, sample } = imageCache;
+    if (uncacheable > 0) {
+      const pct = Math.round((uncacheable / checked) * 100);
+      const shown = (sample || []).slice(0, 3).join("; ");
+      const msg =
+        `${uncacheable}/${checked} sampled draw images (${pct}%) serve an uncacheable ` +
+        `cache-control — weserv will BYPASS and re-download the original on every ` +
+        `impression, which is what put the org over its egress quota on 2026-09-12` +
+        (shown ? `: ${shown}` : "");
+      // Majority uncacheable means the fix is not in force at all — that is the
+      // incident repeating, not drift. A minority is drift worth a warning.
+      if (pct >= 50) reasons.push(msg);
+      else warnings.push(msg);
+    }
+  }
+
   return { tripped: reasons.length > 0, reasons, warnings };
 }
 
@@ -223,6 +258,38 @@ async function storageBytes() {
   } catch { return null; }
 }
 
+// Sample what the CDN actually serves for our own draw images. Returns
+// { checked, uncacheable, sample } or null on any failure — a missing signal must
+// never red the run by itself.
+//
+// GET, not HEAD: Supabase Storage answers HEAD with `no-cache` even for a correctly
+// cached object, so a HEAD-based check would report 100% uncacheable forever.
+async function uncacheableImages(limit = 12) {
+  try {
+    const prefix = `${SB}/storage/v1/object/public/`;
+    const live = await rows(
+      `draws?select=image_url&status=eq.active&image_url=not.is.null&limit=${limit * 6}`,
+    );
+    const ours = [...new Set(live.map((d) => d.image_url).filter((u) => typeof u === "string" && u.startsWith(prefix)))].slice(0, limit);
+    if (ours.length === 0) return null;
+
+    let uncacheable = 0;
+    const sample = [];
+    for (const url of ours) {
+      const r = await fetch(`${url}?cc-probe=${Date.now()}`, { signal: AbortSignal.timeout(20000) });
+      await r.arrayBuffer().catch(() => {});
+      const cc = r.headers.get("cache-control") || "";
+      // "cacheable" = a positive max-age and no no-cache/no-store.
+      const maxAge = Number(cc.match(/max-age=(\d+)/)?.[1] || 0);
+      if (!maxAge || /no-cache|no-store/.test(cc)) {
+        uncacheable++;
+        if (sample.length < 3) sample.push(`${url.slice(prefix.length).slice(0, 48)} -> "${cc || "(none)"}"`);
+      }
+    }
+    return { checked: ours.length, uncacheable, sample };
+  } catch { return null; }
+}
+
 if (import.meta.path === Bun.main) {
   const floor = Number(process.env.TRIPWIRE_FLOOR || 150);
   // ⚠️ TARGET IS UNCALIBRATED FOR THE NEW METRIC. 350 was chosen when `activeCount` meant
@@ -247,7 +314,7 @@ if (import.meta.path === Bun.main) {
   const quietSince = new Date(Date.now() - QUIET_DAYS * 864e5).toISOString();
   const CATEGORY_FLOORS = JSON.parse(process.env.TRIPWIRE_CATEGORY_FLOORS || '{"car-draws":10}');
 
-  const [activeCount, freshCount, expiredDrafts, publishableDrafts, liveRows, recentRows, storeBytes, operatorRoster, historyRows, blockedDraftsCount, staleActive, futureEnded] = await Promise.all([
+  const [activeCount, freshCount, expiredDrafts, publishableDrafts, liveRows, recentRows, storeBytes, operatorRoster, historyRows, blockedDraftsCount, staleActive, futureEnded, imageCache] = await Promise.all([
     // Date-guarded on purpose. `status=eq.active` alone counted 759 on 2026-08-30 when only
     // 362 of those rows were enterable — the floor (150) and target (350) were being compared
     // against a number 2.1x the truth, so a real collapse to ~200 live draws would still have
@@ -284,6 +351,8 @@ if (import.meta.path === Bun.main) {
     // The two halves of the status/draw_date disagreement, reported as warnings above.
     count(`draws?select=id&status=eq.active&draw_date=lt.${nowIso}`),
     count(`draws?select=id&status=eq.ended&draw_date=gte.${nowIso}`),
+    // What the CDN actually serves for our images — the egress alarm's only live signal.
+    uncacheableImages(),
   ]);
 
   // An operator we deliberately switched off will always look "stalled" — warning about it
@@ -399,6 +468,7 @@ if (import.meta.path === Bun.main) {
     activeCount, floor, scrapeOutcome, requireScrapeOutcome, freshCount, minFresh, target, expiredDrafts, publishableDrafts,
     byCategory, categoryFloors: CATEGORY_FLOORS, stalledOperators, deadOperators,
     storageBytes: storeBytes,
+    imageCache,
     storageQuotaBytes: Number(process.env.STORAGE_QUOTA_BYTES || 1073741824),
     storageWarnPct: Number(process.env.STORAGE_WARN_PCT || 70),
     storageRedPct: Number(process.env.STORAGE_RED_PCT || 90),

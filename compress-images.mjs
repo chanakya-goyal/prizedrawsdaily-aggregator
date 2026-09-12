@@ -21,6 +21,7 @@
 //
 // Safe to interrupt and re-run: shouldSkip() ignores anything already webp or already small.
 import { fetchWebp, shouldSkip, WEBP_W, WEBP_Q } from "./lib/compress.mjs";
+import { uploadHeaders } from "./lib/storage.mjs";
 
 const URL_ = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -85,7 +86,7 @@ async function overwrite(path, buf) {
   await withRetry(async () => {
     const r = await fetch(`${URL_}/storage/v1/object/${BUCKET}/${encodeURI(path)}`, {
       method: "POST",
-      headers: { ...H, "Content-Type": "image/webp", "x-upsert": "true" },
+      headers: uploadHeaders({ serviceKey: KEY, contentType: "image/webp" }),
       body: buf,
       signal: AbortSignal.timeout(60_000),
     });

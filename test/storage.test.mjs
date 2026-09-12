@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { objectPathFromUrl, classifyOrphans, PUBLIC_PREFIX } from "../lib/storage.mjs";
+import { objectPathFromUrl, classifyOrphans, PUBLIC_PREFIX, UPLOAD_CACHE_CONTROL, uploadHeaders } from "../lib/storage.mjs";
 
 const creds = { supabaseUrl: "https://proj.supabase.co", bucket: "draw-images" };
 const PREFIX = PUBLIC_PREFIX(creds);
@@ -95,5 +95,72 @@ describe("classifyOrphans", () => {
     const fresh = new Date(now - 1 * DAY).toISOString();
     const { orphans } = classifyOrphans([file("op/x.webp", fresh)], new Set(), { now });
     expect(orphans).toHaveLength(1);
+  });
+});
+
+describe("upload cache-control", () => {
+  // Why this exists: an upload sent with no `cache-control` header is stored by
+  // Supabase as `cacheControl: "no-cache"`. images.weserv.nl then answers BYPASS
+  // and re-downloads the full-size original from Supabase on every impression, so
+  // 596 MB of images produced 6.37 GB of egress and blew the free-tier quota
+  // (2026-09). The header is the whole fix, so it is asserted, not assumed.
+
+  test("the shared value is long-lived and publicly cacheable", () => {
+    expect(UPLOAD_CACHE_CONTROL).toMatch(/(^|[\s,])public([\s,]|$)/);
+    const maxAge = Number(UPLOAD_CACHE_CONTROL.match(/max-age=(\d+)/)?.[1]);
+    // A short TTL re-downloads the whole bucket every period and puts us straight
+    // back over quota; a day is the floor that makes the fix worth shipping.
+    expect(maxAge).toBeGreaterThanOrEqual(86400);
+  });
+
+  test("never `no-cache` / `no-store` — the exact default that caused the incident", () => {
+    expect(UPLOAD_CACHE_CONTROL).not.toMatch(/no-cache|no-store|max-age=0/);
+  });
+
+  test("not `immutable`, because upload paths are upserted in place", () => {
+    // compress-images.mjs rewrites the same key, and a re-ingest can replace a
+    // draw's photo. `immutable` forbids revalidation and strands stale bytes.
+    expect(UPLOAD_CACHE_CONTROL).not.toMatch(/immutable/);
+  });
+
+  test("uploadHeaders carries the cache-control and upsert", () => {
+    const h = uploadHeaders({ serviceKey: "svc", contentType: "image/webp" });
+    expect(h["cache-control"]).toBe(UPLOAD_CACHE_CONTROL);
+    expect(h["Content-Type"]).toBe("image/webp");
+    expect(h["x-upsert"]).toBe("true");
+    expect(h.Authorization).toBe("Bearer svc");
+    expect(h.apikey).toBe("svc");
+  });
+});
+
+describe("no upload site may hand-roll its headers", () => {
+  // The guard that makes the fix stick. Three separate call sites had each built
+  // their own header object and all three omitted cache-control; a fourth would
+  // have done the same. Any body-carrying write to Storage must route through
+  // uploadHeaders() so the cache-control cannot be forgotten again.
+  const SRC = [
+    "lib/rehost.mjs",
+    "compress-images.mjs",
+    "carousel/publish.mjs",
+    "prune-orphans.mjs",
+    "carousel/cleanup.mjs",
+  ];
+
+  test("every storage upload in the repo uses uploadHeaders()", async () => {
+    const offenders = [];
+    for (const rel of SRC) {
+      const text = await Bun.file(new URL(`../${rel}`, import.meta.url)).text();
+      for (const chunk of text.split("fetch(").slice(1)) {
+        const call = chunk.slice(0, 500);
+        // `/object/list/` is a POST with a JSON body but reads, not writes. An
+        // upload targets `/object/<bucket>/<path>` directly.
+        const isStorage = call.includes("storage/v1/object") && !call.includes("/object/list/");
+        const isWrite = /method:\s*"(POST|PUT)"/.test(call) && /\bbody:/.test(call);
+        if (isStorage && isWrite && !call.includes("uploadHeaders")) {
+          offenders.push(`${rel}: ${call.split("\n")[0].trim().slice(0, 70)}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });
