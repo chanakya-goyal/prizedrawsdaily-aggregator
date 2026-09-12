@@ -305,3 +305,34 @@ describe("evaluateTripwire — an UNOBSERVED scrape outcome", () => {
     expect(r.warnings.join(" ")).not.toMatch(/scrape outcome not checked/i);
   });
 });
+
+describe("evaluateTripwire — uncacheable images (the 2026-09 egress incident)", () => {
+  const base = { activeCount: 400, floor: 150, target: 350, scrapeOutcome: "success", freshCount: 20 };
+
+  test("all-cacheable is silent", () => {
+    const r = evaluateTripwire({ ...base, imageCache: { checked: 12, uncacheable: 0, sample: [] } });
+    expect(r.tripped).toBe(false);
+    expect(r.warnings.join(" ")).not.toMatch(/cache-control/i);
+  });
+
+  test("a majority uncacheable REDS the run — that is the incident repeating", () => {
+    // The state the bucket was actually in on 2026-09-12: 100% no-cache, which made
+    // weserv BYPASS and re-download every original on every impression.
+    const r = evaluateTripwire({ ...base, imageCache: { checked: 12, uncacheable: 12, sample: ["op/a.webp -> \"no-cache\""] } });
+    expect(r.tripped).toBe(true);
+    expect(r.reasons.join(" ")).toMatch(/uncacheable cache-control/i);
+    expect(r.reasons.join(" ")).toMatch(/egress quota/i);
+  });
+
+  test("a minority uncacheable warns but stays green — that is drift, not the incident", () => {
+    const r = evaluateTripwire({ ...base, imageCache: { checked: 12, uncacheable: 2, sample: [] } });
+    expect(r.tripped).toBe(false);
+    expect(r.warnings.join(" ")).toMatch(/uncacheable cache-control/i);
+  });
+
+  test("not measured never reds the run by itself", () => {
+    // Same rule as storageBytes/activeCount: null means "not measured", never "broken".
+    expect(evaluateTripwire({ ...base, imageCache: null }).tripped).toBe(false);
+    expect(evaluateTripwire({ ...base, imageCache: { checked: 0, uncacheable: 0 } }).tripped).toBe(false);
+  });
+});
