@@ -276,7 +276,10 @@ async function uncacheableImages(limit = 12) {
     let uncacheable = 0;
     const sample = [];
     for (const url of ours) {
-      const r = await fetch(`${url}?cc-probe=${Date.now()}`, { signal: AbortSignal.timeout(20000) });
+      // No cache-buster: Supabase's CDN ignores the query string for its cache key,
+      // so one would not force a fresh response anyway — and reading exactly what a
+      // real client (weserv, a browser) is served is the point of this check.
+      const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
       await r.arrayBuffer().catch(() => {});
       const cc = r.headers.get("cache-control") || "";
       // "cacheable" = a positive max-age and no no-cache/no-store.
