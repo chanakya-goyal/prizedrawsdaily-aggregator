@@ -179,3 +179,32 @@ revalidate must still be able to pick up replaced bytes.
 
 **Reverses if:** images stop being served through a shared proxy AND move to a host
 whose egress is free, at which point the TTL stops being load-bearing — not before.
+
+### Backfilling it: two cheaper routes were tested and BOTH FAIL. Do not retry them.
+
+Supabase has no metadata-only update, so fixing the ~5,400 existing objects means
+re-uploading the bytes — one download each. Before accepting that cost, both zero-egress
+shortcuts were tried against the live bucket on 2026-09-12:
+
+1. **Patching `storage.objects.metadata->>'cacheControl'` in Postgres.** The row updates and
+   reads back correctly, but the **served header never changes** — the serving layer does not
+   read that row. `backfill-cache-control.mjs` originally did this; its own verify step caught
+   it, rolled the probe back and refused to continue, which is why the guard exists.
+2. **`POST /storage/v1/object/copy` with a `cache-control` header and `copyMetadata:false`.**
+   Returns 200 and creates the object with `cacheControl:"no-cache"` regardless.
+
+Only a normal upload carrying the header works. So the backfill is scoped by what actually
+costs egress — images on **live** draws (1,580 obj / ~179 MB) carry nearly all the benefit,
+versus 595 MB for every referenced object; 34 orphans are never fetched and are skipped
+entirely.
+
+### Two measurement traps, both of which produced a false conclusion in-session
+
+- **HEAD lies.** `curl -I` against Supabase Storage reports `no-cache` even for a correctly
+  cached object. Only a GET shows the true header.
+- **The CDN ignores the query string when building its cache key.** A `?bust=` param does NOT
+  force a fresh response: a freshly re-uploaded object keeps serving the OLD header with
+  `cf-cache-status: HIT` for roughly **15-30 seconds** before the CDN revalidates. Verifying
+  immediately after an upload reports a false failure — `servedCacheControl()` polls for this
+  reason. The object's stored metadata is correct the instant the upload returns; only the
+  edge lags.
