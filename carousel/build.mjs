@@ -14,6 +14,8 @@ import { readdir, mkdir } from "node:fs/promises";
 import { workDir, catCfg } from "./config.mjs";
 import { valueLine, altTexts } from "./honesty.mjs";
 import { minDimOk } from "./imgcheck.mjs";
+import { chromium } from "playwright";
+import { openEngine, normalise } from "./normalise.mjs";
 
 const DIR = workDir();
 const sel = JSON.parse(await Bun.file(`${DIR}/selection.json`).text());
@@ -72,6 +74,65 @@ sel.draws.forEach((d, i) => console.log(`  ${i + 1}. ${d.slug.slice(0, 44).padEn
 
 const photoData = {};
 for (const s of haveSlugs) photoData[s] = await toDataUrl(srcPath[s]);
+
+// ---- asset normalisation and the collage gate (spec §9, §5.6) --------------------------
+// Every photograph that reaches a slide goes through one normaliser first: one master size, a
+// trimmed border, and a conservative tone pass. The border trim is the part that earns its keep
+// beyond looks — Instagram's own ranking note makes content "less visible" when it carries
+// borders, and a good third of operator artwork ships inside a coloured frame.
+//
+// The transform is honestly modest on this inventory, because most of what operators publish is
+// MARKETING ARTWORK rather than product photography. So the valuable output is not the pixels,
+// it is the CLASSIFICATION: a draw whose image reads as a poster is swapped for a backup rather
+// than shipped, which is the image-quality gate §5.6 asks for. The deck loses a draw it could
+// not show well and gains one it can.
+// ONE launch for the whole build: the normaliser and the renderer share it.
+const browser = await chromium.launch();
+const engine = await openEngine(browser);
+const sheet = [];
+const posterRisk = {};
+try {
+  for (const d of [...sel.draws, ...(sel.backups || [])]) {
+    const src = photoData[d.slug] || d.image_url;
+    if (!src) continue;
+    const buf = src.startsWith("data:")
+      ? Buffer.from(src.split(",")[1], "base64")
+      : await (async () => { const r = await fetch(src); return r.ok ? Buffer.from(await r.arrayBuffer()) : null; })();
+    if (!buf) { sheet.push({ slug: d.slug, ok: false, reason: "fetch-failed" }); continue; }
+    let n;
+    try { n = await normalise(engine, buf); }
+    catch (e) { sheet.push({ slug: d.slug, ok: false, reason: "normalise-threw", detail: String(e.message).slice(0, 90) }); continue; }
+    if (!n.ok) { sheet.push({ slug: d.slug, ok: false, reason: n.reason, detail: n.detail }); continue; }
+    photoData[d.slug] = `data:image/jpeg;base64,${n.buffer.toString("base64")}`;
+    posterRisk[d.slug] = n.poster;
+    sheet.push({
+      slug: d.slug, ok: true, ground: n.ground, poster: n.poster,
+      source: srcKind[d.slug] || "stored image_url",
+      padded: n.m.padded, edgeGuard: n.guard.pass, tone: n.plan.notes,
+      was: `${n.m.width}x${n.m.height}`,
+    });
+  }
+} finally { await engine.close(); }
+
+// The swap. A backup only replaces a draw if the backup's own image is BETTER — otherwise the
+// deck would trade a known-poor image for an unknown one, and a draw the selector already
+// ranked lower.
+const RANK = { low: 0, medium: 1, high: 2 };
+const spare = (sel.backups || []).filter((b) => photoData[b.slug] && RANK[posterRisk[b.slug] ?? "high"] === 0);
+for (let i = 0; i < sel.draws.length && spare.length; i++) {
+  const d = sel.draws[i];
+  if (RANK[posterRisk[d.slug] ?? "low"] < 2) continue;      // only a HIGH risk is worth a swap
+  const b = spare.shift();
+  console.log(`  ⇄ ${d.slug.slice(0, 40)} reads as a collage — swapped for ${b.slug.slice(0, 40)}`);
+  sel.draws[i] = b;
+}
+const collages = sel.draws.filter((d) => posterRisk[d.slug] === "high");
+if (collages.length) console.log(`  ⚠ ${collages.length} slide(s) still carry poster-like artwork (no clean backup left): ${collages.map((d) => d.slug.slice(0, 30)).join(", ")}`);
+
+// The swap happens here but publish.mjs re-reads selection.json, and it is publish.mjs that
+// records draw_slugs into carousel_posts. Without writing the decision back, the state row would
+// name the draws we REJECTED and every later report would be reading the wrong deck. Write it.
+await Bun.write(`${DIR}/selection.json`, JSON.stringify(sel, null, 2));
 
 // (mode A only) free bg-removal in an ISOLATED subprocess — the @imgly WASM model
 // otherwise poisons this process so the render browser's setContent hangs.
@@ -235,12 +296,16 @@ const missing = drawSlides.filter((s) => !s.photo);
 if (missing.length) console.log(`  \u26a0 ${missing.length} draw slide(s) have no photograph: ${missing.map((s) => s.slug).join(", ")}`);
 
 console.log(`Category: ${sel.slug}  |  scene: ${sceneFor(sel.slug).title}  |  ${slides.length} slides (${N} draws)`);
-const pngs = await renderSlides(slides, sel.slug);
+const pngs = await renderSlides(slides, sel.slug, { browser });
+await browser.close();
 const outDir = `${DIR}/out`;
 await mkdir(outDir, { recursive: true });
 const slideName = (i) => i === 0 ? "cover" : i === 1 ? "count" : i === slides.length - 1 ? "closing" : drawSlides[i - 2].slug.slice(0, 40);
 for (let i = 0; i < pngs.length; i++) await Bun.write(`${outDir}/${String(i + 1).padStart(2, "0")}-${slideName(i)}.png`, pngs[i]);
 await Bun.write(`${outDir}/alt.json`, JSON.stringify(altTexts(sel, facts), null, 2));
+// One row per asset considered, so the accept/reject decisions are reviewable rather than
+// buried in a log line. This is the operator-facing half of §9.
+await Bun.write(`${outDir}/images.json`, JSON.stringify(sheet, null, 2));
 
 let recentOpeners = [];
 try { recentOpeners = (await recentPosts(14)).map((r) => (r.caption || "").split("\n")[0]).filter(Boolean); } catch {}

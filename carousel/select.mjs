@@ -21,7 +21,13 @@ export async function fetchEndingSoon(days = 7, minDays = 0, { requireProvenance
   // provenance is required, so a caller that opts out does not hit a 400 on a pre-migration DB.
   u.searchParams.set("select",
     "slug,title,grand_prize,prize_description,image_url,ticket_price,total_prize_value,total_entries,draw_date,entry_url,categories(slug,name),operators(name,rating)"
-    + (requireProvenance ? ",figures_checked_at,figures_source_url,total_entries_method,free_entry_route" : ""));
+    + (requireProvenance ? ",figures_checked_at,figures_source_url,total_entries_method" : ""));
+  // free_entry_route is deliberately NOT selected. It ships in migration 0002, which this spec
+  // classes as not a render blocker — so requiring it here would have made it one, which is
+  // exactly the inconsistency it caused: 0001 was applied, the pipeline still refused to run,
+  // and the error named the wrong migration. The conditions band renders the lawful `unknown`
+  // string until the column is POPULATED, and it is empty on every row even once it exists, so
+  // reading it today buys nothing. Add it to this select when something starts writing it.
   u.searchParams.set("status", "eq.active");
   u.searchParams.append("draw_date", "gte." + from);
   u.searchParams.append("draw_date", "lte." + end);

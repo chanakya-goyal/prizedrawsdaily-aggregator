@@ -11,7 +11,7 @@
 // to sanity-check a fresh Composio payload before it touches carousel_metrics.
 import { insertMetrics, recentPosts, recentMetrics } from "./state.mjs";
 
-const KINDS = ["ig_media", "ig_reach", "fb_posts"];
+const KINDS = ["ig_media", "ig_reach", "ig_insights", "fb_posts"];
 const BATCH = 50;
 
 const londonDay = (ts) => new Date(ts).toLocaleDateString("en-CA", { timeZone: "Europe/London" });
@@ -41,6 +41,39 @@ export function mapPayload(kind, json) {
         value: num(v.value),
       }))
     );
+  }
+
+  // PER-MEDIA insights, which is where the metrics that actually matter live. ig_media gives
+  // likes and comments; ig_reach gives ACCOUNT-level reach keyed "account", which cannot tell
+  // one post from another. Neither carries saves or shares, and for this account those are the
+  // two that matter most: a saved post is the behaviour a daily listings deck is FOR, and a
+  // shared one is how a 66-follower account reaches anybody new.
+  //
+  // One measurement rule is a design constraint rather than a preference. Instagram's own
+  // definitions (help.instagram.com/202865988324236) count Views as "starts to play or replay",
+  // include replays in Watch time, and divide watch time INCLUDING replays by INITIAL views to
+  // get average watch time. A seamless loop therefore inflates views, watch time and average
+  // watch time without reaching one extra person — so on the Reel, reach and skip rate are the
+  // only honest reads, and views are recorded but must never be reported as a win on their own.
+  if (kind === "ig_insights") {
+    // Accepts either the bare Graph response for one media, or a batch shaped
+    // { media_id, data: [...] } / [{ media_id, data: [...] }].
+    const batches = Array.isArray(json) ? json : [json];
+    return batches.flatMap((b) => {
+      const entries = b?.data || [];
+      return entries.flatMap((e) => {
+        // The media id is either supplied by the caller or embedded in the insight's own id,
+        // which has the form "<media_id>/insights/<metric>/<period>".
+        const media_id = String(b.media_id || String(e.id || "").split("/")[0] || "unknown");
+        const day = b.day ? londonDay(b.day) : londonDay(Date.now());
+        return (e.values || []).map((v) => ({
+          day: v.end_time ? londonDay(v.end_time) : day,
+          media_id,
+          metric: e.name,
+          value: num(v.value),
+        }));
+      });
+    }).filter((r) => r.metric && r.media_id !== "unknown");
   }
 
   if (kind === "fb_posts") {

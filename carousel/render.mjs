@@ -267,9 +267,14 @@ export function buildHtml(slide, categorySlug = "") {
 <body data-pdd-role="${slide.type}"${tok ? ` style="${tok}"` : ""}>${body}<script>${READY_SCRIPT}</script></body></html>`;
 }
 
-export async function renderSlides(slides, categorySlug = "") {
-  const browser = await chromium.launch();
+// `browser` is optional and exists for the same reason openEngine takes one: a second
+// chromium.launch() in one Bun process hangs, and a build that normalises before it renders
+// would hit that every time. Pass the browser in and this borrows it.
+export async function renderSlides(slides, categorySlug = "", { browser: borrowed = null } = {}) {
+  const browser = borrowed || await chromium.launch();
+  const owned = !borrowed;
   const page = await browser.newPage({ viewport: { width: 1080, height: 1350 }, deviceScaleFactor: 2 });
+  const bail = async () => { await page.close().catch(() => {}); if (owned) await browser.close(); };
   const out = [];
   for (const s of slides) {
     // `domcontentloaded`, not `load`. The page inlines ~1.5MB of base64 woff2, and waiting for
@@ -278,7 +283,7 @@ export async function renderSlides(slides, categorySlug = "") {
     // awaits document.fonts.ready AND every image.
     await page.setContent(buildHtml(s, categorySlug), { waitUntil: "domcontentloaded", timeout: 60000 });
     await page.waitForFunction("window.__ready === true", { timeout: 25000 }).catch(async () => {
-      await browser.close();
+      await bail();
       throw new Error(`render not ready (fonts/images failed) on slide type=${s.type} title=${s.title || ""} — refusing to ship a degraded slide`);
     });
     // Word-boundary truncation of the board's prize column, MEASURED in the real font. A
@@ -318,11 +323,11 @@ export async function renderSlides(slides, categorySlug = "") {
       return { over, broken, bandOver };
     });
     if (checks.bandOver.length) {
-      await browser.close();
+      await bail();
       throw new Error(`conditions band overflows its 950px track on slide type=${s.type} — refusing to ship a degraded slide\n  ${checks.bandOver.join("\n  ")}`);
     }
     if (checks.over > 0) {
-      await browser.close();
+      await bail();
       throw new Error(`slide column overflows the well by ${Math.round(checks.over)}px (type=${s.type} title=${s.title || ""}) — refusing to ship a degraded slide`);
     }
     // One retry before condemning the slide. Storage can refuse a burst of sequential requests
@@ -341,11 +346,11 @@ export async function renderSlides(slides, categorySlug = "") {
       }, broken);
     }
     if (broken.length) {
-      await browser.close();
+      await bail();
       throw new Error(`${broken.length} image(s) failed to decode on slide type=${s.type} title=${s.title || ""} — refusing to ship a degraded slide\n  ${broken.map((u) => String(u).slice(0, 110)).join("\n  ")}`);
     }
     out.push(await page.screenshot({ type: "png", timeout: 60000, animations: "disabled" }));
   }
-  await browser.close();
+  await bail();
   return out;
 }
