@@ -15,7 +15,7 @@ import { fieldFlags, buildHealthReport, writeStepSummary, checkImage, probeSilen
 import { rehostImage } from "./lib/rehost.mjs";
 import { summarise, byPublishUrgency } from "./lib/verify.mjs";
 import { permalinkKey } from "./lib/liveness.mjs";
-import { routeDraw } from "./lib/route.mjs";
+import { routeDraw, figuresPatch } from "./lib/route.mjs";
 import { shardConfig, shardOf, shardedPublishCap, rotateRoster, rosterOffset } from "./lib/shard.mjs";
 import { fetchWithRetry } from "./lib/fetcher.mjs";
 import { CATEGORIES } from "./lib/parse.mjs";
@@ -193,6 +193,8 @@ const ctx = browser ? await makeContext(browser) : null;
 
 const toInsert = [];
 const toUpdate = [];
+// Provenance-only PATCHes for rows nothing else is written to. See the skip branch below.
+const toStamp = [];
 const counts = [];
 const verdicts = [];
 // Publish candidates for the WHOLE run, settled once at the end. They used to be settled inside
@@ -222,7 +224,19 @@ let totalNew = 0, totalRefreshed = 0, rehosted = 0, missed = 0, inserted = 0, in
 const raced = (p, ms, label) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} exceeded ${Math.round(ms / 1000)}s`)), ms))]);
 async function flush() {
   totalNew += toInsert.length; totalRefreshed += toUpdate.length;
-  if (DRY_RUN || (!toInsert.length && !toUpdate.length)) { toInsert.length = 0; toUpdate.length = 0; return; }
+  if (DRY_RUN) { toInsert.length = 0; toUpdate.length = 0; toStamp.length = 0; return; }
+  // Freshness stamps flush even on a run that inserted and corrected nothing — which is the
+  // common shape of a steady-state run, and exactly the run whose stamps matter most.
+  if (toStamp.length) {
+    let stamped = 0;
+    for (const u of toStamp) {
+      try { await raced(sbUpdate(u.id, u.row), 60_000, "stamp"); stamped++; }
+      catch (e) { console.log(`  ! stamp failed: ${(e.message || "").slice(0, 70)}`); }
+    }
+    console.log(`  🕒 ${stamped}/${toStamp.length} re-confirmed cap(s) re-stamped`);
+    toStamp.length = 0;
+  }
+  if (!toInsert.length && !toUpdate.length) { toInsert.length = 0; toUpdate.length = 0; return; }
   console.log(`  💾 flushing ${toInsert.length} new + ${toUpdate.length} refreshed…`); // stage marker — if a run stalls, the log shows whether it died in rehost/insert/update
   // Re-host every image onto our own Storage BEFORE writing, so the site never hotlinks a
   // third-party host (which breaks under Cloudflare bot protection — the root cause of
@@ -357,6 +371,11 @@ for (const op of operators) {
 
     if (plan.kind === "skip") {
       skipped++;
+      // A skipped row is a row we read and found nothing to change on. If that read re-confirmed
+      // the stored ticket cap, the freshness stamp still has to move — otherwise a draw that is
+      // correct, and stays correct, drops out of the carousel's 48h eligibility window for the
+      // sole reason that it never changes. This PATCH touches no data field.
+      if (plan.stamp && ex?.id) toStamp.push({ id: ex.id, row: plan.stamp });
       // Silent when there's simply nothing to correct; loud when a flagged read was REFUSED,
       // because that is the parser breaking on a row the public can see.
       if (plan.reason === "no-correction" && plan.decision.flags.length && plan.decision.fields.length) {
@@ -410,6 +429,10 @@ for (const op of operators) {
         category_source: catMap[d.category] ? "rule" : null,
         title: d.title, grand_prize: d.grand_prize, prize_description: d.description,
         image_url: d.image_url, ticket_price: d.ticket_price, total_entries: d.total_entries,
+        // Provenance for the cap, written in the same object as the cap itself so the two can
+        // never drift apart (spec §10.4). A row whose method is null or 'bare-count' is simply
+        // never selected for a carousel — it is not an error, it just cannot carry an odds figure.
+        ...figuresPatch(d, now),
         total_prize_value: tpv, prize_value: null,
         draw_date: d.draw_date, entry_url: d.entry_url, affiliate_url: null,
         status, featured: false,
