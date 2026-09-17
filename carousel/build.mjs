@@ -7,9 +7,11 @@ import { renderSlides } from "./render.mjs";
 import { buildCaption } from "./caption.mjs";
 import { buildBriefing } from "./brief.mjs";
 import { recentPosts } from "./state.mjs";
-import { toDrawSlide, catLabel, hookLabel, priceLabel } from "./format.mjs";
+import { cleanTitle, closesLabel, cashAlt, priceLabel } from "./format.mjs";
+import * as oddsCopy from "./odds-copy.mjs";
+import { sceneFor } from "./scene.mjs";
 import { readdir, mkdir } from "node:fs/promises";
-import { workDir, themeOf, catCfg } from "./config.mjs";
+import { workDir, catCfg } from "./config.mjs";
 import { valueLine, altTexts } from "./honesty.mjs";
 import { minDimOk } from "./imgcheck.mjs";
 
@@ -103,62 +105,124 @@ if (CARD === "cutout" && haveSlugs.length) {
   console.log(`Cutouts ready: ${Object.keys(cutBySlug).length}/${haveSlugs.length}`);
 }
 
-// per-draw hero image for the chosen mode
+// ---- deck assembly -------------------------------------------------------------------
+// Ten slides: cover, count, one per remaining draw, closing. Every count on the frame is
+// derived from what ACTUALLY RENDERED, never from config.drawsPerDeck — on a degraded run a
+// cover reading "of the eight" is a false checkable claim, which is the one kind of error the
+// cover's proof line exists to rule out.
 const heroOf = (slug) => CARD === "cutout" ? cutBySlug[slug] : photoData[slug];
-const drawSlides = sel.draws.map((d, i) => {
-  const s = toDrawSlide(d, i + 1);
-  const img = heroOf(d.slug);
-  if (img) {
-    if (CARD === "cutout") s.cutoutDataUrl = img;
-    else {
-      s.framePhoto = img;
-      // operator/auto-fetched shots → contain (never crop the prize); our generated
-      // heroes are framed with margin, so cover fills the card cleanly.
-      s.framePhotoContain = srcKind[d.slug] === "auto-fetched";
-    }
-  }
-  return s;
-});
-// intro hero card: banner, big category hook, cheapest-ticket hook, thumbnail strip,
-// a faded backdrop of the top prize, and a smart closing line.
+const N = sel.draws.length;
 const fmtDay = (iso) => new Date(iso).toLocaleDateString("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short" }).toUpperCase();
-const dates = sel.draws.map((d) => d.draw_date).filter(Boolean).sort();
-const allSame = dates.length && fmtDay(dates[0]) === fmtDay(dates[dates.length - 1]);
-const endLine = !dates.length ? "ENDING THIS WEEK"
-  : allSame ? `ENDING THIS WEEK · CLOSING ${fmtDay(dates[0])}`
-  : `ENDING THIS WEEK · FIRST CLOSES ${fmtDay(dates[0])}`;
-const prices = sel.draws.map((d) => Number(d.ticket_price)).filter((p) => isFinite(p) && p > 0);
-const from = prices.length ? `FROM JUST ${priceLabel(Math.min(...prices))} A TICKET` : "";
-// cheapest ticket as the gold "FROM JUST __" hero (true, irresistible: dream prize / tiny entry)
-const fromAmount = prices.length ? priceLabel(Math.min(...prices)) : "";
-// total prize value → supporting hook, rounded DOWN to nearest £1,000 so we never overstate
-const value = valueLine(sel.draws, sel.slug);
-const introImgs = sel.draws.map((d) => heroOf(d.slug) || null);
-const intro = {
-  type: "intro",
-  banner: sel.banner || `${sel.draws.length} ${catLabel(sel.name)} DRAWS`,
-  hook: sel.hook || hookLabel(sel.slug, sel.name),
-  value,
-  fromAmount,
-  count: sel.draws.length,
-  from,
-  endLine,
-  bg: introImgs.find(Boolean) || null,
-  thumbs: introImgs,
-  thumbMode: CARD,
-};
-const slides = [intro, ...drawSlides, { type: "cta" }];
+const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return "each operator's own site"; } };
+const soonOf = (d) => d && (new Date(d) - Date.now()) < 48 * 3600e3;
+const todayOf = (d) => d && fmtDay(d) === fmtDay(new Date().toISOString());
+const capOf = (d) => Number(d.total_entries) || null;
 
-// per-category visual identity (CSS theme tokens live in styles.css [data-theme=…]).
-// default/unmapped → the fiery orange look.
-const theme = themeOf(sel.slug);
-console.log(`Theme: ${theme}`);
-const pngs = await renderSlides(slides, theme, catCfg(sel.slug).particles);
+// THE READ-AT STAMP IS NEVER APPROXIMATED. It renders from the oldest stored observation across
+// the deck, or not at all — a false provenance claim is worse than no claim, which is why there
+// is no "now()" fallback here.
+const checked = sel.draws.map((d) => d.figures_checked_at).filter(Boolean).sort();
+const stamp = checked.length
+  ? oddsCopy.stampShort(new Date(checked[0]).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" }))
+  : null;
+if (!stamp) console.log("  ⚠ no figures_checked_at on any draw — the read-at stamp will not render (Stage 0 not applied?)");
+
+// Slide 2 carries the LOWEST ticket cap in the deck, not the soonest close. It is the one slide
+// that carries the full dot grid, and the grid is only countable below the ceiling — so the
+// draw with the shortest cap is the one where the device does its best work.
+const capped = sel.draws.filter((d) => capOf(d));
+if (!capped.length) throw new Error("no draw in the selection carries a ticket cap — the odds device cannot render, refusing to build");
+const countDraw = capped.reduce((a, b) => (capOf(a) <= capOf(b) ? a : b));
+const rest = sel.draws.filter((d) => d !== countDraw);
+
+const prices = sel.draws.map((d) => Number(d.ticket_price)).filter((p) => isFinite(p) && p > 0);
+const fromPrice = prices.length ? priceLabel(Math.min(...prices)) : null;
+const lowestCap = Math.min(...capped.map(capOf));
+const maxDate = Math.max(...sel.draws.map((d) => +new Date(d.draw_date)).filter(isFinite));
+const closesWithinDays = Math.max(1, Math.ceil((maxDate - Date.now()) / 86400000));
+
+const deckBand = oddsCopy.bandLines({ role: "cover", drawsRendered: N, fromPrice: fromPrice || "n/a" });
+const drawBand = (d) => oddsCopy.bandLines({
+  role: "draw",
+  closesText: closesLabel(d.draw_date),
+  price: priceLabel(d.ticket_price) || "n/a",
+  host: hostOf(d.entry_url),
+  freeEntryRoute: d.free_entry_route || "unknown",
+});
+
+const lockupOf = (d) => ({
+  operator: d.operators?.name || null,
+  // The Trust Score is PDD's own assessment, so the chip says "PDD" and renders as ink on paper
+  // rather than in a verdict colour. One decimal: the stored spread is 3.0-4.8.
+  rating: Number.isFinite(Number(d.operators?.rating)) ? Number(d.operators.rating).toFixed(1) : null,
+});
+
+const now = new Date();
+const dateline = [
+  now.toLocaleDateString("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", year: "numeric" }).toUpperCase().replace(/,/g, ""),
+  stamp,
+].filter(Boolean).join(" \u00b7 ");
+
+const coverSlide = {
+  type: "cover", stamp, dateline,
+  headline: oddsCopy.headline(sel.archetype, {
+    drawsRendered: N, fromPrice: fromPrice || "n/a",
+    cashAlt: cashAlt(countDraw.grand_prize, countDraw.prize_description),
+    price: priceLabel(countDraw.ticket_price),
+  }),
+  // Figures wrapped so the renderer can set them in the one place green is authorised.
+  proof: oddsCopy.proofLine({ drawsRendered: N, closesWithinDays, lowestCap })
+    .map((l) => l.replace(/([\d,]+)/g, "<b>$1</b>")),
+  band: deckBand,
+  board: [
+    ...sel.draws.slice(0, 3).map((d) => ({
+      prize: cleanTitle(d.grand_prize || d.title),
+      closes: fmtDay(d.draw_date),
+      soon: soonOf(d.draw_date),
+    })),
+    N >= 5 ? { more: `+${N - 3} more inside` } : null,
+  ].filter(Boolean),
+};
+
+const countSlide = {
+  type: "count", stamp, n: 2, total: N + 2,
+  index: sel.draws.indexOf(countDraw) + 1, drawsRendered: N,
+  title: cleanTitle(countDraw.grand_prize || countDraw.title),
+  cap: capOf(countDraw), ...lockupOf(countDraw),
+  soon: soonOf(countDraw.draw_date), band: drawBand(countDraw),
+};
+
+const drawSlides = rest.map((d, i) => ({
+  type: "draw", stamp, n: i + 3, total: N + 2,
+  title: cleanTitle(d.grand_prize || d.title),
+  // Photo priority: a photograph you dropped in the work dir, then fetchimg's QA'd pick, then
+  // the draw's own stored image_url. That last one is not a consolation prize — it is already
+  // re-hosted on our storage and it is what the website shows for the same draw, so the deck
+  // and the site agree. Without it a build that skipped fetchimg rendered an empty white well,
+  // which looks like a broken slide and passes every check that only counts elements.
+  cap: capOf(d), photo: heroOf(d.slug) || d.image_url || null,
+  ...lockupOf(d),
+  soon: soonOf(d.draw_date),
+  closesChip: soonOf(d.draw_date) ? closesLabel(d.draw_date) : null,
+  // The press stamp only renders on a claim that is true today.
+  stampWord: todayOf(d.draw_date) ? "CLOSES TODAY" : null,
+  band: drawBand(d),
+  slug: d.slug,
+}));
+
+const slides = [coverSlide, countSlide, ...drawSlides, { type: "closing", stamp, band: deckBand }];
+const missing = drawSlides.filter((s) => !s.photo);
+if (missing.length) console.log(`  \u26a0 ${missing.length} draw slide(s) have no photograph: ${missing.map((s) => s.slug).join(", ")}`);
+
+console.log(`Category: ${sel.slug}  |  scene: ${sceneFor(sel.slug).title}  |  ${slides.length} slides (${N} draws)`);
+const pngs = await renderSlides(slides, sel.slug);
 const outDir = `${DIR}/out`;
 await mkdir(outDir, { recursive: true });
-const slideName = (i) => i === 0 ? "intro" : i === slides.length - 1 ? "cta" : sel.draws[i - 1].slug.slice(0, 40);
+const slideName = (i) => i === 0 ? "cover" : i === 1 ? "count" : i === slides.length - 1 ? "closing" : drawSlides[i - 2].slug.slice(0, 40);
 for (let i = 0; i < pngs.length; i++) await Bun.write(`${outDir}/${String(i + 1).padStart(2, "0")}-${slideName(i)}.png`, pngs[i]);
-await Bun.write(`${outDir}/alt.json`, JSON.stringify(altTexts(sel, drawSlides), null, 2));
+await Bun.write(`${outDir}/alt.json`, JSON.stringify(altTexts(sel, [countSlide, ...drawSlides].map((s) => ({
+  title: s.title, price: priceLabel(sel.draws.find((d) => cleanTitle(d.grand_prize || d.title) === s.title)?.ticket_price), closes: s.band[0],
+}))), null, 2));
 
 let recentOpeners = [];
 try { recentOpeners = (await recentPosts(14)).map((r) => (r.caption || "").split("\n")[0]).filter(Boolean); } catch {}

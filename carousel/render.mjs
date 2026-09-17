@@ -198,6 +198,10 @@ const lockup = (d) =>
   + `</div>`;
 
 function drawHtml(d, scene) {
+  // A draw slide is a photograph plus a number. With no photograph it is a 559px white
+  // rectangle, and an empty well is worse than a failed build: it ships, and it looks
+  // deliberate. Refuse it here rather than let a silent gap through.
+  if (!d.photo) throw new Error(`draw slide has no photograph (title="${d.title || ""}") — refusing to render an empty photo well`);
   const fit = fitPrize(d.title);
   const lines = Math.ceil(String(d.title || "").length / Math.floor(TRACK / (fit.px * BRICOLAGE_ADV)));
   // E2's full-bleed ground costs vertical padding, and it comes out of the photo well rather

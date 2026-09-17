@@ -4,10 +4,14 @@
 import { fetchEndingSoon, pickBestCategory } from "./select.mjs";
 import { priceLabel, closesLabel, catLabel } from "./format.mjs";
 import { mkdir, writeFile, rm, readdir, rename } from "node:fs/promises";
-import { workDir, GLOBAL, catCfg } from "./config.mjs";
+import { workDir, GLOBAL, catCfg, drawsPerDeck } from "./config.mjs";
 import { recentDrawSlugs, lastCategory, todayLondon } from "./state.mjs";
 
-const N = Number(process.env.SLIDES || 5);
+// The deck size is authored in config.json, not passed in. It was `Number(process.env.SLIDES
+// || 5)`, which meant any run could quietly change how many draws a post carries — and a series
+// that mixes five-draw and eight-draw posts cannot be read, because the caption, the counter
+// chip, the band's draw count and the cover's proof line are all derived from the real count.
+const N = drawsPerDeck();
 const onlySlug = process.env.ONLY_CATEGORY || null;
 const DAYS = Number(process.env.DAYS || 7);       // upper bound (days out)
 const MIN_DAYS = Number(process.env.MIN_DAYS || 1); // runway floor — skip draws closing sooner

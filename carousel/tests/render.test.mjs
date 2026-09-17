@@ -7,7 +7,10 @@ import { buildHtml, cleanTitle, fitPrize } from "../render.mjs";
 const markup = (s, cat = "luxury") => buildHtml(s, cat).replace(/<style>[\s\S]*?<\/style>/g, "");
 
 const band = ["CLOSES THU 18 SEP · £1.99 A TICKET", "Enter · terms · example.com", "Free-entry route and age limits: in those terms."];
-const draw = { type: "draw", stamp: "READ 09:04", n: 3, total: 10, title: "Rolex Daytona", cap: 13995, operator: "Example Comps", rating: "4.2", band };
+// A 1x1 transparent GIF. A draw slide without a photograph is now a hard refusal rather than an
+// empty white well, so the fixture has to carry one — which is right: every real draw slide does.
+const PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+const draw = { type: "draw", stamp: "READ 09:04", n: 3, total: 10, title: "Rolex Daytona", cap: 13995, photo: PIXEL, operator: "Example Comps", rating: "4.2", band };
 const count = { type: "count", stamp: "READ 09:04", n: 2, total: 10, index: 1, drawsRendered: 8, title: "Rolex Daytona", cap: 699, operator: "Example Comps", rating: "4.2", band };
 const cover = { type: "cover", stamp: "READ 09:04", dateline: "THU 18 SEP 2026 · READ 09:04", headline: "8 DRAWS. HOW MANY TICKETS?", proof: ["a", "b"], band, board: [{ prize: "Rolex Daytona", closes: "THU 18 SEP" }, { more: "+5 more inside" }] };
 const closing = { type: "closing", stamp: "READ 09:04", band };

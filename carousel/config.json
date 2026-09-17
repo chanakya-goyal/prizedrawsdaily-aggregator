@@ -7,48 +7,131 @@
     "bucket": "carousel-slides",
     "workDir": "~/Desktop/pdd-today",
     "archiveDays": 14,
-    "series": { "name": "TONIGHT'S UK DRAWS", "slotLine": "every night · 7pm UK" },
-    "primeWindowsUK": [[12, 13], [19, 21]],
-    "fixedHashtags": ["#prizedrawsdaily", "#ukcompetition", "#winbig"],
-    "bannedPhrases": ["don't miss out", "amazing prizes", "you could win", "once in a lifetime", "hurry now", "act fast", "what are you waiting for", "incredible opportunity"],
-    "archetypes": ["question", "price-anchor", "deadline", "absurd-comparison"]
+    "series": {
+      "name": "TONIGHT'S UK DRAWS",
+      "slotLine": "every night · 7pm UK"
+    },
+    "primeWindowsUK": [
+      [
+        12,
+        13
+      ],
+      [
+        19,
+        21
+      ]
+    ],
+    "fixedHashtags": [
+      "#prizedrawsdaily",
+      "#ukcompetition",
+      "#winbig"
+    ],
+    "bannedPhrases": [
+      "don't miss out",
+      "amazing prizes",
+      "you could win",
+      "once in a lifetime",
+      "hurry now",
+      "act fast",
+      "what are you waiting for",
+      "incredible opportunity"
+    ],
+    "archetypes": [
+      "question",
+      "price-anchor",
+      "deadline",
+      "absurd-comparison"
+    ],
+    "drawsPerDeck": 8
   },
   "categories": {
     "car-draws": {
-      "name": "Car Draws", "visualWeight": 1.0, "theme": "default",
-      "seoKeyword": "UK car competitions", "hashtags": ["#ukraffle", "#cargiveaway"],
-      "hook": "WIN A DREAM CAR", "particles": { "type": "embers", "count": 46 },
-      "valueLineMin": 20000, "audioMood": "driving"
+      "name": "Car Draws",
+      "visualWeight": 1.0,
+      "seoKeyword": "UK car competitions",
+      "hashtags": [
+        "#ukraffle",
+        "#cargiveaway"
+      ],
+      "valueLineMin": 20000,
+      "audioMood": "driving"
     },
     "cash-prizes": {
-      "name": "Cash Prizes", "visualWeight": 0.4, "theme": "cash",
-      "seoKeyword": "UK cash competitions", "hashtags": ["#cashgiveaway", "#ukcomps"],
-      "hook": "WIN TAX-FREE CASH", "particles": { "type": "embers", "count": 30 },
-      "valueLineMin": 5000, "audioMood": "win"
+      "name": "Cash Prizes",
+      "visualWeight": 0.4,
+      "seoKeyword": "UK cash competitions",
+      "hashtags": [
+        "#cashgiveaway",
+        "#ukcomps"
+      ],
+      "valueLineMin": 5000,
+      "audioMood": "win"
     },
     "house-draws": {
-      "name": "House Draws", "visualWeight": 0.8, "theme": "house",
-      "seoKeyword": "UK house competitions", "hashtags": ["#dreamhome", "#housedraw"],
-      "hook": "WIN A DREAM HOME", "particles": { "type": "fireflies", "count": 34 },
-      "valueLineMin": 50000, "audioMood": "warm"
+      "name": "House Draws",
+      "visualWeight": 0.8,
+      "seoKeyword": "UK house competitions",
+      "hashtags": [
+        "#dreamhome",
+        "#housedraw"
+      ],
+      "valueLineMin": 50000,
+      "audioMood": "warm"
     },
     "tech-giveaways": {
-      "name": "Tech Giveaways", "visualWeight": 0.92, "theme": "tech",
-      "seoKeyword": "UK tech giveaways", "hashtags": ["#techgiveaway", "#ukcomps"],
-      "hook": "WIN THE LATEST TECH", "particles": { "type": "embers", "count": 40 },
-      "valueLineMin": 3000, "audioMood": "synth"
+      "name": "Tech Giveaways",
+      "visualWeight": 0.92,
+      "seoKeyword": "UK tech giveaways",
+      "hashtags": [
+        "#techgiveaway",
+        "#ukcomps"
+      ],
+      "valueLineMin": 3000,
+      "audioMood": "synth"
     },
     "luxury": {
-      "name": "Luxury", "visualWeight": 1.0, "theme": "luxury",
-      "seoKeyword": "UK luxury competitions", "hashtags": ["#luxury", "#ukraffle"],
-      "hook": "WIN LUXURY", "particles": { "type": "golddust", "count": 26 },
-      "valueLineMin": 10000, "audioMood": "elegant"
+      "name": "Luxury",
+      "visualWeight": 1.0,
+      "seoKeyword": "UK luxury competitions",
+      "hashtags": [
+        "#luxury",
+        "#ukraffle"
+      ],
+      "valueLineMin": 10000,
+      "audioMood": "elegant"
     },
     "collectibles": {
-      "name": "Collectibles", "visualWeight": 0.85, "theme": "collect",
-      "seoKeyword": "UK Pokemon and LEGO competitions", "hashtags": ["#collectibles", "#ukraffle"],
-      "hook": "WIN RARE FINDS", "particles": { "type": "holo", "count": 30 },
-      "valueLineMin": 8000, "audioMood": "pop"
+      "name": "Collectibles",
+      "visualWeight": 0.85,
+      "seoKeyword": "UK Pokemon and LEGO competitions",
+      "hashtags": [
+        "#collectibles",
+        "#ukraffle"
+      ],
+      "valueLineMin": 8000,
+      "audioMood": "pop"
+    },
+    "sports-outdoors": {
+      "name": "Sports & Outdoors",
+      "visualWeight": 0.88,
+      "seoKeyword": "UK golf and sports competitions",
+      "hashtags": [
+        "#golfcompetition",
+        "#ukcomps"
+      ],
+      "valueLineMin": 4000,
+      "audioMood": "driving"
+    },
+    "home-garden": {
+      "name": "Home & Garden",
+      "visualWeight": 0.78,
+      "seoKeyword": "UK home and garden competitions",
+      "hashtags": [
+        "#homeandgarden",
+        "#ukcomps"
+      ],
+      "valueLineMin": 3000,
+      "audioMood": "warm"
     }
   }
 }
