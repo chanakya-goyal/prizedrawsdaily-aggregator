@@ -47,6 +47,12 @@ const READY_SCRIPT = `
 // photo well's own floor. This replaces a binary at the old `length > 26`, which fired on
 // roughly half of 880 live titles — a "long title" branch that was the common case.
 const TRACK = 895;
+// Vertical padding a vibe's odds block adds, top AND bottom. The stylesheet reads it back as
+// --odds-pad, so there is exactly one number: the height the layout RESERVES and the height the
+// CSS PAINTS cannot drift. The first version hardcoded it in both places, they disagreed, and
+// the photo well overran the operator lockup by the difference — invisible in review, obvious
+// on the render.
+export const ODDS_PAD = { block: 28, loud: 28 };
 const BRICOLAGE_ADV = 0.6573;
 export function fitPrize(title, { maxLines = 2 } = {}) {
   const len = String(title || "").length;
@@ -118,20 +124,44 @@ const sceneHost = (scene, role) =>
 
 // ---- slides ---------------------------------------------------------------
 
+// Every cover headline is two sentences: the count, then the hook. The `loud` vibe lays amber
+// behind the SECOND one, which is a meaningful split rather than a decorative one — "8 DRAWS."
+// is the fact and "HOW MANY TICKETS?" is the thing being asked. Marked up as a gradient on the
+// inline box so the amber follows the copy across line breaks instead of being a rectangle
+// behind the whole block.
+function headlineHtml(text, vibe) {
+  const t = String(text || "");
+  if (vibe !== "loud") return esc(t);
+  const m = t.match(/^(.*?[.?!])\s+(.+)$/s);
+  return m ? `${esc(m[1])} <em>${esc(m[2])}</em>` : `<em>${esc(t)}</em>`;
+}
+
+// The board's prize column fits roughly 21 glyphs of Inter 600 at 44px. CSS ellipsis cuts
+// mid-word ("SHOT SCOPE LM1 L…"), which reads as a rendering fault; a word boundary reads as an
+// abbreviation. The column keeps its CSS ellipsis as the backstop for one very long word.
+const BOARD_GLYPHS = 21;
+export function boardPrize(t) {
+  const s = String(t || "").trim();
+  if (s.length <= BOARD_GLYPHS) return s;
+  const cut = s.slice(0, BOARD_GLYPHS);
+  const sp = cut.lastIndexOf(" ");
+  return (sp > 8 ? cut.slice(0, sp) : cut).replace(/[\s,.;:\-]+$/, "") + "\u2026";
+}
+
 function coverHtml(d, scene) {
   const board = (d.board || []).slice(0, 4).map((r, i) =>
     `<div class="row">`
     + `<span class="ix">${r.more ? "" : String(i + 1).padStart(2, "0")}</span>`
     + (r.more
       ? `<span class="pz more">${esc(r.more)}</span><span class="cl"></span>`
-      : `<span class="pz">${esc(nbh(r.prize))}</span><span class="cl${r.soon ? " soon" : ""}">${esc(r.closes)}</span>`)
+      : `<span class="pz">${esc(nbh(boardPrize(r.prize)))}</span><span class="cl${r.soon ? " soon" : ""}">${esc(r.closes)}</span>`)
     + `</div>`).join("");
   return `<div class="slide">
     ${sceneHost(scene, "cover")}
     ${masthead(d.stamp, true)}
     ${sheetEdge(0, 0)}
     <div class="dateline">${esc(d.dateline)}</div>
-    <div class="headline">${esc(d.headline)}</div>
+    <div class="headline">${headlineHtml(d.headline, d.vibe)}</div>
     <div class="proof">${d.proof.map((p) => `<div>${p}</div>`).join("")}</div>
     <div class="board">${board}</div>
     ${bandHtml(d.band)}
@@ -183,7 +213,13 @@ const lockup = (d) =>
 function drawHtml(d, scene) {
   const fit = fitPrize(d.title);
   const lines = Math.ceil(String(d.title || "").length / Math.floor(TRACK / (fit.px * BRICOLAGE_ADV)));
-  const stackH = 45 + 10 + Math.min(lines, 2) * fit.lh + 20 + 240;   // lockup, gap, prize, gap, E2
+  // The `block` vibe gives E2 its own full-bleed ground, which costs 52px of padding. That
+  // comes out of the photo well rather than out of the column, because the well is the flex
+  // residual and the column has none to give.
+  // A vibe that gives E2 its own full-bleed ground costs vertical padding, and it comes out of
+  // the photo well rather than the column: the well is the flex residual, the column has none.
+  const pad = ODDS_PAD[d.vibe] || 0;
+  const stackH = 45 + 10 + Math.min(lines, 2) * fit.lh + 20 + 240 + pad * 2;
   const photoH = Math.max(500, 1050 - stackH);                        // the flex residual, floored
   return `<div class="slide">
     ${sceneHost(scene, "draw")}
@@ -193,16 +229,19 @@ function drawHtml(d, scene) {
     </div>
     ${masthead(d.stamp)}
     ${sheetEdge(d.n, d.total)}
+    ${d.vibe === "loud" && d.stampWord ? `<div class="stamp">${esc(d.stampWord)}</div>` : ""}
     <div class="stack">
       ${lockup(d)}
       <div style="height:10px"></div>
       <div class="prize" style="font-size:${fit.px}px;line-height:${fit.lh}px">${esc(nbh(d.title))}</div>
       <div style="height:20px"></div>
-      <div class="eyebrow">${C.eyebrow()}</div>
-      <div style="height:10px"></div>
-      <div class="figure">${C.capFigure(d.cap)}</div>
-      <div style="height:10px"></div>
-      <div class="cond">${esc(C.conditional(d.cap))}</div>
+      <div class="oddsblock" style="--odds-pad:${pad}px">
+        <div class="eyebrow">${C.eyebrow()}</div>
+        <div style="height:10px"></div>
+        <div class="figure">${C.capFigure(d.cap)}</div>
+        <div style="height:10px"></div>
+        <div class="cond">${esc(C.conditional(d.cap))}</div>
+      </div>
     </div>
     ${bandHtml(d.band, d.soon)}
   </div>`;
@@ -223,8 +262,9 @@ function closingHtml(d, scene) {
   </div>`;
 }
 
-export function buildHtml(slide, categorySlug = "") {
+export function buildHtml(slide, categorySlug = "", vibe = "") {
   const scene = sceneFor(categorySlug);
+  slide = vibe ? { ...slide, vibe } : slide;
   const body = slide.type === "cover" ? coverHtml(slide, scene)
     : slide.type === "count" ? countHtml(slide, scene)
     : slide.type === "closing" ? closingHtml(slide, scene)
@@ -238,15 +278,15 @@ export function buildHtml(slide, categorySlug = "") {
 <style>${CSS}</style>
 <style>${SCENE_CSS}</style>
 <style>${sceneMotion(scene, "still-4x5")}</style></head>
-<body data-pdd-role="${slide.type}"${tok ? ` style="${tok}"` : ""}>${body}<script>${READY_SCRIPT}</script></body></html>`;
+<body data-pdd-role="${slide.type}"${vibe ? ` data-vibe="${vibe}"` : ""}${tok ? ` style="${tok}"` : ""}>${body}<script>${READY_SCRIPT}</script></body></html>`;
 }
 
-export async function renderSlides(slides, categorySlug = "") {
+export async function renderSlides(slides, categorySlug = "", vibe = "") {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1080, height: 1350 }, deviceScaleFactor: 2 });
   const out = [];
   for (const s of slides) {
-    await page.setContent(buildHtml(s, categorySlug), { waitUntil: "load", timeout: 60000 });
+    await page.setContent(buildHtml(s, categorySlug, vibe), { waitUntil: "load", timeout: 60000 });
     await page.waitForFunction("window.__ready === true", { timeout: 25000 }).catch(async () => {
       await browser.close();
       throw new Error(`render not ready (fonts/images failed) on slide type=${s.type} title=${s.title || ""} — refusing to ship a degraded slide`);
