@@ -27,6 +27,7 @@ export const TOKENS = {
   "--dot-hit": "#0F6B45",
   "--dot-size": "10px",
   "--dot-gap": "5px",
+  "--font-display": "'Bricolage Grotesque'",
   "--font-text": "'Inter'",
   "--font-figure": "'JetBrains Mono'",
   "--font-chrome": "'Inter'",

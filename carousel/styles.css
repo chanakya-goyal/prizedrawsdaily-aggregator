@@ -1,9 +1,17 @@
+/* THE LEGACY PALETTE IS GONE.
+   It survived this long for one reason: 32 of its custom properties were live var() consumers
+   in reel-template.mjs, story.mjs and reel.mjs, which built their CSS by regex-scraping this
+   file. All three now import tokens.mjs and scene.mjs, so the consumers are gone and so are the
+   blocks: the dark grounds, the orange and gold accents, the six per-category theme blocks, the
+   glass theme that shipped in August and was never wired to any category, and the four particle
+   skeletons. Tokens come from tokens.mjs; per-category identity is structure and comes from
+   scene.mjs. Nothing reads another file's CSS as text. */
+
 /* PrizeDrawsDaily — the newsprint editorial system ("The Verdict + The Board's chrome").
    Light paper, rail-blue standing bands, the ticket cap as the largest figure on the frame.
 
    WHY THE FILE IS SHAPED LIKE THIS
    The three video templates inherit design by REGEX-SCRAPING this file for `:root{…}` and
-   `[data-theme="x"]{…}` blocks. Nothing else survives that lift, which is why the whole brand
    system is flat custom properties and why the legacy token blocks below cannot simply be
    deleted: 32 of their properties are live `var()` consumers in reel-template.mjs, story.mjs
    and reel.mjs. They come out when Stage D migrates those surfaces onto scene.mjs, not before.
@@ -23,141 +31,6 @@ body {
 /* ============================================================================
    LEGACY TOKEN BLOCKS — consumed by the video templates. Retire with Stage D.
    ============================================================================ */
-:root {
-  --accent: #FF6A00;        --accent-rgb: 255,106,0;
-  --accent-lt: #FF9433;     --accent-lt-rgb: 255,148,51;
-  --accent-deep-rgb: 255,82,0;
-  --glow: #FF7A12;          --glow-rgb: 255,122,18;
-  --ray-rgb: 255,176,80;
-  --spark-core: #FFD9A0;    --spark-mid: #FF7A12;   --spark-glow-rgb: 255,140,44;
-  --hot: #FFC23D;                          /* secondary highlight: dates / "from just" */
-  --stroke: #1a0d02;                       /* chunky dark headline outline */
-  --ink-end: #ffd9b3;                      /* warm end of the white headline gradient */
-  --grad-1: #FFE07A; --grad-2: #FF9A2E; --grad-3: #FF5E00;  /* accent headline gradient */
-  --bg-1: #221813; --bg-2: #0f0b0c; --bg-3: #060508; --bg-solid: #07060a;
-  --card-rgb: 20,13,10;                    /* dark card / chip base */
-  --scrim-rgb: 6,5,8;                      /* legibility scrim base */
-  --pill-1: #FFA53A; --pill-2: #FF6A00; --pill-3: #FF5200;  /* price pill / swipe gradient */
-  --pill-edge-rgb: 255,220,170;            /* pill / swipe border */
-  --pill-ink-rgb: 120,40,0;                /* pill text shadow */
-  /* premium "WIN" gold (used by jackpot intro, win-ribbon, spotlight, confetti) */
-  --gold-1: #FFEFB0; --gold-2: #FFD24A; --gold-3: #E8A21C;
-  --gold-rgb: 255,210,74; --gold-deep-rgb: 201,136,26;
-  --font-display:'Bricolage Grotesque';                 /* per-theme display face */
-  --font-kicker: 'Oswald';                 /* per-theme kicker face */
-}
-
-[data-theme="tech"] {
-  --accent: #1FB6FF;        --accent-rgb: 31,182,255;
-  --accent-lt: #6FD3FF;     --accent-lt-rgb: 111,211,255;
-  --accent-deep-rgb: 10,108,255;
-  --glow: #29A8FF;          --glow-rgb: 41,168,255;
-  --ray-rgb: 130,205,255;
-  --spark-core: #E2F4FF;    --spark-mid: #2FA8FF;   --spark-glow-rgb: 90,185,255;
-  --hot: #5FE7FF;
-  --stroke: #04121f;
-  --ink-end: #cfeeff;
-  --grad-1: #BFEFFF; --grad-2: #46B8FF; --grad-3: #0A82FF;
-  --bg-1: #0d2236; --bg-2: #091018; --bg-3: #03060c; --bg-solid: #050810;
-  --card-rgb: 10,18,30;
-  --scrim-rgb: 5,8,14;
-  --pill-1: #5CCBFF; --pill-2: #1A9DFF; --pill-3: #0A6CFF;
-  --pill-edge-rgb: 190,235,255;
-  --pill-ink-rgb: 0,38,86;
-}
-
-[data-theme="luxury"] {
-  --accent: #D8A93C;        --accent-rgb: 216,169,60;
-  --accent-lt: #F1CE7E;     --accent-lt-rgb: 241,206,126;
-  --accent-deep-rgb: 168,120,26;
-  --glow: #C89A38;          --glow-rgb: 200,154,56;
-  --ray-rgb: 236,206,140;
-  --spark-core: #FFF3D0;    --spark-mid: #E9C068;   --spark-glow-rgb: 226,186,96;
-  --hot: #F1CE7E;
-  --stroke: #171105;
-  --ink-end: #f4e8c8;
-  --grad-1: #FFF3D0; --grad-2: #EFCB72; --grad-3: #C1913A;
-  --bg-1: #17130c; --bg-2: #0d0b07; --bg-3: #060503; --bg-solid: #070604;
-  --card-rgb: 18,15,9;
-  --scrim-rgb: 7,6,4;
-  --pill-1: #F1CE7E; --pill-2: #D8A93C; --pill-3: #B8842A;
-  --pill-edge-rgb: 250,236,190;
-  --pill-ink-rgb: 70,48,6;
-  --font-kicker: 'Playfair Display';
-}
-
-[data-theme="cash"] {
-  --accent: #22C55E;        --accent-rgb: 34,197,94;
-  --accent-lt: #7CE7A6;     --accent-lt-rgb: 124,231,166;
-  --accent-deep-rgb: 14,140,60;
-  --glow: #2ECC71;          --glow-rgb: 46,204,113;
-  --ray-rgb: 150,235,180;
-  --spark-core: #FFF3C8;    --spark-mid: #FFD24A;   --spark-glow-rgb: 255,210,74;
-  --hot: #FFD24A;
-  --stroke: #04170b;
-  --ink-end: #d8f7e4;
-  --grad-1: #E9FFE9; --grad-2: #5FE08A; --grad-3: #12A34E;
-  --bg-1: #0b2416; --bg-2: #071510; --bg-3: #030a06; --bg-solid: #04100a;
-  --card-rgb: 8,22,14;
-  --scrim-rgb: 4,10,7;
-  --pill-1: #FFE07A; --pill-2: #FFC93D; --pill-3: #E8A21C;
-  --pill-edge-rgb: 255,238,190;
-  --pill-ink-rgb: 80,54,0;
-}
-
-[data-theme="house"] {
-  --accent: #FFB255;        --accent-rgb: 255,178,85;
-  --accent-lt: #FFD394;     --accent-lt-rgb: 255,211,148;
-  --accent-deep-rgb: 232,140,40;
-  --glow: #FFAA4A;          --glow-rgb: 255,170,74;
-  --ray-rgb: 255,205,140;
-  --spark-core: #FFF6DE;    --spark-mid: #FFCB7E;   --spark-glow-rgb: 255,196,110;
-  --hot: #FFD394;
-  --stroke: #0a1220;
-  --ink-end: #ffe9c9;
-  --grad-1: #FFF0D6; --grad-2: #FFC169; --grad-3: #F09A2E;
-  --bg-1: #14243c; --bg-2: #0b1526; --bg-3: #050a14; --bg-solid: #060b15;
-  --card-rgb: 12,20,34;
-  --scrim-rgb: 5,9,16;
-  --pill-1: #FFCB7E; --pill-2: #FFAA4A; --pill-3: #F08A1E;
-  --pill-edge-rgb: 255,228,180;
-  --pill-ink-rgb: 92,50,0;
-}
-
-[data-theme="collect"] {
-  --accent: #C05CFF;        --accent-rgb: 192,92,255;
-  --accent-lt: #E2A9FF;     --accent-lt-rgb: 226,169,255;
-  --accent-deep-rgb: 140,40,220;
-  --glow: #B44DFF;          --glow-rgb: 180,77,255;
-  --ray-rgb: 220,170,255;
-  --spark-core: #F6E8FF;    --spark-mid: #D08CFF;   --spark-glow-rgb: 200,150,255;
-  --hot: #FF7AD9;
-  --stroke: #150425;
-  --ink-end: #f0dcff;
-  --grad-1: #F6E8FF; --grad-2: #D08CFF; --grad-3: #9A2DE8;
-  --bg-1: #241238; --bg-2: #140a22; --bg-3: #080312; --bg-solid: #0a0514;
-  --card-rgb: 24,12,38;
-  --scrim-rgb: 9,4,16;
-  --pill-1: #E2A9FF; --pill-2: #C05CFF; --pill-3: #9A2DE8;
-  --pill-edge-rgb: 240,214,255;
-  --pill-ink-rgb: 70,10,120;
-}
-
-.p-embers { border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, var(--spark-core), var(--spark-mid) 60%, transparent 75%);
-  box-shadow: 0 0 14px 4px rgba(var(--spark-glow-rgb), .55); position: absolute; }
-
-.p-golddust { border-radius: 50%;
-  background: radial-gradient(circle at 40% 40%, #fff8e1, var(--gold-2) 65%, transparent 80%);
-  box-shadow: 0 0 10px 2px rgba(var(--gold-rgb), .38); position: absolute; }
-
-.p-fireflies { border-radius: 50%;
-  background: radial-gradient(circle at 40% 40%, #fffbe8, #ffd98a 60%, transparent 78%);
-  box-shadow: 0 0 16px 5px rgba(255, 196, 110, .34); position: absolute; }
-
-.p-holo { border-radius: 2px; transform: rotate(45deg);
-  background: linear-gradient(135deg, #9ff, #f9f 45%, #ff9 80%);
-  box-shadow: 0 0 12px 3px rgba(200, 150, 255, .4); position: absolute; }
 /* ============================================================================
    THE BRAND SYSTEM. One block, every declaration flat, every value a literal.
    This is the single source: any token the templates need exists here, once.
