@@ -2,6 +2,13 @@ import { test, expect, describe } from "bun:test";
 import { readFileSync } from "fs";
 import { extractEntries, extractDate, inferCategory, extractPrice, mapOperatorCategory, parseJsonLd, findProductLd, pickTitleImage, load, textOf, fieldsFromHtml, normalizeUkDate, isGenericTitle, cleanPrizeLine, extractGrandPrize, extractPrizeSection, categoryEvidence, CATEGORIES, resolveShortYear } from "../lib/parse.mjs";
 
+// extractEntries returns `{ value, method }` so the extraction tier can travel with the
+// number into the renderer (spec §10.4 — an odds figure is a CAP 3.7 claim and a tier-3 bare
+// count is not the same claim as a tier-1 labelled cap). Every behavioural assertion below is
+// about the VALUE and is unchanged; this helper keeps them reading as they did. The method is
+// asserted separately, at the bottom of this file.
+const entriesValue = (...a) => extractEntries(...a)?.value ?? null;
+
 describe("extractEntries — veto-first, conservative", () => {
   const cases = [
     ["15000 tickets available", 15000],
@@ -24,27 +31,27 @@ describe("extractEntries — veto-first, conservative", () => {
     ["50 entries left", null], // below plausibility floor AND vetoed
   ];
   for (const [input, expected] of cases) {
-    test(`"${input}" → ${expected}`, () => expect(extractEntries(input)).toBe(expected));
+    test(`"${input}" → ${expected}`, () => expect(entriesValue(input)).toBe(expected));
   }
   // Tier 2 slash-form regression: the sold-count side required 2+ digits, so a brand-new
   // comp scraped in its first hours ("SOLD: 2/1200") parsed null and was dropped by the
   // required gate — the exact moment a new listing needs to be ingested. Found live on
   // tartan-competitions-ltd, 2026-08-22.
   test("single-digit sold count in a slash progress bar still yields the cap", () => {
-    expect(extractEntries("SOLD: 2/1200")).toBe(1200);
+    expect(entriesValue("SOLD: 2/1200")).toBe(1200);
   });
   test("single-digit sold count, spaced slash form", () => {
-    expect(extractEntries("Sold 7 / 500")).toBe(500);
+    expect(entriesValue("Sold 7 / 500")).toBe(500);
   });
   test("word form with a single-digit sold count still works", () => {
-    expect(extractEntries("sold: 2 of 1200")).toBe(1200);
+    expect(entriesValue("sold: 2 of 1200")).toBe(1200);
   });
   test("a bare date-like fraction is NOT a cap", () => {
-    expect(extractEntries("Drawn live on 5/2026 — good luck!")).toBe(null);
+    expect(entriesValue("Drawn live on 5/2026 — good luck!")).toBe(null);
   });
 
   test("operator pattern override wins", () => {
-    expect(extractEntries("there are 4321 spots in this comp", { entries: "(\\d+) spots" })).toBe(4321);
+    expect(entriesValue("there are 4321 spots in this comp", { entries: "(\\d+) spots" })).toBe(4321);
   });
 });
 
@@ -61,7 +68,7 @@ describe("extractEntries — review regressions (remaining-count must not be a c
     ["maximum of 25000 tickets", 25000],
     ["Visit Unit 4500 tickets sorting office", 4500], // tier-3 limitation, documented
   ];
-  for (const [input, expected] of cases) test(`"${input}" → ${expected}`, () => expect(extractEntries(input)).toBe(expected));
+  for (const [input, expected] of cases) test(`"${input}" → ${expected}`, () => expect(entriesValue(input)).toBe(expected));
 });
 
 describe("extractDate — review regressions (draw vs close, time placement)", () => {
@@ -368,11 +375,11 @@ describe("textOf strips markup", () => {
 // ---- reported-bug regressions (2026-06-28): entries, category, grand_prize on real draws ----
 
 describe("extractEntries — strict mode returns ONLY a labelled cap", () => {
-  test("labelled max survives strict", () => expect(extractEntries("max 5000 entries", null, { strict: true })).toBe(5000));
-  test("WooLottery 'Total Entries: N' survives strict", () => expect(extractEntries("Total Entries: 5000", null, { strict: true })).toBe(5000));
-  test("progress bar is dropped in strict (no neighbour-comp leak)", () => expect(extractEntries("3200 / 15000 sold", null, { strict: true })).toBeNull());
-  test("bare 'N tickets' is dropped in strict", () => expect(extractEntries("14,993 Tickets", null, { strict: true })).toBeNull());
-  test("operator override still wins in strict", () => expect(extractEntries("there are 4321 spots", { entries: "(\\d+) spots" }, { strict: true })).toBe(4321));
+  test("labelled max survives strict", () => expect(entriesValue("max 5000 entries", null, { strict: true })).toBe(5000));
+  test("WooLottery 'Total Entries: N' survives strict", () => expect(entriesValue("Total Entries: 5000", null, { strict: true })).toBe(5000));
+  test("progress bar is dropped in strict (no neighbour-comp leak)", () => expect(entriesValue("3200 / 15000 sold", null, { strict: true })).toBeNull());
+  test("bare 'N tickets' is dropped in strict", () => expect(entriesValue("14,993 Tickets", null, { strict: true })).toBeNull());
+  test("operator override still wins in strict", () => expect(entriesValue("there are 4321 spots", { entries: "(\\d+) spots" }, { strict: true })).toBe(4321));
 });
 
 describe("extractEntries — Podium 'MAX N ENTRIES' trap (real total is the progress-bar TOTAL)", () => {
@@ -380,9 +387,9 @@ describe("extractEntries — Podium 'MAX N ENTRIES' trap (real total is the prog
   // the real cap. The operator pattern must beat the misleading tier-1 "MAX N ENTRIES".
   const podiumPat = { entries: "TOTAL:\\s*([\\d,]{3,})" };
   test("op pattern reads the bar TOTAL, not MAX", () =>
-    expect(extractEntries("MAX 15000 ENTRIES SOLD: 536 TOTAL: 66000", podiumPat)).toBe(66000));
+    expect(entriesValue("MAX 15000 ENTRIES SOLD: 536 TOTAL: 66000", podiumPat)).toBe(66000));
   test("second Podium draw (30000)", () =>
-    expect(extractEntries("MAX 7500 ENTRIES SOLD: 284 TOTAL: 30000", podiumPat)).toBe(30000));
+    expect(entriesValue("MAX 7500 ENTRIES SOLD: 284 TOTAL: 30000", podiumPat)).toBe(30000));
 });
 
 describe("mapOperatorCategory — operator's own taxonomy wins", () => {
@@ -664,8 +671,18 @@ describe("extractDate — short form", () => {
   test("a trailing percentage is never read as a year", () => {
     // Live decoy: "Draw Fri 25th Sep 26 % Sold" — the 26 is 26% sold. Reading it as a year
     // happened to give 2026 here, but the same shape gave 2012 on a sibling card.
-    expect(day(extractDate("Draw Mon 14th Sep 12 % Sold"))).toBe("2026-09-14");
-    expect(day(extractDate("Draw Fri 25th Sep 26 % Sold 1.99 Per Entry"))).toBe("2026-09-25");
+    //
+    // Asserted on month-day plus a sane year rather than a hardcoded date. A yearless date is
+    // resolved RELATIVE TO TODAY (past dates roll forward once the grace window passes), so
+    // pinning the year made this test fail by the calendar rather than by a regression — it
+    // went red on 2026-09-18 with nothing changed, which is a test that cries wolf. The real
+    // invariant is that the trailing percentage is not the year.
+    const a = extractDate("Draw Mon 14th Sep 12 % Sold");
+    expect(day(a)).toEndWith("-09-14");
+    expect(Number(day(a).slice(0, 4))).toBeGreaterThanOrEqual(new Date().getFullYear());
+    const b = extractDate("Draw Fri 25th Sep 26 % Sold 1.99 Per Entry");
+    expect(day(b)).toEndWith("-09-25");
+    expect(Number(day(b).slice(0, 4))).toBeGreaterThanOrEqual(new Date().getFullYear());
   });
 
   test("prefers the time-anchored date over an unanchored one", () => {
@@ -779,5 +796,47 @@ describe("cash-prizes matches plurals as well as singulars", () => {
   test("operator taxonomy labels handle plurals too", () => {
     expect(mapOperatorCategory(["Site Credits"])).toBe("cash-prizes");
     expect(mapOperatorCategory(["Jackpots"])).toBe("cash-prizes");
+  });
+});
+
+// The method is what decides whether a figure may be rendered at all, so it is asserted at
+// every tier rather than trusted to the call site. `bare-count` renders nowhere.
+describe("extractEntries — the method travels with the value", () => {
+  const cases = [
+    ["there are 4321 spots in this comp", { entries: "(\\d+) spots" }, 4321, "operator-pattern"],
+    ["max 5000 entries", null, 5000, "labelled-cap"],
+    ["Total Entries: 5000", null, 5000, "labelled-cap"],
+    ["only 5000 tickets", null, 5000, "labelled-cap"],          // tier 1b
+    ["3200 / 15000 sold", null, 15000, "progress-bar"],
+    ["SOLD: 2/1200", null, 1200, "progress-bar"],
+    ["14,993 Tickets", null, 14993, "bare-count"],
+  ];
+  for (const [text, pat, value, method] of cases) {
+    test(`"${text}" → ${value} via ${method}`, () => {
+      expect(extractEntries(text, pat)).toEqual({ value, method });
+    });
+  }
+
+  test("no match is null, not an object with a null value", () => {
+    expect(extractEntries("a normal sentence with no numbers")).toBeNull();
+    expect(extractEntries("")).toBeNull();
+  });
+
+  test("strict refuses the two low-confidence tiers outright", () => {
+    expect(extractEntries("3200 / 15000 sold", null, { strict: true })).toBeNull();
+    expect(extractEntries("14,993 Tickets", null, { strict: true })).toBeNull();
+  });
+
+  test("an operator override is labelled operator-pattern even in strict mode", () => {
+    expect(extractEntries("there are 4321 spots", { entries: "(\\d+) spots" }, { strict: true }))
+      .toEqual({ value: 4321, method: "operator-pattern" });
+  });
+
+  // The whole point of labelling at the return site: a NON-strict call against an
+  // operator-scoped selector can fall through to any tier inside that selector's text, so
+  // labelling the branch `operator-pattern` would over-claim provenance for a bare count.
+  test("a non-strict call with an operator pattern that does NOT match reports the real tier", () => {
+    expect(extractEntries("14,993 Tickets", { entries: "(\\d+) spots" }))
+      .toEqual({ value: 14993, method: "bare-count" });
   });
 });
