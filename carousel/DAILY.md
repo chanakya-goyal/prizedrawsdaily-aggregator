@@ -31,8 +31,15 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
 
 4. **Build everything** — `bun carousel/build.mjs` (7 carousel slides + `out/BRIEFING.md` + `out/CAPTION_FALLBACK.txt`
    + `out/alt.json`), `bun carousel/reel.mjs` (today's arm — see below) → `out/reel.mp4` + `out/cover.jpg` +
-   `out/reel-keyframes.png` + `out/reel-meta.json`, and `bun carousel/story.mjs` (the soonest-closing draw's
-   countdown) → `out/story.mp4` + `out/story-meta.json`. All three read the *same* `.fetched/{slug}/pick.txt`
+   `out/reel-keyframes.png` + `out/reel-meta.json`. The Reel is a broadcast insert now: one
+   photograph per draw, full bleed, with chrome that EXPANDS to state the cap, HOLDS, then COLLAPSES.
+   A `loop` stage runs before the 97-second capture and refuses any reel whose frame at t=0 differs
+   from the frame at t=duration — the duration is chosen as a whole multiple of the category scene's
+   own loop so it closes by construction, and `bun carousel/story.mjs` (the soonest-closing draw) →
+   `out/story.png`. The Story is a STILL: it goes to existing followers, sits outside the Reels
+   chaining system, has no length cohort or watch-duration head ranking it, and needs no audio — so
+   the old twelve-second timeline, frame loop, encode and audio mux were all cost with nothing
+   measuring them. All three read the *same* `.fetched/{slug}/pick.txt`
    picks (or your own dropped photo, or fall back to a typographic card) — so a pick.txt edit during QA (next
    step) means re-running whichever of the three actually used that photo.
 
@@ -52,7 +59,7 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
      `pick.txt` chose the cleanest, no-rival-branding shot. Swap a pick (edit `.fetched/{slug}/pick.txt`) or a
      whole draw (swap in a `selection.json.backups` entry) if a page came back blocked/branded (e.g. UKCC) —
      then re-run `build.mjs`/`reel.mjs`/`story.mjs` for whatever used that photo.
-   - `out/0X-*.png` slides + `out/reel-keyframes.png` + a look at `out/story.mp4` (or its frame folder) — the
+   - `out/0X-*.png` slides + `out/reel-keyframes.png` + a look at `out/story.png` — the
      **QA gates** below.
    - If a draw's page is blocked/branded and no backup helps, fall back to a clean typographic card (no photo).
 
@@ -86,7 +93,7 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
 
 8. **Host everything** — `bun carousel/publish.mjs`:
    - Converts + uploads the 7 slide PNGs to JPEG, and — if they exist and aren't already published today —
-     `reel.mp4` + `cover.jpg` and `story.mp4`, all to the public `carousel-slides` Supabase bucket.
+     `reel.mp4` + `cover.jpg` and `story.png`, all to the public `carousel-slides` Supabase bucket.
    - Writes `out/publish.json`: `caption`, `fbCaption`, `heroUrl`, `urls`, `altTexts`, `reelUrl`, `coverUrl`,
      `storyUrl`, `reelMeta` (`{arm, durationMs, stampTimesMs, audio, coverText}`).
    - Writes idempotent write-ahead `assets_uploaded` rows in `carousel_posts`: `carousel` and `fb_album` every

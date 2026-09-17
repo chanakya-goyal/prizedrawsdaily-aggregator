@@ -12,7 +12,7 @@
 //   3) main:     encodeVideo + assertVideoContract          (ffmpeg only, no browser)
 //   4) --shot    keyframes composite → out/reel-keyframes.png (browser, own process)
 // Intermediates live in ${PDD_DIR}/.reelwork/; deliverables in ${PDD_DIR}/out/.
-import { workDir, catCfg, themeOf } from "./config.mjs";
+import { workDir, catCfg } from "./config.mjs";
 import { readdir, mkdir } from "node:fs/promises";
 
 const FPS = 30, FRAME_MS = 1000 / FPS;
@@ -58,51 +58,83 @@ async function captureChild(jobPath) {
 }
 
 // ---------------------------------------------------------------- cover card
-// Minimal static 1080×1920 card: theme tokens + hero + THE PRICE STAMP carrying the
-// ≤4-word coverText ("{PRIZE NOUN} · {price}") — screenshotted as JPEG q90.
-async function buildCoverHtml({ theme, coverText, hero }) {
+// THE COVER IS THE REEL'S OPENING FRAME, not a poster of its own.
+//
+// It is the Reel's thumbnail, and a cover that looks like a different piece of work makes the
+// thumbnail disagree with the video it fronts — which is why the scene system treats it as its
+// own surface rather than an afterthought. So it carries the same photograph, the same rail,
+// the same conditions band and the same cap, with the insert card COLLAPSED: exactly what a
+// viewer sees in the first frame.
+//
+// Lane R only. buildCoverHtml renders no insert card, so there is no Lane C on it and never
+// was; declaring one is what made the old loop assertion read as vacuous rather than as passing.
+async function buildCoverHtml({ coverText, hero, sel, stampText }) {
   const { fontFaceCss } = await import("./fonts.mjs");
-  const { stampCss, stampHtml } = await import("./reel-template.mjs");
+  const { tokenCss } = await import("./tokens.mjs");
+  const { sceneFor, sceneBack } = await import("./scene.mjs");
+  const { CHROME } = await import("./reel-template.mjs");
+  const oddsCopy = await import("./odds-copy.mjs");
+  const { closesLabel, priceLabel, cleanTitle } = await import("./format.mjs");
   const fontCss = await fontFaceCss();
-  // lift the :root/[data-theme] token blocks from styles.css (same trick as reel-template)
-  const stylesText = await Bun.file(new URL("./styles.css", import.meta.url)).text();
-  const tokenCss = [...stylesText.matchAll(/(?:^|\n)\s*(?::root|\[data-theme="[^"]+"\])\s*\{[^}]*\}/g)]
-    .map((m) => m[0].trim()).join("\n");
-  const media = hero
-    ? `<div class="hf-bg"><img src="${hero}"></div><div class="hf-main"><img src="${hero}"></div>`
-    : `<div class="glow"></div>`;
+  const scene = sceneFor(sel.slug);
+  const d = sel.draws[0];
+  const host = (() => { try { return new URL(d.entry_url).hostname.replace(/^www\./, ""); } catch { return "the operator's own site"; } })();
+  const lines = oddsCopy.bandLines({
+    role: "reel-open", drawsRendered: sel.draws.length,
+    fromPrice: priceLabel(Math.min(...sel.draws.map((x) => Number(x.ticket_price)).filter((n) => n > 0))) || "n/a",
+    closesText: closesLabel(d.draw_date), price: priceLabel(d.ticket_price) || "n/a", host,
+    freeEntryRoute: d.free_entry_route || "unknown",
+  });
   return `<!doctype html><html><head><meta charset="utf-8">
-<style>${fontCss}</style>
-<style>${tokenCss}</style>
-<style>${stampCss()}</style>
+<style>${fontCss}</style><style>${tokenCss()}</style>
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { width:1080px; height:1920px; overflow:hidden; }
-body { background: var(--bg-solid); font-family:'Oswald', ui-sans-serif, sans-serif; -webkit-font-smoothing:antialiased; }
-.cover { position:absolute; inset:0; overflow:hidden;
-  background:
-    radial-gradient(120% 70% at 50% 12%, rgba(var(--glow-rgb),.22) 0%, rgba(var(--accent-rgb),0) 48%),
-    radial-gradient(130% 90% at 50% 96%, rgba(var(--accent-deep-rgb),.18) 0%, rgba(0,0,0,0) 52%),
-    radial-gradient(130% 92% at 50% 44%, var(--bg-1) 0%, var(--bg-2) 56%, var(--bg-3) 100%); }
-.hf-bg { position:absolute; inset:-48px; }
-.hf-bg img { width:100%; height:100%; object-fit:cover; filter: blur(42px) saturate(1.55) brightness(.92); opacity:.62; }
-.hf-main { position:absolute; inset:110px 50px 880px; display:flex; align-items:center; justify-content:center; }
-.hf-main img { max-width:100%; max-height:100%; object-fit:contain; filter: drop-shadow(0 28px 46px rgba(0,0,0,.6)); }
-.glow { position:absolute; left:50%; top:40%; width:1200px; height:1200px; transform:translate(-50%,-50%);
-  background: radial-gradient(circle, var(--glow) 0%, rgba(var(--accent-rgb),.42) 28%, rgba(0,0,0,0) 64%);
-  opacity:.75; filter: blur(20px); }
-.scrim { position:absolute; inset:0; z-index:2;
-  background: linear-gradient(180deg, rgba(var(--scrim-rgb),.30) 0%, rgba(var(--scrim-rgb),0) 25%, rgba(var(--scrim-rgb),0) 48%, rgba(var(--scrim-rgb),.80) 78%, rgba(var(--scrim-rgb),.97) 100%); }
-.slot { position:absolute; left:50%; top:1250px; width:430px; height:430px; margin:-215px 0 0 -215px; z-index:5; transform:scale(1.5); }
-.stamp span { display:block; padding:0 34px; }
-.vign { position:absolute; inset:0; z-index:8; box-shadow: inset 0 0 240px rgba(0,0,0,.5); pointer-events:none; }
-.rfoot { position:absolute; left:0; right:0; bottom:36px; z-index:9; text-align:center; font-weight:600; font-size:24px;
-  letter-spacing:3px; color:rgba(255,255,255,.78); text-shadow:0 2px 10px rgba(0,0,0,.85); }
-</style></head><body data-theme="${theme}">
-<div class="cover">${media}<div class="scrim"></div>
-<div class="slot">${stampHtml(esc(coverText))}</div>
-<div class="vign"></div>
-<footer class="rfoot">18+ · UK ONLY · PLAY RESPONSIBLY</footer>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1080px;height:1920px;overflow:hidden}
+body{background:var(--ink);font-family:var(--font-text),system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.cover{position:absolute;inset:0;overflow:hidden}
+.shot{position:absolute;inset:0}
+.shot img{width:100%;height:100%;object-fit:cover;display:block}
+.scene-host{position:absolute;inset:0;pointer-events:none}
+.rail{position:absolute;left:0;width:1080px;background:var(--rail);display:flex;align-items:center;
+  justify-content:space-between;padding:0 65px}
+.wordmark{font-family:var(--font-display);font-weight:800;font-size:var(--fs-label);letter-spacing:1.5px;
+  color:var(--rail-ink);text-transform:uppercase;line-height:1}
+.stamp{font-family:var(--font-figure);font-weight:700;font-size:var(--fs-label);color:var(--rail-accent);line-height:1}
+/* The cap, large, on OPAQUE chrome contiguous with the rail above it.
+   The first version set it in white directly over the photograph with a text-shadow, and on a
+   white-and-blue motorbike it was almost unreadable — white on white. A drop shadow is the old
+   dark-template trick for exactly this, and it fails the moment the photograph is light, which
+   on this inventory is most of the time. The chrome in this system is opaque everywhere else
+   for the same reason, so the cover has no business being the exception. */
+.hero{position:absolute;left:0;width:1080px;background:var(--rail);padding:24px 65px 30px}
+.hero .eyebrow{font-weight:600;font-size:var(--fs-label);letter-spacing:var(--tr-label);text-transform:uppercase;
+  color:var(--rail-accent)}
+.hero .fig{font-family:var(--font-figure);font-weight:700;font-size:200px;line-height:200px;color:var(--rail-ink);
+  font-variant-numeric:tabular-nums}
+.hero .sub{margin-top:6px;font-weight:600;font-size:var(--fs-lead);line-height:60px;color:var(--rail-meta);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.band{position:absolute;left:0;width:1080px;background:var(--rail);padding:16px 65px;display:flex;
+  flex-direction:column;justify-content:center}
+.band .l{font-size:var(--fs-legal);line-height:var(--lh-legal);white-space:nowrap}
+.band .l1{font-weight:600;color:var(--rail-ink);text-transform:uppercase}
+.band .l2,.band .l3{font-weight:400;color:var(--rail-meta)}
+</style></head><body data-pdd-role="reel-open">
+<div class="cover">
+  ${hero ? `<div class="shot"><img src="${hero}"></div>` : ""}
+  <div class="scene-host">${sceneBack(scene, "reel-cover-9x16", { draw: d })}</div>
+  <div class="rail" style="top:${CHROME.rail.y}px;height:${CHROME.rail.h}px">
+    <span class="wordmark">PRIZEDRAWSDAILY</span>${stampText ? `<span class="stamp">${esc(stampText)}</span>` : ""}
+  </div>
+  <div class="hero" style="top:${CHROME.rail.y + CHROME.rail.h}px">
+    <div class="eyebrow">${oddsCopy.eyebrow()}</div>
+    <div class="fig">${esc(coverText)}</div>
+    <div class="sub">${esc(cleanTitle(d.grand_prize || d.title))}</div>
+  </div>
+  <div class="band" style="top:${CHROME.band.y}px;height:${CHROME.band.h}px">
+    <div class="l l1">${esc(lines[0])}</div>
+    <div class="l l2">${esc(lines[1])}</div>
+    <div class="l l3">${esc(lines[2])}</div>
+  </div>
 </div>${READY_SNIPPET}</body></html>`;
 }
 
@@ -234,20 +266,57 @@ async function main() {
   const closeIso = sel.draws[0]?.draw_date ?? sel.draws.map((d) => d.draw_date).filter(Boolean).sort()[0] ?? null;
   const slides = sel.draws.map((d, i) => toDrawSlide(d, i + 1));
   const tl = buildReelTimeline({ sel, slides, heroes, arm, audioMeta, nowIso, closeIso });
-  const theme = themeOf(sel.slug);
-  console.log(`Arm ${arm} · theme ${theme} · ${tl.durationMs}ms · cuts [${tl.cutTimesMs}] · stamps [${tl.stampTimesMs}] · audio ${audioMeta.file} (${audioMeta.mood}) · cover "${tl.coverText}"`);
+  // No theme. Per-category identity is STRUCTURE now and comes from the scene module, so what
+  // is worth logging is which scene resolved and whether its loop divides the reel.
+  console.log(`Arm ${arm} · scene ${tl.sceneId} · ${tl.durationMs}ms · ${tl.drawsUsed} draws · cuts [${tl.cutTimesMs}] · inserts [${tl.stampTimesMs}] · audio ${audioMeta.file} (${audioMeta.mood}) · cover "${tl.coverText}"`);
   const timelinePath = `${WORK}/timeline.html`;
   await Bun.write(timelinePath, tl.html);
 
   // ---- 1) cover.jpg (browser subprocess #1)
   await stage("cover", async () => {
     const coverPath = `${WORK}/cover.html`;
-    await Bun.write(coverPath, await buildCoverHtml({ theme, coverText: tl.coverText, hero: heroes[sel.draws[0]?.slug] ?? null }));
+    await Bun.write(coverPath, await buildCoverHtml({
+      coverText: tl.coverText, hero: heroes[sel.draws[0]?.slug] ?? sel.draws[0]?.image_url ?? null,
+      sel, stampText: tl.stampText || "",
+    }));
     await runChild("--shot", "cover", { htmlPath: coverPath, out: `${OUT}/cover.jpg`, width: 1080, height: 1920, type: "jpeg", quality: 90 });
   });
 
   // ---- 2) frames (browser subprocess #2)
   const framesDir = `${WORK}/frames`;
+  // THE LOOP ASSERTION, and it runs BEFORE the 95-second capture so a broken loop costs seconds
+  // rather than two minutes.
+  //
+  // A seamless loop is worth asserting because of how Instagram counts: Views are "starts to
+  // play or replay" and Watch time INCLUDES replays, so a loop inflates views, watch time and
+  // average watch time without reaching one extra person. That makes reach and skip rate the
+  // only honest reads on this surface — and it makes a loop that visibly jumps a wasted
+  // opportunity rather than a cosmetic flaw.
+  //
+  // The comparison is t=0 against t=durationMs — the WRAP point, not the last captured frame.
+  // The last frame sits one frame short of the duration, so on a moving scene it differs from
+  // frame 0 by exactly one frame of drift; comparing against it would demand the animation stand
+  // still, which is the opposite of what is wanted. I had this the wrong way round at first and
+  // the assertion failed on a loop that was in fact closed.
+  await stage("loop", async () => {
+    const { chromium } = await import("playwright");
+    const b = await chromium.launch();
+    try {
+      const p = await b.newPage({ viewport: { width: 1080, height: 1920 }, deviceScaleFactor: 1 });
+      await p.setContent(tl.html, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await p.waitForFunction("window.__ready === true", { timeout: 30000 });
+      const at = async (t) => { await p.evaluate((x) => window.__seek(x), t); return p.screenshot({ type: "png", animations: "allow", timeout: 20000 }); };
+      const first = await at(0), wrap = await at(tl.durationMs);
+      if (Buffer.compare(first, wrap) !== 0) {
+        throw new Error(`reel loop does not close: the frame at t=0 differs from the frame at t=${tl.durationMs}ms.\n`
+          + `  scene "${tl.sceneId}" loops every ${(await import("./scene.mjs")).sceneFor(sel.slug).loopMs}ms and the reel runs ${tl.durationMs}ms `
+          + `(${tl.durationMs % ((await import("./scene.mjs")).sceneFor(sel.slug).loopMs || 1)}ms out of phase).\n`
+          + `  refusing to ship a reel whose loop visibly jumps`);
+      }
+      console.log(`  loop closes: t=0 and t=${tl.durationMs}ms are byte-identical`);
+    } finally { await b.close(); }
+  });
+
   await stage("capture", () =>
     runChild("--capture", "capture", { htmlPath: timelinePath, fps: FPS, durationMs: tl.durationMs, outDir: framesDir }));
 
