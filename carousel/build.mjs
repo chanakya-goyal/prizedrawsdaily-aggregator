@@ -211,6 +211,26 @@ const drawSlides = rest.map((d, i) => ({
 }));
 
 const slides = [coverSlide, countSlide, ...drawSlides, { type: "closing", stamp, band: deckBand }];
+
+// ONE facts table, derived from the selection rather than from the render slides. The slides
+// carry what the FRAME needs and nothing else; the caption, the briefing and the alt text need
+// the draw's own data. Deriving the second from the first is how the caption silently lost
+// every ticket price and the briefing filled its table with "?" — both read as working output,
+// which is the worst kind of broken.
+//
+// It also covers all N draws in selection order. The render slides cannot: slide 2 pulls the
+// lowest-cap draw out of sequence, so a list built from drawSlides is one draw short.
+const facts = sel.draws.map((d, i) => ({
+  n: i + 1,
+  slug: d.slug,
+  title: cleanTitle(d.grand_prize || d.title),
+  price: priceLabel(d.ticket_price),
+  cap: capOf(d),
+  odds: capOf(d) ? `1 IN ${capOf(d).toLocaleString("en-GB")}` : null,
+  closes: closesLabel(d.draw_date),
+  cashAlt: cashAlt(d.grand_prize, d.prize_description),
+  operator: d.operators?.name || null,
+}));
 const missing = drawSlides.filter((s) => !s.photo);
 if (missing.length) console.log(`  \u26a0 ${missing.length} draw slide(s) have no photograph: ${missing.map((s) => s.slug).join(", ")}`);
 
@@ -220,14 +240,12 @@ const outDir = `${DIR}/out`;
 await mkdir(outDir, { recursive: true });
 const slideName = (i) => i === 0 ? "cover" : i === 1 ? "count" : i === slides.length - 1 ? "closing" : drawSlides[i - 2].slug.slice(0, 40);
 for (let i = 0; i < pngs.length; i++) await Bun.write(`${outDir}/${String(i + 1).padStart(2, "0")}-${slideName(i)}.png`, pngs[i]);
-await Bun.write(`${outDir}/alt.json`, JSON.stringify(altTexts(sel, [countSlide, ...drawSlides].map((s) => ({
-  title: s.title, price: priceLabel(sel.draws.find((d) => cleanTitle(d.grand_prize || d.title) === s.title)?.ticket_price), closes: s.band[0],
-}))), null, 2));
+await Bun.write(`${outDir}/alt.json`, JSON.stringify(altTexts(sel, facts), null, 2));
 
 let recentOpeners = [];
 try { recentOpeners = (await recentPosts(14)).map((r) => (r.caption || "").split("\n")[0]).filter(Boolean); } catch {}
-const caption = buildCaption(sel.name, sel.slug, drawSlides.map((s) => ({ title: s.title, price: s.price })), sel.seoKeyword);
+const caption = buildCaption(sel.name, sel.slug, facts, sel.seoKeyword);
 await Bun.write(`${outDir}/CAPTION_FALLBACK.txt`, caption);
-await Bun.write(`${outDir}/BRIEFING.md`, buildBriefing({ sel, drawSlides, recentOpeners }));
+await Bun.write(`${outDir}/BRIEFING.md`, buildBriefing({ sel, drawSlides: facts, recentOpeners }));
 console.log("\n--- FALLBACK CAPTION (written to CAPTION_FALLBACK.txt; Claude: write CAPTION.txt + FB_CAPTION.txt from BRIEFING.md) ---\n" + caption);
 console.log(`\nWrote ${pngs.length} slides → ${outDir}`);
