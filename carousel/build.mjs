@@ -306,6 +306,10 @@ await Bun.write(`${outDir}/alt.json`, JSON.stringify(altTexts(sel, facts), null,
 // One row per asset considered, so the accept/reject decisions are reviewable rather than
 // buried in a log line. This is the operator-facing half of §9.
 await Bun.write(`${outDir}/images.json`, JSON.stringify(sheet, null, 2));
+// The facts the copy is built from, published so publish.mjs does not recompute prize titles
+// with a SECOND cleaner. It did, and the two disagreed, which would have put different prize
+// names on Instagram and Facebook for the same draw.
+await Bun.write(`${outDir}/facts.json`, JSON.stringify(facts, null, 2));
 
 let recentOpeners = [];
 try { recentOpeners = (await recentPosts(14)).map((r) => (r.caption || "").split("\n")[0]).filter(Boolean); } catch {}

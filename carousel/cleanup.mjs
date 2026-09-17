@@ -1,5 +1,5 @@
 // carousel/cleanup.mjs — bucket retention (spec §4.2/9). Once every carousel_posts
-// row for TODAY has reached status "published" (carousel + fb_photo + any reel/story
+// row for TODAY has reached status "published" (carousel + fb_album + any reel/story
 // that ran), the day's raw source assets — {date}/{slug}/*.jpg|mp4 in the public
 // bucket — have done their job (Composio already pulled them into IG/FB) and can be
 // freed. Refuses while anything is still pending/in-flight, so a slow or retried

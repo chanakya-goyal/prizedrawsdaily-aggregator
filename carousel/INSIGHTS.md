@@ -67,7 +67,7 @@ deterministic mapping + upsert + report.
    bun carousel/insights.mjs report
    ```
    Prints a per-day table for the last 7 days: date, formats posted
-   (`carousel`/`fb_photo`/`reel`/…, from `carousel_posts`), category, account
+   (`carousel`/`fb_album`/`reel`/…, from `carousel_posts`), category, account
    reach, and per-post likes/comments keyed by `ig_media_id`. If no metrics have
    been ingested yet it prints `no metrics yet` instead of an empty/broken table.
 

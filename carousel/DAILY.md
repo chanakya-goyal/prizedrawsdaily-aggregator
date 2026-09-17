@@ -89,7 +89,7 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
      `reel.mp4` + `cover.jpg` and `story.mp4`, all to the public `carousel-slides` Supabase bucket.
    - Writes `out/publish.json`: `caption`, `fbCaption`, `heroUrl`, `urls`, `altTexts`, `reelUrl`, `coverUrl`,
      `storyUrl`, `reelMeta` (`{arm, durationMs, stampTimesMs, audio, coverText}`).
-   - Writes idempotent write-ahead `assets_uploaded` rows in `carousel_posts`: `carousel` and `fb_photo` every
+   - Writes idempotent write-ahead `assets_uploaded` rows in `carousel_posts`: `carousel` and `fb_album` every
      run, `reel`/`story` only when that asset was actually (re-)uploaded this run (a reel/story already marked
      `published` today is skipped, not re-hosted, so its real row is never clobbered — but `reelUrl`/`storyUrl`
      still resolve to the canonical public URL on a skip, so `publish.json` stays complete), and `fb_video`
@@ -125,17 +125,17 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
         `fb_video` `assets_uploaded` write-ahead row): `FACEBOOK_CREATE_VIDEO_POST` (`page_id: 1106603652538117`,
         `file_url: publish.json.reelUrl`, `description: fbCaption`) →
         `bun carousel/state-mark.mjs fb_video published --fb <post_id>` **AND**
-        `bun carousel/state-mark.mjs fb_photo skipped` — the photo mirror never posts on a video day, so its
+        `bun carousel/state-mark.mjs fb_album skipped` — the album mirror never posts on a video day, so its
         write-ahead row needs a terminal status too, or `cleanup.mjs` would wait on it forever.
-      - **FALLBACK — the video post fails:** `FACEBOOK_CREATE_PHOTO_POST` (`url: heroUrl`, `message: fbCaption`)
-        → `bun carousel/state-mark.mjs fb_photo published --fb <post_id>` **AND**
+      - **FALLBACK — the video post fails:** ONE multi-photo feed post carrying every `fbUrls` entry (NOT the single-photo call, which posts the cover and drops the rest; NOT a link-card carousel, which becomes a link post) (`url: heroUrl`, `message: fbCaption`)
+        → `bun carousel/state-mark.mjs fb_album published --fb <post_id>` **AND**
         `bun carousel/state-mark.mjs fb_video skipped` — record the video failure, then close its row so cleanup
         can still proceed.
       - **Carousel-only day (no reel ran):** `publish.mjs` never writes an `fb_video` row at all (there's no
         `reelUrl` to post), so the photo post is simply the primary FB action, unchanged from v2:
-        `FACEBOOK_CREATE_PHOTO_POST` → `bun carousel/state-mark.mjs fb_photo published --fb <post_id>`.
+        ONE multi-photo feed post carrying every `fbUrls` entry (NOT the single-photo call, which posts the cover and drops the rest; NOT a link-card carousel, which becomes a link post) → `bun carousel/state-mark.mjs fb_album published --fb <post_id>`.
 
-10. **Cleanup** — `bun carousel/cleanup.mjs`. Once every `carousel_posts` row for today (`carousel` + `fb_photo`
+10. **Cleanup** — `bun carousel/cleanup.mjs`. Once every `carousel_posts` row for today (`carousel` + `fb_album`
     + `fb_video`/`reel`/`story` if they ran) reads `published` **or** `skipped` — with at least one row actually
     `published` — deletes today's raw JPEGs/mp4s from the bucket — the platforms already copied the media in at
     ingest. Refuses loudly (exit 1) while anything's still pending (i.e. neither `published` nor `skipped`) —
@@ -185,7 +185,7 @@ insufficient data.
   `.fetched/{slug}/pick.txt` to a different candidate — then re-run whichever of `build.mjs`/`reel.mjs`/
   `story.mjs` used that photo.
 - **Caption** — Claude authors both from `out/BRIEFING.md` (verified facts + hook archetype + banned phrases):
-  IG caption → `out/CAPTION.txt`, FB caption (fuller, real clickable link + "18+ · UK only · Play responsibly")
+  IG caption → `out/CAPTION.txt`, FB caption (fuller, real clickable link + "18+ · UK only" — never "play responsibly", which is gambling wording for a non-gambling product)
   → `out/FB_CAPTION.txt`. `caption.mjs`'s `buildCaption`/`buildFbCaption` templates are only used as a
   **fallback for dry runs** where no `out/FB_CAPTION.txt`/`out/CAPTION.txt` exists.
 - **Best UK posting time (prime windows):** ~12–1 PM UK (≈ 4:30–5:30 PM IST) or 7–9 PM UK (≈ 11:30 PM–1:30 AM
@@ -202,8 +202,8 @@ insufficient data.
   `assets_uploaded` (written by `publish.mjs` before Composio posts, so a crash mid-post can't cause a
   silent double-publish) → `published` (written by you/Claude via `state-mark.mjs` once Composio confirms the
   post id) → or `skipped` (also via `state-mark.mjs`, when a format is deliberately dropped this run — a rejected
-  story, or whichever of `fb_video`/`fb_photo` didn't post — `published` and `skipped` are both terminal for
-  `cleanup.mjs`'s gate, see step 10). Formats seen today: `carousel`, `fb_photo`, `reel`, `story`, `fb_video` —
+  story, or whichever of `fb_video`/`fb_album` didn't post — `published` and `skipped` are both terminal for
+  `cleanup.mjs`'s gate, see step 10). Formats seen today: `carousel`, `fb_album`, `reel`, `story`, `fb_video` —
   `publish.mjs` now write-aheads an `assets_uploaded` `fb_video` row itself whenever a reel ran this run (or a
   published reel's URL was resolved via the skip branch), preflighted against an already-`published` `fb_video`
   row exactly like `reel`/`story`. Also stores `category`, `draw_slugs`, `hook_archetype` (plain archetype id for

@@ -23,7 +23,9 @@ ${rows}
 - Series line near the end: **we post TONIGHT'S UK DRAWS every night — follow so you don't miss yours** (follow-first, site second).
 - One send-CTA, fresh wording each day (never verbatim-repeat "send this to your comp buddy").
 - Comper vernacular welcome (GTD, odds, exact close times) — but ONLY when the facts table proves it.
-- End with: link in bio · 18+ · UK only · Play responsibly
+- End with: link in bio · 18+ · UK only
+- Do NOT write "play responsibly" or any gambling wording. A prize competition sits OUTSIDE
+  Gambling Act 2005 licensing, so the operative code is CAP Section 8, not 16 or 17.
 - Then hashtags exactly: ${hashtagsFor(sel.slug)}
 
 ## Banned phrases (templated tells + last-14-day openers)

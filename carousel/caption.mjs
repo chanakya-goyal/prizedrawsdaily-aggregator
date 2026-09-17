@@ -32,5 +32,10 @@ export function buildFbCaption(catName, slug, items = []) {
     ? `${head}\n\nClosing soon 👇\n${list}\n\n👉 See every live UK draw: https://prizedrawsdaily.co.uk`
     : `${head}\n\n👉 See every live UK draw: https://prizedrawsdaily.co.uk`;
   const tags = [...FIXED, ...catCfg(slug).hashtags].join(" ");
-  return `${body}\n\n18+ · UK only · Play responsibly\n\n${tags}`;
+  // "18+ · UK only" is accurate: the age limit and the territory are real conditions.
+  // "Play responsibly" is not — it is gambling language, and a prize competition sits OUTSIDE
+  // Gambling Act 2005 licensing, so the operative code is CAP Section 8. The same reasoning
+  // removed it from every rendered frame; leaving it in the caption would just move the
+  // inaccuracy somewhere less visible.
+  return `${body}\n\n18+ · UK only\n\n${tags}`;
 }

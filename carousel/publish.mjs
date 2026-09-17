@@ -160,16 +160,38 @@ try {
   console.error("⚠ story hosting failed (carousel continues): " + e.message);
 }
 
-// Facebook: ONE detailed captioned post (FACEBOOK_CREATE_PHOTO_POST), not a pile
-// of caption-less photos. heroUrl = the intro slide (most eye-catching); fbCaption
-// is the full body with a real clickable link.
-const fbItems = sel.draws.map((d) => { const s = toDrawSlide(d); return { title: s.title, price: s.price }; });
+// Facebook: ONE multi-photo feed post carrying the whole deck, not one photo and not a pile of
+// caption-less ones. The 4:5 slides already rendered ARE Meta's own recommended feed ratio, so
+// nothing is re-cut.
+//
+// What this deliberately does NOT build is a child_attachments carousel. Every card in one
+// requires a link, which makes the whole thing a LINK post — the worst-performing organic
+// format measured (0.05% engagement, roughly 200 views against 1,125 for a photo, Socialinsider
+// across 25M posts). A multi-photo post keeps the photo treatment and still carries one real
+// clickable link in the body, which is the thing Instagram cannot do at all.
+const fbItems = await Bun.file(`${OUT}/facts.json`).json().catch(() => sel.draws.map((d) => {
+  // Fallback only. Prefer build.mjs's facts: recomputing titles here with a second cleaner is
+  // how Instagram and Facebook ended up calling the same prize two different things.
+  const s = toDrawSlide(d); return { title: s.title, price: s.price };
+}));
 const fbCaption = (await Bun.file(`${OUT}/FB_CAPTION.txt`).text().catch(() => "")).trim()
   || buildFbCaption(sel.name, sel.slug, fbItems);
-const heroUrl = urls[0];
+const heroUrl = urls[0];              // still the album's lead image and the fb_video thumbnail
+// Meta caps a feed post's photo array; the carousel is ten slides, which is inside every
+// published limit, so the album is the deck.
+const fbUrls = urls;
 
 const altTexts = await Bun.file(`${OUT}/alt.json`).json().catch(() => []);
-const publish = { date: today, category: sel.slug, seoKeyword: sel.seoKeyword || null, archetype: sel.archetype || null, igUserId: IG_USER_ID, caption, fbCaption, heroUrl, urls, altTexts, reelUrl, coverUrl, storyUrl, reelMeta };
+const publish = {
+  date: today, category: sel.slug, seoKeyword: sel.seoKeyword || null, archetype: sel.archetype || null,
+  igUserId: IG_USER_ID, caption, fbCaption, heroUrl, urls, altTexts, reelUrl, coverUrl, storyUrl, reelMeta,
+  // The Facebook album and, explicitly, the tools that must not be used for it. Naming the
+  // forbidden ones in the manifest is the point: the single-photo call is still the obvious
+  // thing to reach for, and a link-card carousel is the tempting one.
+  fbUrls,
+  fbForbiddenTools: ["FACEBOOK_CREATE_PHOTO_POST (single photo — posts the cover and drops nine slides)",
+                     "child_attachments / link-card carousel (every card needs a link, which makes it a LINK post)"],
+};
 await Bun.write(`${OUT}/publish.json`, JSON.stringify(publish, null, 2));
 // write-ahead row (spec §4.2): marks today's carousel "assets_uploaded" before Composio posts,
 // so a crash/retry mid-post can't silently double-publish. Tables are pending a one-time SQL
@@ -182,9 +204,9 @@ try {
     caption, asset_urls: urls,
   });
   await upsertPost({
-    date: todayLondon(), format: "fb_photo", status: "assets_uploaded",
+    date: todayLondon(), format: "fb_album", status: "assets_uploaded",
     category: sel.slug, draw_slugs: sel.draws.map((d) => d.slug),
-    caption: fbCaption, asset_urls: [heroUrl],
+    caption: fbCaption, asset_urls: fbUrls,
   });
   // reel/story rows only get written when we actually uploaded something THIS run —
   // gated on uploadedThisRun (not URL truthiness), since the skip branches above now
@@ -224,10 +246,12 @@ try {
       });
     }
   }
-  console.log(`✓ write-ahead rows: carousel + fb_photo${reelUploadedThisRun ? " + reel" : ""}${storyUploadedThisRun ? " + story" : ""}${reelUrl ? " + fb_video" : ""} assets_uploaded (idempotent re-runs will not double-post)`);
+  console.log(`✓ write-ahead rows: carousel + fb_album${reelUploadedThisRun ? " + reel" : ""}${storyUploadedThisRun ? " + story" : ""}${reelUrl ? " + fb_video" : ""} assets_uploaded (idempotent re-runs will not double-post)`);
 } catch (e) {
   console.log(`⚠ state write failed (tables pending?): ${e?.message || e}`);
 }
 console.log(`\n✓ ${urls.length} public JPEGs hosted. Wrote ${OUT}/publish.json`);
 console.log("\n--- FB CAPTION (single detailed post) ---\n" + fbCaption);
-console.log("\nNext: IG → carousel (urls + caption). FB → FACEBOOK_CREATE_PHOTO_POST(heroUrl, message=fbCaption).");
+console.log(`\nNext: IG → carousel (${urls.length} urls + caption).`);
+console.log(`      FB → ONE multi-photo feed post (all ${fbUrls.length} urls, message=fbCaption).`);
+console.log("      FB → do NOT use the single-photo call (posts the cover, drops the rest) and do NOT build a link-card carousel (it becomes a link post).");
