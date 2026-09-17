@@ -144,15 +144,23 @@ try {
 }
 
 try {
-  if (await Bun.file(`${OUT}/story.mp4`).exists()) {
+  // The Story is a STILL. It is delivered to existing followers with a 24h life, is not in the
+  // Reels chaining system, has no length cohort and no watch-duration head, and does not need
+  // audio — so a twelve-second timeline, a frame loop, an ffmpeg encode and an audio mux were
+  // all cost with nothing ranking them. story.mp4 is still accepted so a half-migrated working
+  // directory does not silently drop the Story.
+  const storyStill = await Bun.file(`${OUT}/story.png`).exists();
+  const storyFile = storyStill ? "story.png" : "story.mp4";
+  const storyMime = storyStill ? "image/png" : "video/mp4";
+  if (await Bun.file(`${OUT}/${storyFile}`).exists()) {
     const existingStory = await getPost(todayLondon(), "story").catch((e) => { console.error("⚠ story preflight skipped (state unreachable): " + e.message); return null; });
     if (existingStory?.status === "published") {
       console.error(`⚠ today's STORY is already PUBLISHED (ig_media_id=${existingStory.ig_media_id}). Skipping re-hosting story.`);
-      storyUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${today}/${sel.slug}/story.mp4`;
+      storyUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${today}/${sel.slug}/${storyFile}`;
     } else {
-      const storyBuf = Buffer.from(await Bun.file(`${OUT}/story.mp4`).arrayBuffer());
-      storyUrl = await withRetry(() => upload(`${today}/${sel.slug}/story.mp4`, storyBuf, "video/mp4"), { label: "upload story" });
-      console.log(`  ✓ story.mp4 → ${(storyBuf.length / 1024 / 1024).toFixed(1)}MB → ${storyUrl}`);
+      const storyBuf = Buffer.from(await Bun.file(`${OUT}/${storyFile}`).arrayBuffer());
+      storyUrl = await withRetry(() => upload(`${today}/${sel.slug}/${storyFile}`, storyBuf, storyMime), { label: "upload story" });
+      console.log(`  ✓ ${storyFile} → ${(storyBuf.length / 1024).toFixed(0)}KB → ${storyUrl}`);
       storyUploadedThisRun = true;
     }
   }

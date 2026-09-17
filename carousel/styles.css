@@ -162,38 +162,10 @@ body {
    THE BRAND SYSTEM. One block, every declaration flat, every value a literal.
    This is the single source: any token the templates need exists here, once.
    ============================================================================ */
-:root{
-  /* Colour. Three of these are DATA STATES and may never be spent on decoration:
-     --closing (amber, a deadline inside 48h), --verdict (green, a marked ticket),
-     --deadline (red). A decorative use devalues the signal the data layer needs. */
-  --ground:#F7F5F0; --surface:#FFFFFF; --scene-tone:#EAE4D6;
-  --ink:#14161A; --ink-meta:#5A5F66;
-  --hairline:#D8D3C8; --rule:#8C8677;
-  --rail:#14385F; --rail-ink:#F7F5F0; --rail-meta:#B9C6D6; --rail-accent:#FFC53D;
-  --verdict:#0F6B45; --verdict-tint:#E6F2EA; --deadline:#B3202C; --closing:#FFC53D;
-  --dot-hit:#0F6B45;
-  /* The dot cell. The odds band, the count-slide vertical budget and the numeral
-     lockup are all DERIVED from these two values, never the reverse. Editing
-     either one moves the band on every surface. */
-  --dot-size:10px; --dot-gap:5px;
-  --font-text:'Inter'; --font-figure:'JetBrains Mono'; --font-chrome:'Inter';
-  /* Nine steps, and nothing below 34px renders anywhere. The old deck put 18 of
-     its 28 type sizes at 46px or under, which is ~7px in the profile grid. */
-  --fs-hero:150px;   --lh-hero:150px;
-  --fs-figure:120px; --lh-figure:120px;
-  --fs-display:88px; --lh-display:90px;
-  --fs-title:68px;   --lh-title:70px;
-  --fs-lead:56px;    --lh-lead:60px;
-  --fs-body:48px;    --lh-body:60px;
-  --fs-label:44px;   --lh-label:50px;
-  --fs-legal:38px;   --lh-legal:45px;   /* the conditions band, and nothing else */
-  --fs-micro:34px;   --lh-micro:40px;
-  --tr-display:-0.02em; --tr-label:0.08em; --tr-figure:0;
-  --gutter:65px;
-  --sp-0:5px; --sp-1:10px; --sp-15:15px; --sp-2:20px; --sp-3:30px;
-  --sp-4:40px; --sp-5:60px; --sp-6:90px; --sp-7:120px;
-  --scene-wash:rgba(247,245,240,.86);
-}
+
+/* The newsprint token block lives in tokens.mjs and is injected before this stylesheet.
+   It is data, not text to be scraped: see the header of that file for why. */
+
 
 /* ============================================================================
    THE 4:5 CAROUSEL

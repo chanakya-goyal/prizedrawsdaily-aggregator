@@ -70,6 +70,9 @@ export const stampLong = (t, d) => `READ FROM OPERATORS ${t} · ${d}`;
 // that distinguishes a directory from the operators it lists.
 export const closingHeadline = () => "WE LIST DRAWS. WE RUN NONE.";
 export const closingSubLine = () => "Every draw above is someone else's. We read the numbers and print them.";
+// The Story carries exactly ONE draw and nothing sits above it, so the closing slide's line is
+// simply false there. Same claim, correct number and correct place.
+export const storySubLine = () => "This draw is someone else's. We read the numbers and print them.";
 export const signOffStrapline = () => "prizedrawsdaily.co.uk";
 
 // The cover's proof line. Generated, never authored, and the only bounded comparative permitted

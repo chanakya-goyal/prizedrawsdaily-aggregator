@@ -1,290 +1,248 @@
-// carousel/story.mjs — the daily countdown STORY (spec §4.5): a single 12s scene,
-// no cuts — just a card "breathing" (1.00→1.02 scale loop, CARD layer only, the raw
-// photo is never scale-animated) behind a real flip-clock ticking to the soonest-
-// closing draw. API-posted stories carry NO tappable link (Instagram/Graph API
-// stories can't attach one) — the payoff here is reach/warmth ("link in bio ·
-// @prizedrawsdaily"), not a click.
+// The 9:16 Story — a STILL, not a video.
 //
-// Composes the SAME primitives as the Reel timeline (carousel/reel-template.mjs) —
-// SEEK_RUNTIME, stampCss/stampHtml, flipClockCss/countdownHtml — so capture.mjs and
-// encode.mjs need zero story-specific code. Determinism: no Date.now()/Math.random();
-// nowIso is build-time, closeIso is the real draw_date.
+//   bun carousel/story.mjs            (reads selection.json, writes out/story.png)
 //
-// Run: [PDD_DIR=…] bun carousel/story.mjs   (after plan.mjs + fetchimg.mjs; needs
-// selection.json). PROCESS ARCHITECTURE mirrors reel.mjs's documented gotcha (ONE
-// chromium.launch() per Bun process): main is orchestration-only; frame capture runs
-// in a self-exec subprocess (`bun story.mjs --capture <job.json>`).
-import { readdir, mkdir } from "node:fs/promises";
-import { workDir, catCfg, themeOf } from "./config.mjs";
+// WHY A STILL
+// A Story is delivered to existing followers with a 24-hour life. It is not in the Reels
+// chaining system, so there is no length cohort and no watch-duration head ranking it, audio is
+// not required, and the "majority text" demotion does not apply. The only thing motion bought
+// here was cost: a twelve-second timeline, a frame loop, an ffmpeg encode and an audio mux, for
+// a surface nobody scrubs. The scene lanes render at phase 0 and the whole thing is one PNG.
+//
+// WHY THE BANDS ARE ASSERTED RATHER THAN TRUSTED
+// Meta's own 9:16 diagram gives a safe box of x 65..1015 by y 269..1152 — 883px of usable
+// height. The five bands sum to 863px plus four 5px gutters, which is 883 EXACTLY, with no
+// slack anywhere except the 5px inside band 4. A table that closes exactly is a table that
+// breaks silently when one height changes, so the renderer checks the sum and the chain before
+// it draws, in the style of assertVideoContract.
+import { chromium } from "playwright";
 import { fontFaceCss } from "./fonts.mjs";
-import { stampCss, stampHtml, SEEK_RUNTIME, flipClockCss, countdownHtml } from "./reel-template.mjs";
-import { beatGrid, quantize } from "./beat.mjs";
-import { toDrawSlide } from "./format.mjs";
-
-const FPS = 30;
-const esc = (s = "") => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+import { tokenCss } from "./tokens.mjs";
+import { sceneFor, sceneBack } from "./scene.mjs";
+import * as oddsCopy from "./odds-copy.mjs";
+import { cleanTitle, closesLabel, priceLabel } from "./format.mjs";
+import { workDir } from "./config.mjs";
+import { mkdir } from "node:fs/promises";
 
 const FONT_CSS = await fontFaceCss();
-const STYLES_TEXT = await Bun.file(new URL("./styles.css", import.meta.url)).text();
-// same token-lift trick as reel-template.mjs / reel.mjs's buildCoverHtml — pull only
-// the :root + [data-theme] blocks so var(--accent) etc. resolve per category.
-const TOKEN_CSS = [...STYLES_TEXT.matchAll(/(?:^|\n)\s*(?::root|\[data-theme="[^"]+"\])\s*\{[^}]*\}/g)]
-  .map((m) => m[0].trim()).join("\n");
+const esc = (s = "") => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-// deterministic default "now" for callers that don't pass a real time (tests).
-const DEFAULT_NOW = "2026-01-01T18:00:00.000Z";
+// Meta's Derived Safe Box A, edge-detected from their own diagram.
+export const SAFE = { x: 65, y: 269, w: 950, h: 883 };
+// The L-notch: the reply composer and the tap targets over it. A GROUND may pass under it —
+// the lower rail band does — but no glyph and no data may.
+export const L_NOTCH = { x: 853, y: 1152, w: 227, h: 768 };
 
-// ---------------------------------------------------------------- story-scoped CSS
-const STORY_CSS = `
-* { margin:0; padding:0; box-sizing:border-box; }
-html, body { width:1080px; height:1920px; overflow:hidden; }
-body { background: var(--bg-solid); color:#fff; font-family:'Oswald', ui-sans-serif, system-ui, sans-serif;
-  -webkit-font-smoothing:antialiased; text-rendering:geometricPrecision; }
-.story { position:absolute; inset:0; overflow:hidden;
-  background:
-    radial-gradient(120% 70% at 50% 10%, rgba(var(--glow-rgb),.24) 0%, rgba(var(--accent-rgb),0) 48%),
-    radial-gradient(130% 90% at 50% 96%, rgba(var(--accent-deep-rgb),.18) 0%, rgba(0,0,0,0) 52%),
-    radial-gradient(130% 92% at 50% 44%, var(--bg-1) 0%, var(--bg-2) 56%, var(--bg-3) 100%); }
-.st-glow { position:absolute; left:50%; top:34%; width:1150px; height:1150px; transform:translate(-50%,-50%); z-index:1;
-  background: radial-gradient(circle, var(--glow) 0%, rgba(var(--accent-rgb),.42) 28%, rgba(0,0,0,0) 64%);
-  opacity:.7; filter: blur(20px); mix-blend-mode:screen; pointer-events:none; }
-.vign { position:absolute; inset:0; z-index:50; pointer-events:none; box-shadow: inset 0 0 240px rgba(0,0,0,.5); }
+// Band heights are the normative table. Positions are derived from them, never typed, so the
+// chain cannot drift out of step with the heights.
+export const BANDS = [
+  { id: "dateline",   h: 55,  note: "the run-level read-at stamp" },
+  { id: "prize",      h: 145, note: "cleanTitle output, max 2 lines, carries the CAP 8.17 prize name" },
+  { id: "photo",      h: 273, note: "normalised operator photo, full 950 width" },
+  { id: "odds",       h: 245, note: "E2 consumed whole at 240px, plus 5px of slack" },
+  { id: "conditions", h: 145, note: "the conditions band" },
+];
+export const GUTTER = 5;
 
-.st-kick { position:absolute; left:56px; right:56px; top:120px; z-index:6; text-align:center;
-  font-family:'Oswald',sans-serif; font-weight:700; font-size:34px; letter-spacing:4px; text-transform:uppercase;
-  color:#fff; text-shadow: 0 2px 12px rgba(0,0,0,.85);
-  animation: st-in 460ms cubic-bezier(.2,1.6,.3,1) both; }
-.st-kick b { color: var(--hot); }
+export function bandRects() {
+  let y = SAFE.y;
+  const out = {};
+  BANDS.forEach((b, i) => {
+    out[b.id] = { y, h: b.h, bottom: y + b.h };
+    y += b.h + (i < BANDS.length - 1 ? GUTTER : 0);
+  });
+  out.__end = y;
+  return out;
+}
 
-.st-name { position:absolute; left:64px; right:64px; top:190px; z-index:6; text-align:center;
-  font-family: var(--font-display),'Anton',sans-serif; font-size:58px; line-height:1.02; text-transform:uppercase;
-  background: linear-gradient(180deg, #ffffff 0%, #ffffff 46%, var(--ink-end) 100%);
-  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent;
-  -webkit-text-stroke: 3px var(--stroke); paint-order: stroke fill;
-  animation: st-in 460ms cubic-bezier(.2,1.6,.3,1) 90ms both; }
+// The assertion, exported so a test can run it without a browser.
+export function assertBands() {
+  const sum = BANDS.reduce((a, b) => a + b.h, 0);
+  const total = sum + (BANDS.length - 1) * GUTTER;
+  const r = bandRects();
+  const problems = [];
+  if (total !== SAFE.h) problems.push(`bands sum to ${sum} + ${(BANDS.length - 1) * GUTTER} gutters = ${total}, not the ${SAFE.h}px safe box`);
+  if (r.__end !== SAFE.y + SAFE.h) problems.push(`band chain ends at y ${r.__end}, not ${SAFE.y + SAFE.h}`);
+  for (const b of BANDS) {
+    const rr = r[b.id];
+    if (rr.y < SAFE.y || rr.bottom > SAFE.y + SAFE.h) problems.push(`band ${b.id} (y ${rr.y}..${rr.bottom}) leaves the safe box`);
+    // A band spans the full 950px track, so it reaches x 1015. The L-notch starts at y 1152,
+    // which is the safe box's bottom edge, so no band may extend past it.
+    if (rr.bottom > L_NOTCH.y) problems.push(`band ${b.id} reaches y ${rr.bottom}, inside the L-notch keep-out at y ${L_NOTCH.y}`);
+  }
+  return problems;
+}
 
-/* ---- the CARD layer breathes (1.00→1.02, exactly 3 loops over the 12s clip);
-   the raw <img> inside is NEVER animated — only this wrapper's transform moves. ---- */
-.st-breathe { position:absolute; left:64px; right:64px; top:310px; height:820px;
-  animation: st-breathe 4000ms ease-in-out infinite; transform-origin:50% 50%; }
-@keyframes st-breathe { 0%,100% { transform: scale(1.00); } 50% { transform: scale(1.02); } }
+// Bricolage Grotesque 800 advances 0.6573em, measured from the bundled woff2. Two lines
+// maximum at either step; a title that will not set at 56 is truncated at a word boundary
+// rather than refused — a Story is one draw, and refusing it means no Story at all.
+export function fitPrize(title) {
+  const len = String(title || "").length;
+  for (const [px, lh] of [[68, 70], [56, 60]]) {
+    if (Math.ceil(len / Math.floor(SAFE.w / (px * 0.6573))) <= 2) return { px, lh, text: title };
+  }
+  const per = Math.floor(SAFE.w / (56 * 0.6573));
+  const cut = String(title).slice(0, per * 2 - 1);
+  const sp = cut.lastIndexOf(" ");
+  return { px: 56, lh: 60, text: (sp > per ? cut.slice(0, sp) : cut) + "…", truncated: true };
+}
 
-.st-card { position:absolute; inset:0; border-radius:40px; overflow:hidden;
-  background: radial-gradient(circle at 50% 36%, rgba(var(--accent-rgb),.30) 0%, rgba(var(--card-rgb),.97) 60%);
-  border: 3px solid rgba(var(--ray-rgb),.65);
-  box-shadow: 0 30px 70px rgba(0,0,0,.62), 0 0 90px rgba(var(--accent-rgb),.38),
-              inset 0 0 0 1px rgba(var(--gold-rgb),.5), inset 0 1px 0 rgba(255,255,255,.16);
-  opacity:0; animation: st-in 560ms cubic-bezier(.2,1.6,.3,1) 220ms both; }
-.st-card .cbg { position:absolute; inset:0; }
-.st-card .cbg img { width:100%; height:100%; object-fit:cover; transform:scale(1.5); /* static fill, not animated */
-  filter: blur(40px) saturate(1.6) brightness(1.1); opacity:.55; }
-.st-card .photo { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:46px; }
-.st-card .photo img { max-width:100%; max-height:100%; object-fit:contain; filter: drop-shadow(0 22px 34px rgba(0,0,0,.55)); }
-.st-card .pgrad { position:absolute; inset:0; box-shadow: inset 0 0 90px rgba(0,0,0,.42), inset 0 0 0 1px rgba(var(--ray-rgb),.15);
-  background: linear-gradient(180deg, rgba(0,0,0,0) 58%, rgba(0,0,0,.42) 100%); }
-.st-typo { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:70px; }
-.st-typo .st-title { font-family: var(--font-display),'Anton',sans-serif; font-size:100px; line-height:.94; text-transform:uppercase;
-  background: linear-gradient(180deg, #ffffff 0%, #ffffff 46%, var(--ink-end) 100%);
-  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent;
-  -webkit-text-stroke: 6px var(--stroke); paint-order: stroke fill; }
-
-.st-clock { position:absolute; left:0; right:0; top:1170px; z-index:8; display:flex; justify-content:center;
-  animation: st-in 540ms cubic-bezier(.2,1.8,.3,1) 700ms both; }
-
-/* API stories carry NO tappable link — reach/warmth line only, never a clickable anchor. */
-.st-link { position:absolute; left:0; right:0; top:1560px; z-index:8; text-align:center;
-  font-family:'Oswald',sans-serif; font-weight:600; font-size:32px; letter-spacing:2px; text-transform:uppercase;
-  color: rgba(255,255,255,.92); text-shadow: 0 2px 10px rgba(0,0,0,.85);
-  animation: st-in 460ms cubic-bezier(.2,1.6,.3,1) 900ms both; }
-.st-link b { color: var(--hot); }
-
-/* THE PRICE STAMP lands over the card at ~10s (stampCss/stampHtml, imported verbatim) */
-.st-stamp { position:absolute; left:50%; top:46%; width:430px; height:430px; margin:-215px 0 0 -215px; z-index:40; }
-.st-stamp .stamp span { display:block; padding:0 34px; }
-.st-stamp .stamp-ring { animation: stamp-ring 700ms ease-out var(--t-in,0ms) both; }
-@keyframes st-chroma { from { filter: drop-shadow(7px 0 0 rgba(255,45,85,.85)) drop-shadow(-7px 0 0 rgba(0,229,255,.8)); } to { filter:none; } }
-
-.rfoot { position:absolute; left:0; right:0; bottom:36px; z-index:60; text-align:center;
-  font-family:'Oswald',sans-serif; font-weight:600; font-size:24px; letter-spacing:3px;
-  color: rgba(255,255,255,.78); text-shadow: 0 2px 10px rgba(0,0,0,.85); }
-
-@keyframes st-in { from { opacity:0; transform: translateY(46px); } to { opacity:1; transform:none; } }
+const CSS = `
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1080px;height:1920px}
+body{background:var(--ground);color:var(--ink);font-family:var(--font-text),system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+.frame{position:relative;width:1080px;height:1920px;overflow:hidden}
+/* The two rail bands. They are FULL BLEED and they are grounds, which is what lets the lower
+   one pass under the L-notch where a glyph may not. */
+.rail{position:absolute;left:0;width:1080px;background:var(--rail)}
+.rail-top{top:0;height:269px}
+.rail-bot{top:1152px;height:768px}
+.wordmark{position:absolute;left:65px;top:96px;font-family:var(--font-chrome);font-weight:700;
+  font-size:var(--fs-label);letter-spacing:var(--tr-label);color:var(--rail-ink);text-transform:uppercase;line-height:1}
+.band{position:absolute;left:65px;width:950px}
+.dateline{font-family:var(--font-figure);font-weight:700;font-size:var(--fs-label);
+  line-height:50px;color:var(--ink);letter-spacing:.01em;white-space:nowrap}
+.prize{font-family:var(--font-display);font-weight:800;letter-spacing:var(--tr-display);
+  color:var(--ink);text-transform:uppercase}
+/* COVER here, not contain -- and this is the one place in the system where that is right.
+   The band is 950x273, a 3.48:1 letterbox, and the spec is explicit that it IS a crop. At
+   'contain' a square operator asset renders 273px wide: 29% of the band, a stamp floating in
+   white. A full-width horizontal slice of a motorbike is recognisable; a tiny square of one is
+   not. The carousel keeps 'contain' because its well is 1.65:1 and can hold a whole product.
+   (No backticks in here: this comment lives inside a JS template literal.) */
+.photo{background:var(--surface);overflow:hidden;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
+.photo img{width:100%;height:100%;object-fit:cover;object-position:center;display:block}
+.eyebrow{font-weight:600;font-size:var(--fs-label);line-height:var(--lh-label);height:50px;
+  letter-spacing:var(--tr-label);text-transform:uppercase;color:var(--ink-meta)}
+.figure{font-family:var(--font-figure);font-weight:700;font-size:var(--fs-figure);
+  line-height:var(--lh-figure);height:120px;color:var(--ink);font-variant-numeric:tabular-nums}
+.cond{font-weight:600;font-size:var(--fs-label);line-height:var(--lh-label);height:50px;color:var(--ink)}
+/* The conditions band carries its OWN rail ground, flush with the lower rail band below it, so
+   the two read as one continuous block. It has to: the band's type is specified as #F7F5F0 on
+   #14385F, and the band sits at y 1007..1152 which is ABOVE the lower rail — so without its own
+   ground the light type landed on cream paper and L2 and L3 were all but invisible. */
+.conditions{display:flex;flex-direction:column;justify-content:center;
+  background:var(--rail);left:0;width:1080px;padding:0 65px}
+.conditions .l{font-size:var(--fs-legal);line-height:var(--lh-legal);white-space:nowrap}
+.conditions .l1{font-weight:600;color:var(--rail-ink);text-transform:uppercase}
+.conditions .l1.soon{color:var(--closing)}
+.conditions .l2,.conditions .l3{font-weight:400;color:var(--rail-meta)}
+.handle{position:absolute;left:65px;top:1330px;font-family:var(--font-figure);font-weight:700;
+  font-size:var(--fs-title);line-height:1;color:var(--rail-accent)}
+.sub{position:absolute;left:65px;top:1420px;width:740px;font-weight:400;
+  font-size:var(--fs-body);line-height:var(--lh-body);color:var(--rail-meta)}
+.scene-host{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 `;
 
-function stampBlock(text, tMs) {
-  return `<div class="st-stamp" style="--t-in:${tMs}ms">
-    <div class="s-pop" style="animation: stamp-in 560ms cubic-bezier(.2,2,.3,1) ${tMs}ms both">
-      <div class="s-chroma" style="animation: st-chroma 67ms linear ${tMs}ms both">${stampHtml(esc(text))}</div>
-    </div></div>`;
-}
+const READY = `
+(async()=>{try{await document.fonts.ready}catch(e){}
+const w=(i)=>(!i||i.complete)?null:new Promise(r=>{i.onload=r;i.onerror=r});
+await Promise.all([...document.images].map(w).filter(Boolean));
+try{await document.fonts.ready}catch(e){}
+window.__ready=true})();`;
 
-// ---------------------------------------------------------------- the timeline
-export function buildStoryTimeline({ draw, hero, theme, audioMeta, nowIso = DEFAULT_NOW }) {
-  if (!draw) throw new Error("buildStoryTimeline: need a draw");
-  const slide = toDrawSlide(draw, 1);
-  const closeIso = draw.draw_date || nowIso;
-  const durationMs = 12000; // fixed 12s story — no cuts, one continuous scene
+export function buildStoryHtml({ draw, hero, stamp, categorySlug = "" }) {
+  if (!draw) throw new Error("buildStoryHtml: need a draw");
+  const problems = assertBands();
+  if (problems.length) throw new Error("story band table is inconsistent — refusing to render:\n  " + problems.join("\n  "));
 
-  // the stamp is the only quantized moment (mirrors reel-template's beat-snap rule);
-  // everything else is a simple entrance cascade, not a "cut/slam".
-  const grid = audioMeta?.bpm > 0 ? beatGrid(audioMeta, durationMs) : [];
-  const stampT = grid.length ? Math.round(quantize(10000, grid)) : 10000;
-  const stampText = slide.price ? `JUST ${String(slide.price).toUpperCase()} A TICKET` : "CLOSING SOON";
+  const r = bandRects();
+  const cap = Number(draw.total_entries) || null;
+  if (!cap) throw new Error(`story: draw "${draw.slug}" carries no ticket cap — the odds lockup cannot render`);
+  const title = cleanTitle(draw.grand_prize || draw.title);
+  const fit = fitPrize(title);
+  const soon = (new Date(draw.draw_date) - Date.now()) < 48 * 3600e3;
+  const host = (() => { try { return new URL(draw.entry_url).hostname.replace(/^www\./, ""); } catch { return "the operator's own site"; } })();
+  const band = oddsCopy.bandLines({
+    role: "story", closesText: closesLabel(draw.draw_date),
+    price: priceLabel(draw.ticket_price) || "n/a", host, freeEntryRoute: draw.free_entry_route || "unknown",
+  });
+  const scene = sceneFor(categorySlug);
 
-  const media = hero
-    ? `<div class="cbg"><img src="${hero}"></div><div class="photo"><img src="${hero}"></div><div class="pgrad"></div>`
-    : `<div class="st-typo"><div class="st-title">${esc(slide.title)}</div></div>`;
+  const at = (id, extra = "") => `style="top:${r[id].y}px;height:${r[id].h}px;${extra}"`;
+  return `<!doctype html><html><head><meta charset="utf-8">
+<style>${FONT_CSS}</style><style>${tokenCss()}</style><style>${CSS}</style>
+</head><body data-pdd-role="story">
+<div class="frame">
+  <div class="scene-host">${sceneBack(scene, "story-9x16", { draw })}</div>
+  <div class="rail rail-top"></div>
+  <div class="rail rail-bot"></div>
+  <div class="wordmark">PRIZEDRAWSDAILY</div>
 
-  const html = `<!doctype html><html><head><meta charset="utf-8">
-<style>${FONT_CSS}</style>
-<style>${TOKEN_CSS}</style>
-<style>${stampCss()}</style>
-<style>${flipClockCss()}</style>
-<style>${STORY_CSS}</style>
-</head><body data-theme="${theme}">
-<!-- story dur=${durationMs} stamp=${stampT} closes=${closeIso} fps=${FPS} -->
-<div class="story" style="animation: stamp-shake 100ms linear ${stampT}ms both">
-  <div class="st-glow"></div>
-  <div class="st-kick">⏳ <b>${esc(slide.closes || "CLOSES SOON")}</b></div>
-  <div class="st-name">${esc(slide.title)}</div>
-  <div class="st-breathe"><div class="st-card">${media}</div></div>
-  <div class="st-clock">${countdownHtml(closeIso, nowIso)}</div>
-  <div class="st-link">LINK IN BIO · <b>@prizedrawsdaily</b></div>
-  ${stampBlock(stampText, stampT)}
-  <div class="vign"></div>
-  <footer class="rfoot">18+ · UK ONLY · PLAY RESPONSIBLY</footer>
+  <div class="band dateline" ${at("dateline")}>${esc(stamp || "")}</div>
+
+  <div class="band prize" ${at("prize", `font-size:${fit.px}px;line-height:${fit.lh}px`)}
+       data-pdd-claim="prize-name">${esc(fit.text)}</div>
+
+  <div class="band photo" ${at("photo")}>${hero ? `<img src="${hero}">` : ""}</div>
+
+  <div class="band" ${at("odds")}>
+    <div class="eyebrow">${oddsCopy.eyebrow()}</div>
+    <div style="height:10px"></div>
+    <div class="figure">${oddsCopy.capFigure(cap)}</div>
+    <div style="height:10px"></div>
+    <div class="cond">${esc(oddsCopy.conditional(cap))}</div>
+  </div>
+
+  <div class="conditions" style="position:absolute;top:${r.conditions.y}px;height:${r.conditions.h}px">
+    <div class="l l1${soon ? " soon" : ""}">${esc(band[0])}</div>
+    <div class="l l2">${esc(band[1])}</div>
+    <div class="l l3">${esc(band[2])}</div>
+  </div>
+
+  <div class="handle">@prizedrawsdaily</div>
+  <div class="sub">${esc(oddsCopy.storySubLine())}</div>
 </div>
-<script>${SEEK_RUNTIME}</script>
-</body></html>`;
-
-  return { html, durationMs, stampTimesMs: [stampT] };
+<script>${READY}</script></body></html>`;
 }
 
-// ---------------------------------------------------------------- child: --capture
-// Frame loop in its own process — captureFrames() performs its own single launch.
-async function captureChild(jobPath) {
-  const { captureFrames } = await import("./capture.mjs");
-  const job = await Bun.file(jobPath).json();
-  const html = await Bun.file(job.htmlPath).text();
-  const { frames } = await captureFrames(html, { fps: job.fps, durationMs: job.durationMs, outDir: job.outDir });
-  console.log(`  captured ${frames} frames → ${job.outDir}`);
-}
-
-// ---------------------------------------------------------------- orchestration
-async function main() {
-  const { minDimOk } = await import("./imgcheck.mjs");
-  const { pickAudio } = await import("./beat.mjs");
-  const { encodeVideo, assertVideoContract } = await import("./encode.mjs");
-
-  const t0 = Date.now();
-  const stage = async (name, fn) => {
-    const s = Date.now();
-    const r = await fn();
-    console.log(`■ ${name} — ${((Date.now() - s) / 1000).toFixed(1)}s`);
-    return r;
-  };
-
-  const DIR = workDir();
-  const OUT = `${DIR}/out`;
-  const WORK = `${DIR}/.storywork`;
-  await mkdir(OUT, { recursive: true });
-  await mkdir(WORK, { recursive: true });
-  const sel = JSON.parse(await Bun.file(`${DIR}/selection.json`).text());
-  if (!sel.draws?.length) throw new Error("story: selection.json has no draws");
-
-  // ---- pick the draw closing SOONEST (min draw_date; ties keep the first/original order)
-  let draw = sel.draws[0];
-  for (const d of sel.draws) {
-    if (!d.draw_date) continue;
-    if (!draw.draw_date || Date.parse(d.draw_date) < Date.parse(draw.draw_date)) draw = d;
+export async function renderStory(args, { browser: borrowed = null } = {}) {
+  const browser = borrowed || await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1080, height: 1920 }, deviceScaleFactor: 1 });
+  try {
+    await page.setContent(buildStoryHtml(args), { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.waitForFunction("window.__ready === true", { timeout: 25000 });
+    // Same two gates the carousel runs, for the same reasons: an image that 404s paints the
+    // well's own background and looks like a valid frame, and a band line that overflows its
+    // track is a required condition leaving the frame.
+    const checks = await page.evaluate(() => ({
+      broken: [...document.images].filter((i) => !i.naturalWidth).map((i) => i.currentSrc || i.src),
+      bandOver: [...document.querySelectorAll(".conditions .l, .dateline")]
+        .filter((e) => e.scrollWidth > e.clientWidth + 1)
+        .map((e) => `${Math.round(e.scrollWidth - e.clientWidth)}px over: ${e.textContent.slice(0, 56)}`),
+      // Nothing carrying meaning may sit inside the L-notch.
+      inNotch: [...document.querySelectorAll(".band, .wordmark, .handle, .sub")]
+        .filter((e) => { const b = e.getBoundingClientRect(); return b.right > 853 && b.bottom > 1152; })
+        .map((e) => e.className),
+    }));
+    if (checks.broken.length) throw new Error(`story: ${checks.broken.length} image(s) failed to decode — refusing to ship a degraded frame`);
+    if (checks.bandOver.length) throw new Error(`story: text overflows its 950px track — refusing to ship a degraded frame\n  ${checks.bandOver.join("\n  ")}`);
+    if (checks.inNotch.length) throw new Error(`story: ${checks.inNotch.join(", ")} sits inside the L-notch keep-out — refusing to ship a degraded frame`);
+    return await page.screenshot({ type: "png", timeout: 60000, animations: "disabled" });
+  } finally {
+    await page.close().catch(() => {});
+    if (!borrowed) await browser.close();
   }
-
-  // ---- hero photo: DUPLICATED priority logic from reel.mjs (per the task brief — do
-  // not refactor). (1) your dropped photo named by slug/rank, (2) auto-fetched
-  // .fetched/{slug}/pick.txt gated by minDimOk ≥500px, (3) none → typographic.
-  const files = await readdir(DIR);
-  const IMG_EXT = /\.(jpe?g|png|webp)$/i;
-  const baseOf = (f) => f.trim().replace(IMG_EXT, "").replace(IMG_EXT, "").trim().toLowerCase();
-  const rank = sel.draws.indexOf(draw) + 1;
-  const findClean = (slug, r) => {
-    const f = files.find((f) => {
-      if (f.startsWith("REF-") || !IMG_EXT.test(f.trim())) return false;
-      const b = baseOf(f);
-      return b === slug.toLowerCase() || b === String(r);
-    });
-    return f ? `${DIR}/${f}` : null;
-  };
-  const toDataUrl = async (path) => {
-    const buf = Buffer.from(await Bun.file(path).arrayBuffer());
-    const ext = path.split(".").pop().toLowerCase();
-    const mime = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
-    return `data:${mime};base64,${buf.toString("base64")}`;
-  };
-  const fetchedPath = async (slug) => {
-    const pick = Bun.file(`${DIR}/.fetched/${slug}/pick.txt`);
-    if (!(await pick.exists())) return null;
-    const name = (await pick.text()).trim();
-    const p = `${DIR}/.fetched/${slug}/${name}`;
-    return name && (await Bun.file(p).exists()) ? p : null;
-  };
-
-  let hero = null, srcKind = "typographic";
-  const mine = findClean(draw.slug, rank);
-  if (mine) { hero = await toDataUrl(mine); srcKind = "your photo"; }
-  else {
-    const auto = await fetchedPath(draw.slug);
-    if (auto && (await minDimOk(auto, 500))) { hero = await toDataUrl(auto); srcKind = "auto-fetched"; }
-    else if (auto) console.log(`  ⚠ ${draw.slug}: auto-fetched pick is under 500px — rejected (typographic scene)`);
-  }
-  console.log(`Story draw: ${draw.slug} · closes ${draw.draw_date} · photo: ${srcKind}`);
-
-  // ---- audio + timeline. trimToOnsetMs MUST be the manifest firstBeatOffsetMs
-  // (loudnorm amplifies silent intros deep into tracks); nowIso is real build time;
-  // closeIso (inside buildStoryTimeline) is the REAL draw_date — never synthetic.
-  const theme = themeOf(sel.slug);
-  const audioMeta = await pickAudio(catCfg(sel.slug).audioMood);
-  const nowIso = new Date().toISOString();
-  const tl = buildStoryTimeline({ draw, hero, theme, audioMeta, nowIso });
-  console.log(`Story · theme ${theme} · ${tl.durationMs}ms · stamp [${tl.stampTimesMs}] · audio ${audioMeta.file} (${audioMeta.mood})`);
-
-  const timelinePath = `${WORK}/story.html`;
-  await Bun.write(timelinePath, tl.html);
-
-  // ---- capture (browser subprocess — ONE chromium.launch() per process)
-  const framesDir = `${WORK}/frames`;
-  await stage("capture", async () => {
-    const jobPath = `${WORK}/capture.job.json`;
-    await Bun.write(jobPath, JSON.stringify({ htmlPath: timelinePath, fps: FPS, durationMs: tl.durationMs, outDir: framesDir }));
-    const p = Bun.spawn(["bun", import.meta.path, "--capture", jobPath], { stdout: "inherit", stderr: "inherit" });
-    if ((await p.exited) !== 0) throw new Error("story: capture subprocess failed (see output above)");
-  });
-
-  // ---- encode + IG contract (ffmpeg only — no browser, safe in main)
-  await stage("encode", async () => {
-    await encodeVideo({
-      framesDir, fps: FPS, out: `${OUT}/story.mp4`,
-      audio: {
-        file: audioMeta.file,
-        trimToOnsetMs: audioMeta.firstBeatOffsetMs || 0,
-        stingFile: "stamp-sting.wav",
-        stingTimesMs: tl.stampTimesMs,
-      },
-    });
-    const c = await assertVideoContract(`${OUT}/story.mp4`, { minDurS: 10, maxDurS: 15 });
-    console.log(`  contract OK: ${c.durS.toFixed(2)}s ${c.w}x${c.h} ${c.vcodec}/${c.acodec} moovFront=${c.moovFront}`);
-  });
-
-  await Bun.write(`${OUT}/story-meta.json`, JSON.stringify({
-    slug: draw.slug, durationMs: tl.durationMs, stampTimesMs: tl.stampTimesMs,
-    audio: { file: audioMeta.file, mood: audioMeta.mood },
-  }, null, 2));
-  console.log(`\nDone in ${((Date.now() - t0) / 1000).toFixed(1)}s → ${OUT}/story.mp4 + story-meta.json`);
 }
 
-// ---------------------------------------------------------------- entry
+// ---------------------------------------------------------------- CLI
 if (import.meta.main) {
-  const [flag, jobPath] = process.argv.slice(2);
-  if (flag === "--capture") await captureChild(jobPath);
-  else if (flag) { console.error(`story: unknown flag ${flag} (expected --capture)`); process.exit(2); }
-  else await main();
+  const DIR = workDir();
+  const sel = JSON.parse(await Bun.file(`${DIR}/selection.json`).text());
+  // One draw, the soonest-closing. Ties keep the original order.
+  const draw = sel.draws.reduce((a, b) => (new Date(a.draw_date) <= new Date(b.draw_date) ? a : b));
+  const facts = await Bun.file(`${DIR}/out/facts.json`).json().catch(() => null);
+  const checked = sel.draws.map((d) => d.figures_checked_at).filter(Boolean).sort();
+  const stamp = checked.length
+    ? oddsCopy.stampLong(
+        new Date(checked[0]).toLocaleTimeString("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" }),
+        new Date(checked[0]).toLocaleDateString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short" }).toUpperCase())
+    : null;
+  if (!stamp) console.error("⚠ no figures_checked_at on any draw — the Story's dateline band will be empty");
+  const png = await renderStory({ draw, hero: draw.image_url, stamp, categorySlug: sel.slug });
+  await mkdir(`${DIR}/out`, { recursive: true });
+  await Bun.write(`${DIR}/out/story.png`, png);
+  console.log(`✓ story.png → ${(png.length / 1024).toFixed(0)}KB  (${draw.slug.slice(0, 44)}, closes ${closesLabel(draw.draw_date)})`);
+  if (facts) console.log(`  cap ${oddsCopy.capFigure(draw.total_entries)} · ${BANDS.length} bands, ${SAFE.h}px, all inside Box A`);
 }

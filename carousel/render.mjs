@@ -16,6 +16,7 @@ import { chromium } from "playwright";
 import { fontFaceCss } from "./fonts.mjs";
 import { sceneFor, sceneCss, sceneBack, sceneMotion } from "./scene.mjs";
 import * as C from "./odds-copy.mjs";
+import { tokenCss } from "./tokens.mjs";
 
 const CSS = await Bun.file(new URL("./styles.css", import.meta.url)).text();
 const FONT_CSS = await fontFaceCss();
@@ -261,6 +262,7 @@ export function buildHtml(slide, categorySlug = "") {
   const tok = Object.entries(scene.tokens || {}).map(([k, v]) => `${k}:${v}`).join(";");
   return `<!doctype html><html><head><meta charset="utf-8">
 <style>${FONT_CSS}</style>
+<style>${tokenCss()}</style>
 <style>${CSS}</style>
 <style>${SCENE_CSS}</style>
 <style>${sceneMotion(scene, "still-4x5")}</style></head>
