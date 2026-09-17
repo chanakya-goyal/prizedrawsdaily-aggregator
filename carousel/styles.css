@@ -166,7 +166,7 @@ body {
   /* Colour. Three of these are DATA STATES and may never be spent on decoration:
      --closing (amber, a deadline inside 48h), --verdict (green, a marked ticket),
      --deadline (red). A decorative use devalues the signal the data layer needs. */
-  --ground:#F7F5F0; --surface:#FFFFFF; --scene-tone:#F3F1EC;
+  --ground:#F7F5F0; --surface:#FFFFFF; --scene-tone:#EAE4D6;
   --ink:#14161A; --ink-meta:#5A5F66;
   --hairline:#D8D3C8; --rule:#8C8677;
   --rail:#14385F; --rail-ink:#F7F5F0; --rail-meta:#B9C6D6; --rail-accent:#FFC53D;
@@ -209,7 +209,8 @@ body {
    so every slide has to be a valid cold entry point, carrying the mark, the date
    stamp and the legal band on its own. */
 .masthead{position:absolute;left:0;top:0;width:1080px;height:132px;background:var(--rail);
-  display:flex;align-items:center;justify-content:space-between;padding:0 65px}
+  display:flex;align-items:center;justify-content:space-between;padding:0 65px;
+  border-bottom:8px solid var(--rail-accent)}
 .mh-a{font-family:var(--font-chrome);font-weight:700;font-size:var(--fs-label);
   letter-spacing:var(--tr-label);color:var(--rail-ink);text-transform:uppercase;line-height:1}
 .mh-b{font-family:var(--font-figure);font-weight:700;font-size:var(--fs-micro);
@@ -231,7 +232,8 @@ body {
 /* The counter sits just INSIDE the content edge, not on the sheet: at 34px mono a four-glyph
    `4/10` measures 81.6px and the sheet strip is only 65px wide, so on the strip it clipped. */
 .counter{position:absolute;right:80px;top:146px;font-family:var(--font-figure);font-weight:700;
-  font-size:var(--fs-micro);line-height:50px;color:var(--ink-meta);letter-spacing:.04em}
+  font-size:var(--fs-micro);line-height:42px;color:var(--rail-ink);letter-spacing:.04em;
+  background:var(--rail);padding:4px 16px;border-radius:999px}
 
 .well{position:absolute;left:65px;width:895px}
 .scene-host{position:absolute;inset:0;overflow:hidden}
@@ -244,11 +246,17 @@ body {
    broadsheet headline. */
 .dateline{position:absolute;left:65px;top:152px;width:895px;height:45px;
   font-family:var(--font-figure);font-weight:700;font-size:var(--fs-micro);
-  line-height:45px;color:var(--ink-meta);letter-spacing:.02em}
+  line-height:45px;color:var(--ink);letter-spacing:.02em}
 .headline{position:absolute;left:65px;width:895px;bottom:656px;
   font-family:var(--font-display);font-weight:800;font-size:var(--fs-hero);
-  line-height:var(--lh-hero);letter-spacing:var(--tr-display);color:var(--ink);
+  line-height:var(--lh-hero);letter-spacing:-0.035em;color:var(--ink);
   text-transform:uppercase;text-wrap:balance}
+/* Amber laid behind the headline's SECOND sentence. The split carries meaning: "8 DRAWS." is
+   the fact, "HOW MANY TICKETS?" is the ask. Painted as a background gradient on the inline box
+   rather than a ::after at z-index:-1 — that has no positioned ancestor to sit in front of and
+   renders behind the slide, which is how an earlier version of this shipped as nothing. */
+.headline em{font-style:normal;box-decoration-break:clone;-webkit-box-decoration-break:clone;
+  background-image:linear-gradient(to top, var(--rail-accent) 0 84px, transparent 84px)}
 .proof{position:absolute;left:65px;top:728px;width:895px;height:120px;
   font-weight:600;font-size:var(--fs-body);line-height:var(--lh-body);color:var(--ink)}
 .proof b{font-family:var(--font-figure);font-weight:700;color:var(--verdict)}
@@ -258,19 +266,31 @@ body {
    profile grid. The board carries the same "N things inside" signal in type and
    also says what they are and when they close. */
 .board{position:absolute;left:65px;top:882px;width:895px;height:280px}
-.board .row{display:flex;align-items:center;height:70px;border-top:1px solid var(--hairline)}
-.board .ix{width:70px;font-family:var(--font-figure);font-weight:700;
-  font-size:var(--fs-micro);color:var(--ink-meta);flex:none}
-.board .pz{width:513px;font-weight:600;font-size:var(--fs-label);color:var(--ink);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.board .cl{width:292px;margin-left:20px;text-align:right;font-family:var(--font-figure);
-  font-weight:700;font-size:var(--fs-micro);color:var(--ink)}
+.board .row{display:flex;align-items:stretch;height:70px}
+.board .row:nth-child(odd){background:var(--scene-tone)}
+.board .ix{width:70px;flex:none;font-family:var(--font-figure);font-weight:700;
+  font-size:var(--fs-micro);background:var(--rail);color:var(--rail-ink);
+  display:flex;align-items:center;justify-content:center}
+.board .pz{width:493px;padding-left:20px;font-weight:600;font-size:var(--fs-label);color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center}
+.board .cl{width:292px;margin-left:20px;font-family:var(--font-figure);
+  font-weight:700;font-size:var(--fs-micro);color:var(--ink);
+  display:flex;align-items:center;justify-content:flex-end}
 .board .cl.soon{color:var(--deadline)}
-.board .more{color:var(--ink-meta);font-weight:600;font-size:var(--fs-label)}
+.board .more{color:var(--ink-meta);font-weight:600;font-size:var(--fs-label);padding-left:20px}
 
 /* ---- the odds device ------------------------------------------------------
    The whole point of the rework. The cap used to render as a trailing fragment
    at 33px after the closing date; here it is the largest thing on the frame. */
+/* E2 gets its own full-bleed rail ground on the draw slide, so the cap reads as a destination
+   rather than a line of text. --odds-pad is emitted inline by the renderer, which reserves the
+   same number out of the photo well — one constant, so reserved and painted heights cannot
+   drift apart. The count slide withholds this: there the dot grid is the hero. */
+.oddsblock{position:relative;left:-65px;width:1080px;background:var(--rail);
+  padding:var(--odds-pad,0) 65px}
+.oddsblock .eyebrow{color:var(--rail-accent)}
+.oddsblock .figure{color:var(--rail-ink)}
+.oddsblock .cond{color:var(--rail-meta)}
 .eyebrow{font-weight:600;font-size:var(--fs-label);line-height:var(--lh-label);
   letter-spacing:var(--tr-label);text-transform:uppercase;color:var(--ink-meta);height:50px}
 .figure{font-family:var(--font-figure);font-weight:700;font-size:var(--fs-figure);
@@ -284,8 +304,10 @@ body {
    never enlarged: making one ticket occupy more area than the others is the
    graphical form of exaggerating a chance of winning. */
 .grid{display:grid;grid-template-columns:repeat(60,var(--dot-size));gap:var(--dot-gap);width:895px}
+/* 1,440 pale dots on pale paper was the flattest frame in the deck; the dot is a shade darker
+   than --hairline so the field actually reads as countable. */
 .grid i{display:block;width:var(--dot-size);height:var(--dot-size);border-radius:50%;
-  background:var(--hairline)}
+  background:#C9C2B2}
 .grid i.hit{background:var(--dot-hit);position:relative}
 .grid i.hit::before,.grid i.hit::after{content:"";position:absolute;background:var(--dot-hit)}
 .grid i.hit::before{left:-5px;right:-5px;top:4.5px;height:1px}
@@ -300,7 +322,8 @@ body {
   align-items:flex-start}
 .chip{height:70px;display:flex;align-items:center}
 .chip span{font-weight:600;font-size:var(--fs-label);line-height:50px;letter-spacing:var(--tr-label);
-  text-transform:uppercase;color:var(--ink);border:1px solid var(--rule);border-radius:6px;padding:0 14px}
+  text-transform:uppercase;background:var(--ink);color:var(--ground);
+  border:1px solid var(--ink);border-radius:6px;padding:0 14px}
 
 /* The operator lockup. PDD's own Trust Score renders as ink on paper with a rule
    border and NOT on the mint tint — a PDD-derived rating is not a verified fact,
@@ -329,89 +352,20 @@ body {
 .stack{position:absolute;left:65px;width:895px;bottom:168px;display:flex;flex-direction:column;
   align-items:flex-start}
 
+/* A press stamp, angled, on a draw whose stored close is inside 48 hours. Top-LEFT: anchored
+   right it ran straight through the slide counter. --deadline is the correct ink here because
+   this IS the deadline data state, which is also why it is the only decorative-looking element
+   in the system allowed a data-state colour. */
+.stamp{position:absolute;left:96px;top:212px;transform:rotate(-7deg);
+  border:6px solid var(--deadline);color:var(--deadline);font-family:var(--font-display);
+  font-weight:800;font-size:var(--fs-lead);line-height:1;padding:12px 20px;letter-spacing:.01em;
+  text-transform:uppercase}
+
 /* ---- closing slide -------------------------------------------------------- */
 .closing{position:absolute;left:65px;top:132px;width:895px;height:1050px;
   display:flex;flex-direction:column;justify-content:center;align-items:flex-start}
 .closing .h{font-family:var(--font-display);font-weight:800;font-size:var(--fs-hero);
-  line-height:var(--lh-hero);letter-spacing:var(--tr-display);text-transform:uppercase;color:var(--ink)}
+  line-height:var(--lh-hero);letter-spacing:-0.035em;text-transform:uppercase;color:var(--rail)}
 .closing .s{margin-top:40px;font-weight:400;font-size:var(--fs-body);line-height:var(--lh-body);color:var(--ink)}
 .closing .u{margin-top:60px;font-family:var(--font-figure);font-weight:700;
-  font-size:var(--fs-title);line-height:1;color:var(--rail)}
-
-
-/* ============================================================================
-   VIBE VARIANTS — prototypes on [data-vibe]. Exactly one survives; the others are
-   deleted once chosen. The system underneath is unchanged in all three: same grid,
-   same nine type steps, same 38px conditions band, same 22.2% standing chrome.
-   ============================================================================ */
-
-/* --- V2 BLOCK: the odds get their own full-bleed rail-blue band. The figure goes
-   white on blue, which is the highest-contrast pairing in the palette, and the band
-   makes the number a destination rather than a line of text. ---------------------- */
-[data-vibe="block"] .oddsblock{position:relative;left:-65px;width:1080px;background:var(--rail);
-  padding:var(--odds-pad) 65px}
-[data-vibe="block"] .oddsblock .eyebrow{color:var(--rail-accent)}
-[data-vibe="block"] .oddsblock .figure{color:var(--rail-ink)}
-[data-vibe="block"] .oddsblock .cond{color:var(--rail-meta)}
-[data-vibe="block"] .headline{color:var(--rail)}
-[data-vibe="block"] .board .row{border-top:1px solid var(--rule)}
-[data-vibe="block"] .board .ix{color:var(--rail);font-weight:700}
-[data-vibe="block"] .chip span{background:var(--ink);color:var(--ground);border-color:var(--ink)}
-[data-vibe="block"] .proof b{color:var(--rail)}
-
-/* --- LOUD: the answer to "dead vibe". Four real levers, none of them a glow.
-   1. The category scene becomes VISIBLE. It was the single biggest cause of the flatness:
-      --scene-tone #F3F1EC against --ground #F7F5F0 is a four-unit difference, so every
-      scene was technically present and optically absent. Turf, press sheets and survey
-      grids now actually read as texture.
-   2. Colour at AREA scale rather than hairline scale — a full-bleed rail block under the
-      odds, amber behind the headline's last line, tinted alternating board rows.
-   3. An angled press stamp on a draw that closes today. Factual, and it moves.
-   4. Numerals get their own weight: index column in mono on a rail square, counter as a
-      filled pill.
-   Highlights are painted with background-image gradients, not ::after at z-index:-1 —
-   that was the bug that made two earlier prototypes render as nothing. --------------- */
-[data-vibe="loud"]{--scene-tone:#EAE4D6}
-[data-vibe="loud"] .masthead{border-bottom:8px solid var(--rail-accent)}
-[data-vibe="loud"] .dateline{color:var(--ink);font-weight:700}
-
-/* amber laid behind the headline's text box, not behind the whole block, so the shape
-   follows the copy and the last line reads as marked up by hand */
-[data-vibe="loud"] .headline{letter-spacing:-0.035em}
-[data-vibe="loud"] .headline em{font-style:normal;
-  background-image:linear-gradient(to top, var(--rail-accent) 0 84px, transparent 84px);
-  box-decoration-break:clone;-webkit-box-decoration-break:clone}
-
-[data-vibe="loud"] .proof b{color:var(--rail)}
-[data-vibe="loud"] .board .row{border-top:none}
-[data-vibe="loud"] .board .row:nth-child(odd){background:var(--scene-tone)}
-[data-vibe="loud"] .board .ix{background:var(--rail);color:var(--rail-ink);font-size:var(--fs-micro);
-  align-self:stretch;display:flex;align-items:center;justify-content:center;width:70px}
-[data-vibe="loud"] .board .pz{padding-left:20px;width:493px}
-[data-vibe="loud"] .board .more{padding-left:20px}
-
-[data-vibe="loud"] .oddsblock{position:relative;left:-65px;width:1080px;background:var(--rail);
-  padding:var(--odds-pad) 65px}
-[data-vibe="loud"] .oddsblock .eyebrow{color:var(--rail-accent)}
-[data-vibe="loud"] .oddsblock .figure{color:var(--rail-ink)}
-[data-vibe="loud"] .oddsblock .cond{color:var(--rail-meta)}
-
-[data-vibe="loud"] .counter{background:var(--rail);color:var(--rail-ink);padding:4px 16px;
-  border-radius:999px;line-height:42px}
-[data-vibe="loud"] .chip span{background:var(--ink);color:var(--ground);border-color:var(--ink)}
-[data-vibe="loud"] .lockup .ts{background:var(--rail-accent);border-color:var(--rail-accent);color:var(--ink)}
-
-/* the count slide keeps the grid as its hero, so the block treatment is withheld there and
-   the dots are darkened instead — 1,440 pale dots on pale paper was the flattest frame */
-[data-vibe="loud"] .grid i{background:#C9C2B2}
-[data-vibe="loud"] .grid i.hit{background:var(--dot-hit)}
-[data-vibe="loud"] .grid i.hit::before,[data-vibe="loud"] .grid i.hit::after{background:var(--dot-hit)}
-
-/* Top-LEFT, not top-right: right-anchored it ran straight through the slide counter, and one
-   step down the scale so it marks the photo rather than covering the prize. */
-[data-vibe="loud"] .stamp{position:absolute;left:96px;top:212px;transform:rotate(-7deg);
-  border:6px solid var(--deadline);color:var(--deadline);font-family:var(--font-display);
-  font-weight:800;font-size:var(--fs-lead);line-height:1;padding:12px 20px;letter-spacing:.01em;
-  text-transform:uppercase}
-[data-vibe="loud"] .closing .h{color:var(--rail)}
-[data-vibe="loud"] .closing .u{background:var(--rail-accent);padding:8px 18px}
+  font-size:var(--fs-title);line-height:1;color:var(--ink);background:var(--rail-accent);padding:8px 18px}
