@@ -47,12 +47,35 @@ deterministic mapping + upsert + report.
    ```
    → save to `${workDir()}/insights/fb_posts.json`
 
+3b. **IG per-media insights** — `INSTAGRAM_GET_MEDIA_INSIGHTS` (or the Graph call
+   `GET /{ig-media-id}/insights?metric=reach,saved,shares,views`) for each `ig_media_id` in
+   `carousel_posts` for the period.
+   → save to `${workDir()}/insights/ig_insights.json`
+
+   **This is the pull that matters and it did not exist before.** `ig_media` gives likes and
+   comments; `ig_reach` gives ACCOUNT-level reach keyed `"account"`, which cannot tell one post
+   from another. Neither carries **saves** or **shares**, and for a daily listings deck those
+   are the two behaviours the format is actually for: a save is someone keeping the board, and a
+   share is how an account with 66 followers reaches anybody new.
+
+   Accepts the bare Graph response for one media, or a batch — `{media_id, data:[…]}` or an
+   array of those. With no `media_id` supplied it reads the id out of each insight's own
+   `id` field, which has the form `<media_id>/insights/<metric>/<period>`.
+
+   ⚠ **Views are recorded but must never be reported as a win on their own.** Instagram's own
+   definitions (help.instagram.com/202865988324236) count Views as "starts to play or replay",
+   include replays in Watch time, and divide watch time INCLUDING replays by INITIAL views to
+   get average watch time. The Reel now loops seamlessly by construction, which inflates all
+   three without reaching one extra person. On that surface **reach and skip rate are the only
+   honest reads.**
+
 3. **Ingest each file** (batches `insertMetrics` upserts 50 rows at a time,
    keyed on `(day, media_id, metric)` — safe to re-run):
    ```
    bun carousel/insights.mjs ingest ig_media  ~/Desktop/pdd-today/insights/ig_media.json
    bun carousel/insights.mjs ingest ig_reach  ~/Desktop/pdd-today/insights/ig_reach.json
    bun carousel/insights.mjs ingest fb_posts  ~/Desktop/pdd-today/insights/fb_posts.json
+   bun carousel/insights.mjs ingest ig_insights ~/Desktop/pdd-today/insights/ig_insights.json
    ```
    (paths shown are the default `workDir()` — adjust if `PDD_DIR` is set.)
 
@@ -78,6 +101,7 @@ deterministic mapping + upsert + report.
 | `ig_media`  | `data[].{id, like_count, comments_count, timestamp}`                       | per post: `(day, id, "likes", like_count)`, `(day, id, "comments", comments_count)` |
 | `ig_reach`  | `data[].{name:"reach", values:[{end_time, value}]}`                        | per day: `(day, "account", "reach", value)`                       |
 | `fb_posts`  | `data[].{id, created_time, reactions.summary.total_count, comments.summary.total_count, shares.count}` | per post: `(day, id, "fb_reactions", …)`, `(day, id, "fb_comments", …)`, `(day, id, "fb_shares", …)` (missing `shares` → 0) |
+| `ig_insights` | `data[].{name, values:[{value, end_time?}], id:"<media_id>/insights/…"}`, or `{media_id, day?, data:[…]}`, or an array of those | per metric: `(day, media_id, name, value)`. An entry whose media cannot be identified is DROPPED rather than filed under a guess |
 
 `day` is always the **Europe/London calendar date** of the item's own timestamp
 (`timestamp` / `end_time` / `created_time`), matching `state.mjs`'s `todayLondon()`
@@ -89,6 +113,19 @@ convention — not the day the pull happened.
 > bucket's reach to the day before or after where you'd intuitively expect it.
 > Treat any arm-vs-reach comparison (the format-experiment go/no-go in `DAILY.md`)
 > as accurate to **±1 day**, not exact.
+
+## Reading a series across a changing deck size
+
+`carousel_posts.draw_slugs` already holds the draws that actually RENDERED, so the deck size per
+post is `draw_slugs.length` and needs no column of its own. That matters because a series which
+silently mixes full and degraded decks cannot be read: engagement on an eight-draw board is not
+comparable to engagement on a four-draw one, and every count on the frame — the counter chip,
+the band's draw count, the cover's proof line — is derived from the real number rather than from
+the configured one.
+
+⚠ One thing to know about that field: `build.mjs` may SWAP a draw whose artwork reads as a
+marketing collage for a backup, and it writes the decision back to `selection.json` before
+`publish.mjs` reads it. So `draw_slugs` names what shipped, not what was originally picked.
 
 ## Notes
 

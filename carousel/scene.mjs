@@ -39,6 +39,8 @@ const RAIL_WASH = 0.06;   // anything drawn on a rail-blue lane
 // as a rendering fault rather than as paper. One tone has no edge to notice.
 const stroke = (box) => box.ground === "still" ? "var(--scene-tone)"
   : box.ground === "rail" ? `rgba(247,245,240,${RAIL_WASH})` : "var(--hairline)";
+// A field's alpha is baked into the colour rather than applied as a group opacity, so it cannot
+// be lost the way the cash ghost's was. FIELD_INK is §8.4's cap for a filled field on paper.
 const fieldFill = (box) => box.ground === "still" ? "var(--scene-tone)"
   : box.ground === "rail" ? `rgba(247,245,240,${RAIL_WASH})` : `rgba(20,22,26,${FIELD_INK})`;
 const railInk = (box) => box.ground === "still" ? "var(--scene-tone)"
@@ -116,7 +118,12 @@ const CASH = {
         dots.push(`<circle cx="${x - box.x + d / 2}" cy="${y - box.y + d / 2}" r="${d / 2}"/>`);
       }
     }
-    return svg(box, `<g class="sc-lattice" fill="${stroke(box)}">${dots.join("")}</g>`);
+    // The BASE opacity lives here, not in the motion keyframes. It was only in the keyframes,
+    // which apply via `.sc-anim` — so on every static surface (the whole of 4:5, the Reel cover,
+    // the Story) the lattice rendered at FULL strength: eight times darker than intended, and a
+    // ghost that is not a ghost. The measurement tool caught it; no test could, because the
+    // markup was correct and only the composite was wrong.
+    return svg(box, `<g class="sc-lattice" fill="${stroke(box)}" opacity="0.12">${dots.join("")}</g>`);
   },
 };
 
@@ -213,7 +220,10 @@ const COLLECT = {
         crops.push(`<line x1="${cx + 5}" y1="${cy}" x2="${cx + 20}" y2="${cy}" stroke="${stroke(box)}" stroke-width="1"/>`
           + `<line x1="${cx}" y1="${cy + 5}" x2="${cx}" y2="${cy + 20}" stroke="${stroke(box)}" stroke-width="1"/>`);
       }
-    return svg(box, `<g class="sc-cells">${cells.join("")}</g><g class="sc-crops">${crops.join("")}</g>`);
+    // Same fix as the cash ghost: the crop marks' 8-16% wave is a MODULATION of a base opacity,
+    // and the base has to be in the markup or the static surfaces paint them solid.
+    return svg(box, `<g class="sc-cells" opacity="0.5">${cells.join("")}</g>`
+      + `<g class="sc-crops" opacity="0.12">${crops.join("")}</g>`);
   },
 };
 

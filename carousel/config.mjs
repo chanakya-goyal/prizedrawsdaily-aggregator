@@ -36,15 +36,6 @@ export function catCfg(slug) {
   return { ...FALLBACK, name: slug || "Prize", seoKeyword: "UK competitions" };
 }
 
-// DEPRECATED, and deliberately still here. Per-category COLOUR is retired: the newsprint system
-// has one palette, and what falls through per category is structure (scene.mjs), not a theme.
-// But `reel-template.mjs`, `reel.mjs` and `story.mjs` still build their CSS by regex-scraping
-// the legacy `[data-theme]` blocks out of styles.css, and they are Stage D. Returning "default"
-// keeps those three surfaces rendering against the single legacy palette instead of resolving
-// `[data-theme="undefined"]` and silently losing every token they consume. It goes when they
-// move onto scene.mjs, together with the legacy blocks themselves.
-export const themeOf = () => "default";
-
 // The deck size is an authored constant, not an environment variable. A post whose draw count
 // varies run to run cannot be read as a series: the caption, the counter chip, the band's draw
 // count and the cover's proof line are all derived from what actually RENDERED.

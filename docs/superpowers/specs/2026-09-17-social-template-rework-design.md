@@ -16,7 +16,14 @@ These survived the final audit. They are recorded here rather than silently fixe
 The three criticals are closed in the document itself, not in a side note. Each is recorded here with the edit that closed it, because all three were propagation failures and the propagation rule is the actual fix.
 
 **S1 — Lane C, and the rule that stops it happening a fourth time.** Criticals 1 (consistency), majors 1, 2, 5, 8 and minor 1 were one defect wearing six labels: §8 typed a copy of a rect §6.3 owns, and §6.3 moved it. The rect has now moved three times — h 272 → 285 → 346, the last when §4.4 stacked E2 on every surface and took Row C from 195px to 256px — and every typed copy in this document was wrong after at least one move. **§6.3's chrome-rect table is the sole normative source and §8 now prints no Lane C literal anywhere.** As §6.3 stands: x 0…1080, **y 661 … 1007, h 346, 373,680 px² = 18.021%**, y_c 834. The consequent chrome constants are **607px = 31.615%** expanded, photograph floor **68.385%**, ceiling `chrome_area ≤ 32%` (614.4px, 7.4px headroom); §8's scene canvas is **6.042%** collapsed, **24.063%** expanded, **22.775%** time-weighted. Two superseded sets are retired by name so neither is verified against again: 533/27.76/72.24/73.25/`≤28%` and 546/28.438/71.563/72.62/`≤29%`, alongside the retired denominators 293,760 and 307,800.
-⚠ **What S1 deliberately does not do.** §8.5's eight per-scene coverage and tone figures still carry the 307,800 denominator. They are **not** rescaled here, because rescaling is the wrong operation — a taller lane lengthens every vertical stroke and admits more horizontal rules, so the ink moves with the denominator and each figure has to be recomputed from the scene's geometry. They are marked stale in §8.5 and **blocked from deriving any G3, G5 or G7 threshold** until that recomputation lands. This costs nothing now: Lane C exists only on `reel-9x16`, no still consumes it, and the recomputation is Stage D work. Inventing eight plausible percentages to clear a critical would have been the worse outcome.
+✅ **S1's residual is now discharged, by measurement rather than arithmetic.** It originally left
+§8.5's eight per-scene ink figures carrying the retired denominator, marked stale and blocked
+from deriving any gate threshold, on the grounds that rescaling is the wrong operation — a taller
+lane lengthens every vertical stroke, so the ink moves with the denominator. That was the right
+call and it has now been closed properly: `carousel/scene-ink.mjs` MEASURES the painted ink from
+a real render of each scene, and §8.5 carries those figures. All eight are inside both ceilings.
+The measurement also caught a defect the arithmetic never could — two scenes painting at full
+strength on every static surface, because their base opacity lived only in the motion keyframes.
 
 **S2 — the masthead stamp.** Criticals 2 (skeptic) and 3 (compliance-and-truth) and major 3 were one defect: §10.4 assigned its LONG stamp form to carousel masthead Slot B and checked the fit against a *bare* 950px track, but Slot A occupies 480.5px of that track, so the real overlap is **−224.1px** — a §5.2 build stop on slides 2–10 of every deck, on the primary growth surface, with no step-down escape because `--fs-micro` 34px is already T3's lowest legal step. **Slot B now carries the SHORT form** (`READ 09:04`, 204.0px @34, left edge x 811.0, clearing Slot A by 265.5px), licensed by §10.4's own rule since every surface's alt text carries the full sentence under §10.7. The long form keeps Story band 1, which has no second slot and retains §7.2's 52.4px of headroom. §10.4 now states the general rule that produced the error: **a slot's free measure, not the bare track, is the fit test.** §5.2's open question is closed.
 
@@ -4371,7 +4378,50 @@ Those seven stocked categories sum to 897 against a stated 899 enterable draws. 
 
 On `still-4x5` every ground below renders at `--scene-tone` and no mark renders at all, per 8.4 and 8.3's `sceneLayers`. Where a scene names a colour, that colour applies to the three 9:16 surfaces.
 
-⚠ **The eight figures below are stale and are blocked from use until re-derived.** They were computed against Lane C at **307,800 px²** (the retired 285px card). §6.3's current rect makes the denominator **373,680 px²**, and the fix is not a rescale: a taller lane lengthens every vertical stroke and admits more horizontal rules, so the *ink* moves too and each figure must be recomputed from the scene's geometry. Field scenes, whose ink is a ratio of the lane, do not move at all. **No G3, G5 or G7 threshold may be derived from the numbers below until that recomputation lands** — which is Stage D work, since Lane C exists only on `reel-9x16` and no still consumes it. The retired denominators, named so nobody verifies against them a third time: **293,760** (h 272) and **307,800** (h 285). *(Like every per-scene figure here, these are computed from geometry, not measured off a render.)*
+**The eight figures below are MEASURED, and that closes the last of S1.**
+
+The original figures were derived from geometry — count the strokes, multiply by lengths and
+alphas, divide by the lane area — and they drifted, because the lane moved three times
+(h 272 → 285 → 346) and each move invalidated every figure computed against the previous
+denominator. They were marked stale rather than rescaled, because a taller lane lengthens every
+vertical stroke: the ink moves WITH the denominator and no rescale is correct.
+
+Now that the scenes are implemented, the honest number is the one the renderer produces.
+`carousel/scene-ink.mjs` reads real pixels out of a real render of each scene, alone, on its own
+lane's bare ground at dpr 1, and reports three figures. Re-run it whenever a scene changes; it
+cannot drift from what ships.
+
+- **geometric** — the share of pixels the scene TOUCHES at all.
+- **weighted** — the same, weighted by how hard: mean |Δ| over the lane as a share of full black.
+  **This is the figure the 6% ceiling is about.** Conflating it with the geometric one is an easy
+  mistake: a mown-stripe field touches HALF its lane geometrically and is nowhere near the
+  ceiling, because it touches it at 5% ink.
+- **tone** — mean |ΔL*| across the lane: how much darker it reads, perceptually. Ceiling 10.
+
+Lane C = 1,080 × 346 = 373,680 px². Lane R = 1,080 × 116 = 125,280 px².
+
+| Scene | Lane C geometric | Lane C **weighted** | Lane C tone | Lane R weighted | Motion |
+|---|---:|---:|---:|---:|---|
+| sports-outdoors — The Marked Ground | 50.00% | **2.353%** | 2.095 | 2.026% | 5200ms field 90px |
+| house-draws — The Sheet | 11.29% | **0.704%** | 0.612 | 0.255% | 5000ms discrete 20px |
+| cash-prizes — The Count | 37.76% | **0.603%** | 0.541 | 0.132% | 4000ms envelope 0px |
+| home-garden — The Plan | 15.66% | **0.572%** | 0.489 | 0.166% | 4000ms discrete 10px |
+| car-draws — The Logbook | 5.07% | **0.376%** | 0.328 | 0.103% | 3600ms field 45px |
+| collectibles — The Uncut Sheet | 2.07% | **0.073%** | 0.062 | 0.016% | 4400ms envelope 0px |
+| luxury — The Catalogue | 0.81% | **0.063%** | 0.055 | 0.048% | 4800ms discrete 10px |
+| tech-giveaways — The Drawing | 0.99% | **0.034%** | 0.030 | 0.051% | 3000ms discrete 5px |
+
+**All eight are inside both ceilings.** sports-outdoors is the heaviest at 2.353% weighted, which
+agrees closely with the 2.5% the original arithmetic predicted — so the method was sound and only
+the denominator had rotted.
+
+⚠ **The measurement caught a real defect in the implementation on its first run**, which no test
+could have: the cash ghost's 12% opacity and the collectibles crop marks' 8–16% wave lived only
+in the motion keyframes, which apply through `.sc-anim`. On every STATIC surface — the whole of
+4:5, the Reel cover, the Story — both painted at full strength. Cash measured 3.935 tone against
+0.541 after the fix: seven times darker than intended, and a ghost that was not a ghost. The
+markup was correct; only the composite was wrong, which is exactly the class of error a geometric
+derivation cannot see.
 
 | Scene | Lane C ink | Coverage | Tone |
 |---|---|---|---|

@@ -1,0 +1,1849 @@
+▗ ▗   ▖ ▖  Claude Code v2.1.265
+           Opus 5 · Claude Max
+  ▘▘ ▝▝    ~/pdd-aggregator
+
+
+⏺ PR #38 — MERGEABLE, tests pass.
+  https://github.com/chanakya-goyal/prizedrawsdaily-aggregator/pull/38
+
+  Aapne #37 merge kar diya tha jab main kaam kar raha tha — GitHub ne use squash
+  kiya, isliye purani branch pe sab conflict dikhne laga (content same, history
+  alag). Maine naye main se fresh branch banakar teen naye commits cherry-pick
+  kiye — zero conflicts, aur tree byte-identical hai us branch se jo maine test
+  ki thi.
+
+  Sabse important baat
+
+  Maine audit ko pehle sirf measure kiya, likhne nahi diya — aur usi ne site 
+  bacha li.
+
+  956 live rows pe chalaya. Usne 9 "corrections" propose kiye, aur saare 9 galat
+  the:
+
+  ┌────────────────────────┬────────────────────────────────────────────────┐
+  │      propose kiya      │                    asliyat                     │
+  ├────────────────────────┼────────────────────────────────────────────────┤
+  │ title → "Sorry, you    │ Cloudflare page ko product samajh liya         │
+  │ have been blocked"     │                                                │
+  ├────────────────────────┼────────────────────────────────────────────────┤
+  │ draw_date 2026-09-11 → │ date peeche ja rahi thi — site draw_date >=    │
+  │  2026-08-26 (×5)       │ now pe filter karti hai, matlab live comps     │
+  │                        │ site se gayab ho jaate                         │
+  ├────────────────────────┼────────────────────────────────────────────────┤
+  │ total_entries 63,300 → │ sold counter ko cap samajh liya — R1 isi ko    │
+  │  1,233 (×3)            │ mana karta hai                                 │
+  └────────────────────────┴────────────────────────────────────────────────┘
+
+  Ek bhi woo se nahi aaya — jahan price structured API field hai, text parse
+  nahi. Aur 333 rows apne page se bilkul match kiye.
+
+  Isliye maine line provenance pe khinchi, field name pe nahi: jo value operator
+  machine-readable field me deta hai wahi likhi ja sakti hai; jo prose se
+  nikali hai wo sirf report hogi. Render ab report-only hai.
+
+  Narrow karne ke baad: 0 corrections, 333 rows verified, 8 review ke liye, 1 
+  poisoned read discard. Aaj ye kuch nahi likhta — aur yahi sahi jawab hai.
+
+  Aapke 1000-draw goal pe
+
+  - 512 enterable drafts category ke saath ready hain, 414 site pe live hain
+  - 2026-09-06 ke run me 167 rows poora gate pass kar gaye, 155 sirf cap ki 
+    wajah se ruk gaye — cap 93% qualified inventory phenk raha tha
+  - 215 drafts pehle hi apni draw date paar karke mar chuke the
+
+  Cap raise kiya: render 14→30, JSON 12→50 (~180/day). Isse 512 ka backlog ~3 
+  din me clear hoga → ~926 live draws, yaani aapka target.
+
+  200-300 operators ke liye
+
+  Measured: render 0.84 min/operator, JSON 0.35. 300 operators pe JSON sweep 63 
+  min legi vs 60 min job cap — wahi pehle tootegi (~280 operators pe).
+  SHARD_COUNT/SHARD_INDEX ready hai: matrix jobs me roster bat jayega, har
+  operator roz scrape hoga. Real roster pe 1-4 shards verify kiye, aur live
+  3-shard run bhi: 18+17+17 = 52 operators, na koi chhuta na duplicate.
+
+  Verification (jaisa aapne kaha)
+
+  - 782 tests green, sab offline
+  - Audit do baar live production data pe measure kiya (narrow karne se pehle
+    aur baad me)
+  - AUDIT=apply + DRY_RUN=true chalaya — database bilkul nahi chhua (972 rows
+    pehle, 972 baad me)
+  - Write karne ka decision ab shouldApplyAudit() pure function hai, 6 tests ke
+    saath — pehle wo inline condition thi jise koi test nahi kar sakta tha
+
+  Ek cheez honestly: us AUDIT=apply dry run me 0 corrections the, toh usne
+  "refusal path" khud exercise nahi kiya — wo unit tests cover karte hain, live
+  run ne nahi.
+
+✻ Cogitated for 21m 27s · done Monday, 7:45 PM
+
+※ recap: Goal is a reliable scraper that gets ~1000 draws live without manual review. PR #38 is open and mergeable: it verifies every live row against its page and raises the publish cap. Next action is merging it.
+
+❯ /compact                                                                      
+  ⎿  Compacted (ctrl+o to see full summary)
+  ⎿  Plan file referenced (~/.claude/plans/frolicking-riding-cocoa.md)
+
+❯ i have merged the PR #38                                                      
+
+  Ran 24 shell commands (ctrl+o to expand)
+
+⏺ This is a live data-integrity problem. Let me verify it against the real pages
+  rather than assume.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ The page evidence corrects my hypothesis — and reveals something worse. Let me
+  quantify.
+
+  Ran 8 shell commands (ctrl+o to expand)
+
+⏺ Two of my three suspicions were wrong — dream-car/ukcc/7days read structured
+  API data, and those big caps match the operators' own progress bars. CompCity
+  is the real one. Let me enumerate the live-row audit while I work on it.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ CompCity is Cloudflare-blocked from here (all three pages returned the same
+  4,289-byte challenge), so I can't reproduce it locally. Let me measure where
+  capture is actually being lost across the whole fleet instead.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Background command "Run live-row audit locally in report mode" completed (exit
+code 0)
+
+⏺ The audit is clean: 383 live rows re-read from their own pages, 0 
+  disagreements, 0 corrections. The 9 flagged rows are all the prose-inferred
+  class it correctly refuses to act on. Now the biggest remaining lever:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ 420 draws/day are lost to missing total_entries — and it's overwhelmingly
+  WooCommerce operators. Let me test the hypothesis that the cap is on the
+  product page we never fetch.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Hypothesis confirmed. Golf Star and Trade Tool publish the cap plainly —
+  "25000 tickets available", "Sold: 105 of 25000" — and the existing parser
+  already reads it (strict=25000). We simply never fetch the page for Woo
+  operators.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ The adapter already fetches the product page — so the parser isn't the
+  suspect. Let me run the real pipeline locally and compare against CI.
+
+  Searched for 1 pattern, ran 5 shell commands (ctrl+o to expand)
+
+⏺ Root cause found, and it isn't the parser. Same code, same operator, same day
+  — CI vs my residential IP:
+
+  ┌──────────────────────────────────┬───────────────────────┬──────────────┐
+  │               draw               │    GitHub Actions     │    local     │
+  ├──────────────────────────────────┼───────────────────────┼──────────────┤
+  │ WIN £1,000 TAX FREE CASH FOR 2P! │ ⏭ missing             │ £0.02×124999 │
+  │  #20                             │ total_entries         │              │
+  ├──────────────────────────────────┼───────────────────────┼──────────────┤
+  │ WIN A TAYLORMADE SPIDER ZT       │ ⏭ missing             │ £0.25×4999   │
+  │                                  │ total_entries         │              │
+  ├──────────────────────────────────┼───────────────────────┼──────────────┤
+  │ SATURDAY SALE: ODYSSEY AI-D      │ ⏭ missing             │ £0.02×24999  │
+  │                                  │ total_entries         │              │
+  └──────────────────────────────────┴───────────────────────┴──────────────┘
+
+  Golf Star produced zero missing-cap rejects locally. Let me confirm the
+  mechanism in the code.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Background command "Run golf-star locally in dry mode" completed (exit code 0)
+
+⏺ Confirmed at both call sites (extractor.mjs:261, :310): .text is taken
+  regardless of .ok, so a Cloudflare block page is parsed as if it were the
+  product. Let me fix it and make the failure name itself.
+
+  Ran 5 shell commands (ctrl+o to expand)
+
+⏺ Now let me implement. First the guard and its accounting:
+
+  Ran 16 shell commands (ctrl+o to expand)
+
+⏺ Now tests — all offline, no network, no Chromium.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+⏺ Now the essential check — an A/B against production, since a green suite
+  already missed a parser regression once.
+
+  Listed 1 directory, ran 7 shell commands (ctrl+o to expand)
+
+⏺ The baseline file was truncated, so that diff isn't evidence. But note the
+  patched run logged no ⚠️ line at all — zero pages refused on this IP, meaning
+  every page took the identical path as before. Let me commit and run a proper
+  two-sided A/B.
+  Pushed to fix/blocked-product-pages, created PR #39, read 5 files, ran 18 shell commands (ctrl+o to expand)
+
+⏺ Background command "Run golf-star on the patched code" completed (exit code 0)
+
+⏺ Background command "Run the same two operators on the patched branch"
+completed (exit code 0)
+
+⏺ Background command "Baseline run on main for two operators" completed (exit
+code 0)
+
+⏺ PR #38 confirmed merged (f079918). I went looking for the next inventory lever
+  and found something bigger than expected — opened as PR #39:
+  https://github.com/chanakya-goyal/prizedrawsdaily-aggregator/pull/39
+  (MERGEABLE, test green, Greptile still running).
+
+  Sabse bada finding
+
+  Roz 420 draws missing total_entries par gir rahe the — sabse badi capture
+  loss. Main maan raha tha ye parser ka bug hai. Nahi hai.
+
+  woo/shopify har product ka page fetch karte hain, kyunki ticket cap aur close
+  date sirf page body me hote hain. Dono jagah code .text padh raha tha — status
+  dekhe bina. Toh Cloudflare ka 403 challenge page seedha parser ko chala jaata
+  tha product samajh kar. Na cap, na date → draw drop.
+
+  Same commit, same operator, same din — sirf IP alag:
+
+  ┌──────────────────────────────┬──────────────────────┬───────────────────┐
+  │             draw             │    GitHub runner     │ mera residential  │
+  │                              │                      │        IP         │
+  ├──────────────────────────────┼──────────────────────┼───────────────────┤
+  │ WIN £1,000 TAX FREE CASH FOR │ ⏭ missing            │ £0.02×124999      │
+  │  2P! #20                     │ total_entries        │                   │
+  ├──────────────────────────────┼──────────────────────┼───────────────────┤
+  │ WIN A TAYLORMADE SPIDER ZT   │ ⏭ missing            │ £0.25×4999        │
+  │                              │ total_entries        │                   │
+  └──────────────────────────────┴──────────────────────┴───────────────────┘
+
+  Golf Star ne runner pe 32 draws khoye, yahan 0. Page pe number saaf likha hai
+  — "25000 tickets available" — aur parser use theek padhta hai. Page kabhi diya
+  hi nahi gaya tha.
+
+  Fix: readProductPage() ab wahi guard lagata hai jo render path me hamesha se
+  tha, aur refusals ginta hai — run log, health report (silence se alag, kyunki
+  ye operators silent nahi hain), aur topup.mjs ab inhe bhi re-scrape karega.
+  FlareSolverr se ye theek nahi hota — wo challenge solve karta hai par IP wahi
+  rehta hai (repo ke apne comments me likha hai).
+
+  Live data check — saaf hai
+
+  1027 active rows apne-apne page se dobara verify kiye: 0 corrections, 0 
+  disagreements, 383 verified. 9 flagged — sab wahi "page ke text se andaza"
+  wali category jinpe audit jaanbujh kar haath nahi lagata.
+
+  Jo maine galat socha aur khud disprove kiya
+
+  - 135 rows ke 500k+ caps sahi hain — wo operator ke apne progress bar ka
+    denominator hai (Sold: 20% 567,911 / 2,727,272)
+  - 588 past-dated active rows public trust bug nahi — prod unhe "Ended" dikhata
+    hai (2 live URLs pe check kiya)
+  - 90 "duplicate" groups asli alag comps hain (alag URL, date, price)
+
+  Ek asli problem mili: compcity-giveaways ke caps har run me badalte hain aur
+  page pe kahin nahi milte. Verify gate sab rok raha hai — isliye galat data
+  site pe nahi gaya, par ye operator kuch publish bhi nahi karta. Mac se bhi
+  Cloudflare-blocked hai, toh sirf CI me FlareSolverr se hi diagnose hoga.
+
+  Verification
+
+  - 795 offline tests (782 se badhkar), block-page test non-vacuous hai — pehle
+    prove karta hai ki parser asli page se 24999 padhta hai, phir ki challenge
+    page kuch nahi de sakta
+  - Do-tarfa A/B production ke against: trade-tool 60 draws, main vs branch —
+    har decision byte-for-byte same; golf-star pe ek bhi page refuse nahi hua,
+    yaani unblocked IP pe change bilkul no-op hai
+  - bun topup.mjs --list chalta hai, kuch toota nahi
+
+  Inventory abhi
+
+  440 live · 701 enterable drafts (517 category ke saath). PR #38 ke caps
+  ~180/day nikaalte hain, toh sirf queue se ~957 live pahunch jayega; PR #39
+  uske upar ~420/day capture wapas laata hai.
+
+  Do cheezein baaki hain aur dono policy hain, bug nahi — isliye maine nahi
+  chhedi: roz 223 draws 500-ticket floor se nikalte hain (Albo ka 200-ticket,
+  Star Draws ka 150-ticket comp asli hai) aur 137 WINDOW_DAYS=35 se. Batayein
+  toh per-operator override kar dunga.
+
+✻ Worked for 34m 14s · done Wednesday, 12:10 AM
+
+※ recap: Goal is 1000 live draws with no bad data; PR #38 is merged and PR #39 is open, fixing 420 draws/day lost because CI's IP was blocked. Next action: review and merge PR #39. (disable recaps in /config)
+
+⏺ Background command "Current live vs draft inventory counts" was stopped
+because the system is running low on memory
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Greptile raised a fair P1: I'm counting refused pages, but a refused page
+  doesn't always lose the draw — the API description or the zap ajax can still
+  supply the cap and date. Let me make the number causal.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Now the two call sites, so starved is counted only after every rescue path has
+  run:
+
+  Ran 5 shell commands (ctrl+o to expand)
+
+⏺ Round-trip works, including the zero-loss case. Now updating the tests:
+
+⏺ API Error: Your computer went to sleep mid-response. The response 
+  above may be incomplete.
+
+✻ Cogitated for 30m 13s · done Wednesday, 10:44 AM
+
+❯ resume with hecking for erroers as task was stopped in between                
+
+⏺ Let me check exactly where things stand and what's broken.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ 8 failures — all my own tests still asserting the pre-refactor contract. Let
+  me see all of them.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ All 8 are my own tests still on the old contract. Rewriting them for the new
+  one, plus coverage for the distinction Greptile flagged:
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ 801 pass, 0 fail. Now checking the interrupted edits for anything left
+  dangling:
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+⏺ Background command "Syntax-check all touched files and audit the wiring"
+failed with exit code 1
+
+⏺ That import executed run.mjs as a script — my error. Let me verify it wrote
+  nothing.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ DRY_RUN defaults to true (run.mjs:25), so it wrote nothing. Confirming against
+  the DB anyway, and doing the syntax check properly this time:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ All files parse. And the queue is draining — 440 → 512 live, drafts 983 → 893.
+  Let me confirm that's the scheduled runs, and re-do the A/B since the
+  adapters changed shape.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ The diff is sound, but one thing in it still overclaims: "as a result" asserts
+  the refused page caused each missing field, when what I actually measure is
+  co-occurrence. Let me say exactly what's measured.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ That diff is 7 hours of real-world drift plus overnight CI inserts (✅→♻️ =
+  rows that now exist), not my change. Let me run both sides back-to-back for a
+  valid comparison.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Background command "Re-run trade-tool on the refactored branch" completed
+(exit code 0)
+
+⏺ The branch run reported 1 refusal line — let me read it before concluding
+  anything.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ HTTP 520×14 — Cloudflare origin errors from my own back-to-back hammering, not
+  my code discarding good pages. But it exposes a real gap: 520 isn't in the 
+  retry list (0 retry lines logged), so each one costs a draw immediately.
+  Ran 8 shell commands (ctrl+o to expand)
+
+⏺ Three consecutive clean runs at 3.1s. The one 55s/1-fail run happened while a
+  scrape was still running — but a flaky test would skip the day's scrape in CI,
+  so let me pin down which one is timing-sensitive.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+⏺ bun test = 882 pass / 0 fail too. The slow file is my own page-block.test.mjs
+  (2.1s of the 3.1s) — three tests do a real 500 ms retry sleep. Since a flaky
+  test skips the day's scrape, let me remove that timing sensitivity.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Suite is now 803 pass / 0 fail at ~1.5s (was 3.1s). Now the clean A/B on
+  operators I haven't hammered today, at low concurrency to avoid self-inflicted
+  origin errors:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ 49 vs 49, zero refusals, and exactly one line differs — same draw, different
+  reject reason. Let me not wave that away.
+
+  Ran 5 shell commands (ctrl+o to expand)
+
+⏺ Background command "Re-run the same operator twice on the branch to test
+determinism" completed (exit code 0)
+
+⏺ Reproducible on both sides — so my change really does alter this draw. Let me
+  find out exactly why instead of guessing.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The page reads fine and both code paths produce identical fields (price=0,
+  entries=5000). So the run difference came from a different response, not
+  different code. Let me check whether that fetch is flaky:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Resolved: the page itself changed between runs (190775 → 190950 bytes, cap
+  parseable then not). Across 6 probes, main-path and branch-path produce 
+  identical fields every time. The one A/B difference was site drift, not my
+  code.
+
+  Commented on PR #39, ran 6 shell commands (ctrl+o to expand)
+
+⏺ Everything's clean. The one remaining stash is from a previous session on
+  another branch — not mine, leaving it. Let me correct the memory I wrote
+  earlier, since the design changed.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Picked the work back up, checked it for errors, and found two real ones.
+  Everything is green now.
+
+  What was broken when I resumed
+
+  The interruption landed mid-refactor: source was updated, tests weren't. 8 
+  tests failing — all mine, asserting the pre-refactor contract. Fixed, plus new
+  coverage for the distinction that caused the refactor.
+
+  I also made a mistake while checking: I used await import() to syntax-check
+  the files, which executed run.mjs as a script. Killed it and verified DRY_RUN
+  defaults to true (run.mjs:25), so it wrote nothing. Confirmed against the DB.
+  I used node --check after that.
+
+  Greptile's P1 was right
+
+  My first commit counted refused pages and then described them as lost draws.
+  Not the same number — Trade Tool has 60 of 60 pages refused and loses nothing,
+  because the zap ajax fills cap+date afterwards. Reporting that as loss would
+  have sent topup chasing a healthy operator.
+
+  Now two counters: blocked (pages refused) and starved (draws left with no cap
+  or date), the latter counted once per operator after every rescue path. Only
+  starved drives the headline or topup's list. And it's co-occurrence, not proof
+  of cause — the wording says so, because some operators publish no cap
+  anywhere. What makes the attribution credible is the operator-level comparison
+  (golf-star: 32 lost on the runner, 0 residential), not the per-draw test.
+
+  Two more bugs found while re-verifying
+
+  Cloudflare's 52x was missing from the retry list. 520–527 all describe a
+  transient origin failure. One trade-tool run took 14 × HTTP 520 and lost 14
+  draws outright with no retry attempted. Added.
+
+  The test suite depended on wall-clock sleeps. Three of my guard tests sat
+  through real backoff. A failing test:scraper skips the day's scrape, so that's
+  a liability — and it's likely what caused the one 55s/1-fail run I saw. Made
+  the retry budget injectable; suite is 1.5–2.0s (was 3.1s), with one test still
+  on the production default so the wiring can't rot.
+
+  The A/B, and the one difference I chased
+
+  main vs branch back-to-back, three operators untouched today, low concurrency:
+  49 vs 49 decisions, zero pages refused, 48 identical.
+
+  One draw differed — reject reason changed. I didn't wave it off. Probing the
+  exact product six times: the operator's page changes between fetches (190,775
+  → 190,950 bytes, cap parseable then not), and main-path and branch-path 
+  produced identical fields every single time. Site drift, not the code.
+
+  An earlier trade-tool diff looked much worse, but that was 7 hours of drift
+  plus overnight CI inserts, and a later one was 14 real HTTP 520s from my own
+  back-to-back hammering — which is how I found the retry gap.
+
+  State
+
+  - PR #39 MERGEABLE, test green, 2 commits:
+    https://github.com/chanakya-goyal/prizedrawsdaily-aggregator/pull/39 —
+    review response posted as a comment
+  - 803 tests pass, three consecutive clean runs; tree clean, no stray processes
+  - Inventory moved on its own overnight: 440 → 512 live, drafts 983 → 893 — PR
+    #38's raised cap draining the queue as intended
+
+  PR #39 is yours to merge. The one stash on the repo is from an earlier session
+  on another branch; I left it alone.
+
+✻ Crunched for 1h 24m 30s · done Wednesday, 1:10 PM
+
+※ recap: Goal is 1000 live draws on PrizeDrawsDaily with no bad data; live count is now 512 and climbing on its own as the publish queue drains. PR #39, which recovers ~420 draws/day the scraper was silently losing, is green and waiting for you to merge. (disable recaps in /config)
+
+❯ merged, now at once tell me whtas left from ur end - the main goal that you   
+  told u u would have did this for the scraper dand the routines or the         
+  actions.                                                                      
+  tell me in brief and simle terms                                              
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Merged as fd5d6d4. The build plan is now complete — every phase shipped (retry
+  + backoff, dead-operator alerts, config validation, split Actions, publish
+  cap + funnel, tested routing logic, live-row audit, sharding, and the
+  page-block fix).
+
+  Left from my end — 2 things
+
+  1. Confirm the fix in production — the next scheduled run will print the new
+  line for the first time:
+  ⚠️ [golf-star-competitions] 87 of 100 product pages unreadable (HTTP 403×80) —
+  41 left a draw with no cap or date
+
+  Nobody has seen it live yet. It's automatic — I just need to read the next
+  run's report.
+
+  2. Then run the recovery — bun topup.mjs --write from your Mac. That's what
+  actually converts those ~420/day back into draws, because only your home IP
+  can read those pages. It writes to the DB, so say the word and I'll run it.
+
+  Left from your end — 2 decisions, not bugs
+
+  ┌────────────────┬─────────────┬─────────────────────────────────────────┐
+  │      what      │    costs    │             why it's yours              │
+  ├────────────────┼─────────────┼─────────────────────────────────────────┤
+  │ 500-ticket     │ ~223        │ Albo runs 200-ticket comps, Star Draws  │
+  │ minimum        │ draws/day   │ 150 — real, but small                   │
+  ├────────────────┼─────────────┼─────────────────────────────────────────┤
+  │ 35-day window  │ ~137        │ comps ending further out are dropped    │
+  │                │ draws/day   │                                         │
+  └────────────────┴─────────────┴─────────────────────────────────────────┘
+
+  Both are your quality rules working as designed. Say lower it and I'll do it
+  per-operator, not globally.
+
+  One loose end
+
+  CompCity publishes nothing — its ticket caps shuffle between runs and appear
+  nowhere on the page. The gate correctly blocks all of it, so no bad data
+  reaches the site. Fixing it needs FlareSolverr in CI to see the page; low
+  priority since it's one operator.
+
+  Where the numbers are
+
+  512 live · 616 enterable drafts waiting. The queue alone carries you past
+  1,000 as the cap drains it (~180/day), and topup adds the recovered draws on
+  top.
+
+✻ Brewed for 48s · done Wednesday, 3:32 PM
+
+❯ do all neccesary actions and finish the scraeppper thing asap without any     
+  mistakes and reverify after its done so no mistakes happends.                 
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Both workflows allow manual dispatch, and the fix is on main. Next scheduled
+  run is ~3h away, so I'll trigger it now to get the telemetry.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Dispatched (34338357741). Waiting for it to finish before touching topup —
+  topup reads the latest completed run's log, so it needs this one.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ No open alarms; CI tests passed in the run. Waiting for the scrape step.
+
+  Read 1 file, ran 2 shell commands (ctrl+o to expand)
+
+⏺ JSON sweep 34338357741 is mid-scrape (started 10:05 UTC, these take ~20–30
+  min). I'm waiting on it because topup reads the latest completed run's log —
+  it needs the new telemetry to know which operators to recover.
+
+  Next, once it lands: read the report → run topup dry → recover → re-verify.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Background command "Wait for the dispatched sweep to complete" completed (exit
+code 0)
+
+⏺ Background command "Wait for the sweep to complete" completed (exit code 0)
+
+⏺ The run landed. Reading the new telemetry:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Telemetry works — but the numbers are far smaller than I predicted. Golf Star
+  shows 2 of 77 refused, not 87 of 100. Let me re-measure the actual loss before
+  drawing any conclusion.
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ missing total_entries dropped 342 → 176, and golf-star went 32 → 0. But only
+  12 pages were refused, so the guard alone doesn't explain it. Let me attribute
+  what's left.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Now I can correct my own claim with data. Let me get the held-reason breakdown
+  before touching anything else.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ This changes the priority — and corrects something I told you earlier. The 481
+  held are not held by the cap; they have real reasons:
+
+  ┌──────────────────────────────────────────┬───────┐
+  │                  reason                  │ count │
+  ├──────────────────────────────────────────┼───────┤
+  │ no category evidence                     │ 131   │
+  ├──────────────────────────────────────────┼───────┤
+  │ observation gap (self-resolves next run) │ 111   │
+  ├──────────────────────────────────────────┼───────┤
+  │ category contradiction                   │ ~61   │
+  ├──────────────────────────────────────────┼───────┤
+  │ date/cap/title drift                     │ ~47   │
+  └──────────────────────────────────────────┴───────┘
+
+  Let me start topup and investigate the real blocker in parallel.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ 172 enterable drafts have no category — and that's the top blocker now. But
+  this is deliberate design (no-guess publishing), and the owner-approved fix is
+  the cowork routine, so I won't touch category inference. Checking topup:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ the-giveaway-guys is now in topup's retry list — it wasn't before. That's the
+  new telemetry working end-to-end in production (5 pages refused → 5 draws lost
+  → above the floor). Waiting for the dry run:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ 23 drafts to recover, 6 ready to publish. Let me verify --publish doesn't
+  weaken the gate before running it.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ 18h gap enforced — same as the Action, no weakening. Snapshotting the DB first
+  so I can verify the delta:
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Render sweep hasn't fired today yet — but its 07:00 cron consistently lands
+  11:00–13:00 UTC (GitHub delays scheduled runs), and it's 10:45 now, so that's
+  normal. Checking topup:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ The write run's list dropped to 17 — the-giveaway-guys is missing, which is
+  exactly the operator the new telemetry flagged. Let me find out why.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The signal worked — topup found the-giveaway-guys, then its own safety check
+  skipped it: Cloudflare is now challenging my IP because I hammered that site
+  three times today during testing. Self-inflicted, and it clears. CI only loses
+  5 of its 60 pages anyway.
+
+  Now the re-verification you asked for:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Delta is exactly +12 drafts (871→883), all categorised, active unchanged —
+  matches the log precisely. Tests green on merged main. Final data-integrity
+  check:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Background command "Re-run the live-row audit for data integrity" completed
+(exit code 0)
+
+⏺ Background command "Run topup dry to see what CI is missing" completed (exit
+code 0)
+
+⏺ Audit clean: 1,159 live rows, 0 corrections, 0.0% disagreement. Let me clean
+  up and correct one thing I overclaimed.
+
+  Ran 5 shell commands (ctrl+o to expand)
+
+⏺ Background command "Run topup with write and publish" failed with exit code
+144
+
+⏺ Done, verified — and I have to correct something I told you.
+
+  ⚠️ First, the correction
+
+  I told you the fix would recover 420 draws/day. That was too strong. I ran the
+  merged code in production and measured it: only 12 draws were actually lost
+  to refused pages (6 operators, transient 429/520/500 errors). Golf Star showed
+  2 of 77 pages refused — not the 87 of 100 I predicted.
+
+  The missing total_entries loss did fall 420 → 227, and Golf Star went 32 → 0.
+  But run-to-run variance is large and I can't honestly credit all of that to
+  the fix.
+
+  What the fix definitely gives you: a block page can never again be parsed as a
+  product (correctness, at any volume), the loss is now visible and named, and
+  Cloudflare 52x errors are retried.
+
+  What I did
+
+  1. Dispatched a run on the merged code — telemetry works. topup now auto-finds
+     the-giveaway-guys from the new signal alone, which it could never see
+     before.
+  2. Ran topup --write --publish — recovered +12 drafts, DB delta verified exact
+     (871→883, all categorised). It kept the full 18h verification gap; nothing
+     was weakened.
+  3. Re-verified everything.
+
+  The real blocker — and it isn't what I said
+
+  I told you the publish cap was the constraint. It isn't. Of 481 held in one
+  run:
+
+  ┌─────────────────────────────────┬───────┐
+  │             reason              │ count │
+  ├─────────────────────────────────┼───────┤
+  │ no category evidence            │ 131   │
+  ├─────────────────────────────────┼───────┤
+  │ observation gap (self-resolves) │ 111   │
+  ├─────────────────────────────────┼───────┤
+  │ category contradiction          │ ~61   │
+  ├─────────────────────────────────┼───────┤
+  │ date/cap drift                  │ ~47   │
+  └─────────────────────────────────┴───────┘
+
+  172 enterable drafts have no category, so they can never publish. Many are
+  obviously cash ("£40,000", "£10,000 MEGA GIVEAWAY!") — but your no-guess rule
+  is deliberate, and guessing categories is exactly how wrong data reaches the
+  site. I did not touch it. The approved fix is the cowork routine +
+  manager/PROMPT.md — still your pending action.
+
+  What I deliberately left alone
+
+  The remaining 227 missing-cap draws are a real parser gap, not an IP issue —
+  Albo 60, Plum 34, Waffle 28, Star Draws 22. But Albo's caps are 200 and Star 
+  Draws' are 150 — both below your 500 floor. Parsing them would add zero live
+  draws under your standing policy. Not worth the risk.
+
+  Verification
+
+  - 803 tests pass on merged main
+  - Audit: 1,159 live rows, 486 re-verified against their own pages, 0 
+    corrections, 0.0% disagreement
+  - DB delta matches the log exactly; tree clean; no stray processes
+
+  Where you stand
+
+  561 live · 883 drafts (607 enterable, 435 categorised).
+
+  The scraper side is finished. 561 + 435 = 996 live as the queue drains at
+  ~180/day (~2–3 days). The last 172 need the cowork routine — that's the one
+  thing standing between you and comfortably past 1,000, and it's yours to
+  switch on.
+
+✻ Cogitated for 46m 39s · done Wednesday, 4:21 PM
+
+※ recap: Goal is 1000 live draws on PrizeDrawsDaily; the scraper work is finished and verified, with 561 live and 435 categorised drafts draining automatically. Next action is yours: switch on the cowork routine to categorise the 172 stuck drafts.
+
+❯ ==so what is your say tell me deep reasoning on this, i want to drafts to be  
+  either on site or they shouldtn be in the databse if they are of no use to    
+  us.                                                                           
+  finish and complete this.                                                     
+
+⏺ Before I answer, let me get the actual shape of those 883 drafts — I've been
+  wrong twice today by reasoning ahead of the data.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ 277 died in the queue. That's the number that matters — let me find out what
+  killed them.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ 84% of the dead drafts had a category and were publishable — so the category
+  gap isn't the main killer. Let me find what is.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ operators.json is read in file order and never shuffled, and the cap is
+  consumed first-come. Let me see whether that starves the same operators every
+  run.
+
+  Ran 1 shell command (ctrl+o to expand)
+⏺ flush() runs mid-scrape and autoPublished is a running counter — so once the
+  cap fills, every later operator is held, and the roster order never changes.
+  Let me test whether that's actually starving the same operators.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Found it. This is the answer to your question:
+
+  ┌────────────────────┬────────────┬─────────────┐
+  │    roster half     │ live draws │ dead drafts │
+  ├────────────────────┼────────────┼─────────────┤
+  │ first 29 operators │ 361        │ 90          │
+  ├────────────────────┼────────────┼─────────────┤
+  │ last 30 operators  │ 155        │ 91          │
+  └────────────────────┴────────────┴─────────────┘
+
+  click-competitions sits at position 58/59 — 26 dead drafts, 0 live. lucky-day
+  at 54/59 — 21 dead, 0 live. Let me confirm the mechanism before I fix it.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Confirmed the mechanism. Click Competitions is scraped last (position 58), its
+  draws pass verification — the log literally says ✅ Win This MK8 Volkswagen 
+  Golf R … (verified — publishing) — and then 142 rows were held with "run 
+  publish cap reached". It has 0 live draws.
+
+  So the cap isn't bounding risk; it's acting as a whitelist keyed on position
+  in a JSON file. Let me check one thing before I fix it:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Safe — routeDraw revives an ended row when the operator relists it. Now let me
+  implement the fix. First the dead-draft rule:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Now I'll fix it. Creating the branch and writing the pure decision functions
+  first:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Now wiring them in:
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Now the dead-draft cleanup in the sweep:
+
+  Ran 6 shell commands (ctrl+o to expand)
+
+⏺ The test caught me — it says 200 is the daily ceiling, while the workflow
+  comment says "200/run". Those contradict. Let me check the source of truth.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ The test is right and I was wrong — 200 is the daily ceiling, not per-run.
+  manager/PROMPT.md was written when there was one run a day; there are now
+  four. Let me raise it deliberately rather than by accident.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Now tests for the three new behaviours:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ 820 pass. Now verifying behaviour before committing — the critical check is
+  that the dead-draft rule touches only drafts:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Background command "Dry-run the sweep with the dead-draft rule" completed
+(exit code 0)
+
+⏺ 253 dead drafts — all drafts by construction (the function refuses anything
+  that isn't status:"draft", with a test pinning that). Let me sanity-check
+  rotation on the real roster before committing:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Rotation frees the starved operators — click-competitions moves from a
+  permanent 58 through position 0 within days, and nobody is stuck at the back.
+  Committing:
+
+  Created PR #40, ran 1 shell command (ctrl+o to expand)
+
+⏺ Now running the cleanup for real — snapshotting first so I can verify the
+  delta exactly:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Scoped to STATUS=draft deliberately — belt-and-braces, so it cannot read an
+  active row at all, let alone write one.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Background command "Run the dead-draft cleanup on drafts only" completed (exit
+code 0)
+
+⏺ Exactly right:
+
+  ┌─────────────────────────┬────────┬──────────────────┐
+  │                         │ before │      after       │
+  ├─────────────────────────┼────────┼──────────────────┤
+  │ drafts total            │ 883    │ 606 (−277)       │
+  ├─────────────────────────┼────────┼──────────────────┤
+  │ drafts enterable        │ 606    │ 606 (untouched)  │
+  ├─────────────────────────┼────────┼──────────────────┤
+  │ enterable + categorised │ 435    │ 435 (untouched)  │
+  ├─────────────────────────┼────────┼──────────────────┤
+  │ active                  │ 1174   │ 1174 (untouched) │
+  └─────────────────────────┴────────┴──────────────────┘
+
+  Every row removed was already dead. Not one enterable draft, and not one live
+  row, was touched. Let me verify the rest:
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Greptile found a real defect, and it's the serious kind. Issue 2: my rule ends
+  a draft on its stored date while ignoring the fresh evidence sitting right
+  next to it — so a draft the operator has extended (still purchasable, future
+  date) would be wrongly ended. Let me check whether my live run did that.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ 277 rows in an 85-second window — that's mine. Let me fix the rule properly,
+  then restore and redo.
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Now restoring the 277 rows I ended, so the corrected rule re-decides them from
+  scratch:
+
+  Ran 2 shell commands (ctrl+o to expand)
+⏺ Restored (606 + 277 = 883, plus 2 new arrivals). Now the corrected rule, dry —
+  the difference between 253 and this number is the mistake I nearly shipped:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ While that runs, let me look at Greptile's other finding — urgency is only
+  enforced within each flush batch, not across the run.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ sbUpdate PATCHes whatever object it's given, so a partial works. Implementing
+  the run-wide publish budget:
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ Background command "Dry-run the corrected rule" completed (exit code 0)
+
+⏺ 253 → 116. So 137 of the drafts I ended were still being sold by their 
+  operators — a stale stored date, not a dead competition. That's a 54% error
+  rate on my original rule, and the rollback was the right call. Running the
+  corrected version:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Background command "Run the corrected cleanup for real" completed (exit code
+0)
+
+⏺ Correct this time:
+
+  ┌──────────────────┬────────┬──────────────────┐
+  │                  │ before │      after       │
+  ├──────────────────┼────────┼──────────────────┤
+  │ drafts total     │ 885    │ 745 (−140)       │
+  ├──────────────────┼────────┼──────────────────┤
+  │ drafts enterable │ 608    │ 608 (untouched)  │
+  ├──────────────────┼────────┼──────────────────┤
+  │ active           │ 1175   │ 1175 (untouched) │
+  └──────────────────┴────────┴──────────────────┘
+
+  The 137 still-selling drafts stayed. Committing the corrections:
+
+  Commented on PR #40, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Let me run the final integrity check and update memory while it goes.
+
+  Ran 4 shell commands (ctrl+o to expand)
+
+⏺ Background command "Final live-row audit" completed (exit code 0)
+
+⏺ Done. Here's my reasoning, and what it turned out to be.
+
+  Your instinct was right — my first answer was wrong
+
+  You said drafts should be live or gone. I'd told you the blocker was missing
+  categories. It wasn't. I measured it:
+
+  277 of 883 drafts had died in the queue — passed their own draw date, never
+  published. Of those:
+  - 84% had a category and nothing else wrong. Categories killed only 16%.
+  - Median window to publish: 3.5 days. Rows that do publish take 1.7 days. They
+    had time.
+
+  So they weren't junk and they weren't uncategorised. Something was refusing to
+  publish them.
+
+  What it was
+
+  The publish cap is spent first-come, during the run, over operators.json order
+  — which never changes. That makes it a whitelist, not a budget. Whoever gets
+  scraped first eats it, every run, forever.
+
+  ┌────────────────────┬────────────┬─────────────┐
+  │    JSON roster     │ live draws │ dead drafts │
+  ├────────────────────┼────────────┼─────────────┤
+  │ first 29 operators │ 361        │ 90          │
+  ├────────────────────┼────────────┼─────────────┤
+  │ last 30 operators  │ 155        │ 91          │
+  └────────────────────┴────────────┴─────────────┘
+
+  Same death rate, 2.3× the inventory. click-competitions sits at position 58/59
+  with 26 dead drafts and zero live — while its own log says ✅ Win This MK8 
+  Volkswagen Golf R … (verified — publishing) on every single run. It passes
+  every quality check and loses because of its line number in a file.
+
+  Deleting those drafts would have deleted real, verified UK competitions — 
+  chosen by nothing but file position.
+
+  What I did
+
+  - Urgency ordering — the budget goes to draws closest to closing. Skipping
+    those kills them; a draw three weeks out gets another chance tomorrow.
+  - Roster rotation per run — simulated over a week, click-competitions moves 58
+    → 0, nobody stays at the back.
+  - Run-wide settle — the cap is decided once, after everything is scraped.
+  - Daily ceiling 200 → 400. Ordering only changes who wins a fixed budget; the
+    backlog needed the raise.
+  - Dead drafts auto-ended — a draft past its own date that was never published
+    now gets cleared, daily and automatically.
+
+  The mistake I made, and caught
+
+  My first dead-draft rule read only the stored row, ignoring the live operator
+  data the sweep had already fetched. I ran it. It ended 253 drafts.
+
+  Re-run with the evidence: 116. 137 of them — 54% — were competitions the 
+  operator was still selling. A stale stored date, not a dead draw.
+
+  I restored all 277 rows and redid it. Final run: drafts 885 → 745, enterable
+  608 → 608 untouched, active 1175 → 1175 untouched. Only genuinely dead rows
+  went.
+
+  The lesson, now in memory: never decide from a stored row when fresh evidence 
+  is in hand.
+
+  Answering your question directly
+
+  Neither delete nor keep — the DB now self-maintains. A draft has exactly two
+  futures: it publishes, or it expires and is ended automatically by the daily
+  sweep. Nothing accumulates. I used ended rather than DELETE because deletion
+  causes re-scrape churn and loses the relist path that revives a recurring comp
+  — ended gets them out of the queue, which is what you actually wanted.
+
+  Verification
+
+  - 822 tests pass, all offline
+  - Audit: 1,158 live rows, 485 re-verified against their own pages, 0 
+    corrections, 0.0% disagreement
+  - Every DB delta checked against the log exactly; tree clean; no stray
+    processes
+
+  PR #40 is MERGEABLE, tests green:
+  https://github.com/chanakya-goyal/prizedrawsdaily-aggregator/pull/40
+
+  Once merged: 560 live + 436 categorised enterable drafts, draining at 390/day
+  instead of 180 — and the operators at the back of the file finally get their
+  turn.
+
+✻ Crunched for 31m 12s · done Wednesday, 5:55 PM
+
+※ recap: Goal is getting PDD to 1000+ live draws with clean data; I found the publish cap was starving operators by file position and fixed it. PR #40 is open, tests green, waiting on your merge.
+
+❯ merged the pr                                                                 
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Merged as 53c5576, tests green, caps live. Let me verify the fixes actually
+  work in production — snapshot first:
+
+  Ran 7 shell commands (ctrl+o to expand)
+
+⏺ Background command "Wait for run completion" completed (exit code 0)
+
+⏺ All three fixes confirmed live. The strongest signal is the new line: only 26 
+  held by the cap (was 142), and the soonest one missed closes 2026-09-22 — 13
+  days out. Everything closing sooner got published. Let me check the starved
+  operators:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Let me confirm those actually landed as live rows:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Merged and verified in production. All three fixes work.
+
+  The starved operators are free
+
+  ┌────────────────────────┬─────────────┬──────────┐
+  │        operator        │ live before │ live now │
+  ├────────────────────────┼─────────────┼──────────┤
+  │ click-competitions     │ 0           │ 26       │
+  ├────────────────────────┼─────────────┼──────────┤
+  │ lucky-day-competitions │ 0           │ 23       │
+  ├────────────────────────┼─────────────┼──────────┤
+  │ universal-competitions │ 2           │ 7        │
+  └────────────────────────┴─────────────┴──────────┘
+
+  click-competitions had 26 dead drafts and zero live for as long as the roster
+  order held. It now has 26 live draws.
+
+  The proof the fix is the right one
+
+  The new log line says it exactly:
+
+  ⏸ 26 candidate(s) held by the run publish cap (110) — soonest missed closes
+  2026-09-22
+
+  - 26 held, down from 142
+  - The soonest draw that missed out closes 13 days away
+
+  Everything closing sooner got published. The cap is now spending itself on the
+  draws that would die without it, instead of on whoever happened to be scraped
+  first. Rotation confirmed too — the run started on Flex Competitions, not the
+  file's first operator.
+
+  One run's effect
+
+  ┌─────────────────────────┬────────┬────────────┐
+  │                         │ before │   after    │
+  ├─────────────────────────┼────────┼────────────┤
+  │ live draws              │ 565    │ 675 (+110) │
+  ├─────────────────────────┼────────┼────────────┤
+  │ drafts waiting          │ 755    │ 648        │
+  ├─────────────────────────┼────────┼────────────┤
+  │ enterable + categorised │ 445    │ 340        │
+  └─────────────────────────┴────────┴────────────┘
+
+  Where that leaves you
+
+  675 live, 340 categorised drafts still queued. At 390/day that queue clears in
+  about a day — putting you at ~1,015 live, past your target, with no new
+  scraping needed.
+
+  The database is now self-maintaining, which was your actual question. A draft
+  has exactly two futures: it publishes, or it expires and the daily sweep ends
+  it. Nothing accumulates dead.
+
+  What's left, honestly
+
+  176 uncategorised drafts still can't publish. That's the cowork routine
+  (manager/PROMPT.md) — your action, and the only thing between you and
+  comfortably above 1,000.
+
+  137 past-dated drafts are still being sold by their operators — stale stored
+  dates, not dead draws. The sweep already reports them (staleDateDecision
+  extend path) but writes nothing. That's the next thing I'd turn on, and I'd
+  want to measure it first rather than trust it, given I got the dead-draft rule
+  wrong on the first attempt today.
+
+  Final state: 822 tests pass, audit clean (1,158 rows, 0 corrections), tree 
+  clean, nothing running.
+
+✻ Crunched for 29m 57s · done Wednesday, 6:37 PM
+
+※ recap: Goal is 1000 live draws on PrizeDrawsDaily. PR #40 is merged and verified: 675 live now, 340 categorised drafts draining at 390/day, which clears past 1000 in about a day. Next action is yours: run the cowork routine to categorise the 176 stuck drafts.
+
+❯ so hwt should i do with 176 uncategorised.                                    
+
+⏺ Let me look at all 176 properly rather than recommend from the 15 I sampled
+  earlier.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Now I can see the real shape. Let me count the groups rather than eyeball
+  them:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ My classifier is crude (unicode-bold titles defeated it), so treat these as
+  indicative — but the shape is clear:
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ The rules are deliberately strict — cash-prizes needs an actual word (cash,
+  jackpot, tax-free), so a title that is literally £40,000 returns null by
+  design. That strictness is what keeps the Cash page clean. One more thing
+  worth checking before I answer:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Here's my answer, grounded in what they actually are.
+
+  What the 176 are
+
+  ┌───────────────────────────────────────────┬────────┬────────────────────┐
+  │                   group                   │ ~count │ can a rule decide  │
+  │                                           │        │        it?         │
+  ├───────────────────────────────────────────┼────────┼────────────────────┤
+  │ prize is a sum of money (£40,000, £100    │ ~60    │ no — safely        │
+  │ for 10p)                                  │        │                    │
+  ├───────────────────────────────────────────┼────────┼────────────────────┤
+  │ physical goods needing judgement (Shark   │ ~97    │ no                 │
+  │ SpeedStyle Pro)                           │        │                    │
+  ├───────────────────────────────────────────┼────────┼────────────────────┤
+  │ instant-win games, prize unstated (BEAT   │ ~9     │ no                 │
+  │ THE KEEPER!)                              │        │                    │
+  ├───────────────────────────────────────────┼────────┼────────────────────┤
+  │ site mechanics (£50 Site Credits, 20      │ ~6     │ shouldn't be draws │
+  │ ENTRIES INTO EVERY COMP)                  │        │  at all            │
+  └───────────────────────────────────────────┴────────┴────────────────────┘
+
+  Why the rules refuse them
+
+  I checked the code. cash-prizes requires an actual word — cash, jackpot,
+  tax-free, voucher. A title that is literally £40,000 has none, so it returns
+  null.
+
+  That's the system working, not failing. The comment in the code says the old
+  ?? "cash-prizes" fallback "is what filled the Cash page with golf bags." And
+  the trap is real: £300,000 LUXURY GOODS INSTANT WIN and £150 Ladies Mystery 
+  Bundle are money describing goods. Any rule loose enough to catch £40,000
+  catches those too.
+
+  So: don't loosen the cash rule. I'd be walking into the exact mistake the
+  strictness prevents.
+
+  What I'd actually do
+
+  1. Turn on the cowork routine — this is the answer. It's already built for
+  this. manager/PROMPT.md §2b literally queries
+  status=eq.draft&category_id=is.null. It applies judgement per row, which is
+  what these need. ~20–35 arrive per day, so it's a few minutes' work each time.
+  This is the pending paste you've had on your list.
+
+  2. Let me add operator-level defaults for single-niche operators. This isn't
+  guessing about a prize — it's a fact about the operator:
+
+  - capital-competitions-carp-catch (22 rows) — carp fishing. Boilies, Shimano
+    reels, bait boats. All sports-outdoors.
+  - trade-tool-giveaways (14 rows) — tools. Masterplug, Knipex, Unilite. All 
+    home-garden.
+
+  That's ~36 rows now and permanently after, deterministically. The top 6
+  operators are 54% of the whole problem, so a few more may qualify once I check
+  their catalogues.
+
+  3. Doing nothing is now a real option. Since this morning they expire and get
+  ended automatically — no clutter, no rot. The cost is just lost inventory:
+  ~20–35 draws/day never shown.
+
+  The size of the prize
+
+  176 rows against 675 live is +26% inventory if all were categorised. Worth
+  doing, not urgent.
+
+  Want me to do #2? It's a small config change plus tests, and I'd verify each
+  operator's catalogue is genuinely single-niche before assigning a default
+  rather than assuming from the name.
+✻ Sautéed for 2m 45s · done Wednesday, 7:20 PM
+
+※ recap: Goal is getting PDD past 1,000 live draws with clean data; you're now at 675 live after merging PR #40, with 176 uncategorised drafts left. Next: tell me whether to add operator-level default categories for single-niche operators like the carp and tools ones.
+
+❯ which routine- name it?                                                       
+  add operator to niche also                                                    
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The routine is "Cowork routine prompt v4 — PrizeDrawsDaily daily QA"
+  (manager/PROMPT.md) — a scheduled Claude cowork routine. Step 2b is the
+  category call. Setup it needs: a checkout of pdd-aggregator with bun install,
+  env SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY, Full network access, daily after
+  the Action.
+
+  Now the operator niches — measured from each operator's own
+  already-categorised draws, not guessed from its name:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The data kills my own idea — let me show you before I withdraw it.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Confirmed — the cash rule fails on every plural: vouchers, gift cards,
+  jackpots, Site Credits. That's deterministic, not a guess.
+
+  But first, the operator-niche idea — my own data refutes it, so I'm not going 
+  to quietly ship it:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Decisive. drift-competitions reads 90% cash by history — but its 3 
+  uncategorised rows are a safari lodge, a Coach denim set and an advent 
+  calendar. A cash default would be 0/3 right.
+
+  That's the flaw in my own idea: the uncategorised rows are by definition the
+  ones that don't look like the operator's typical output. I'm withdrawing it.
+  Let me ship the one fix that needs no judgement:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Honest result: the plural fix recovers 1 row, not 60. It's still a real latent
+  bug — vouchers, gift cards, jackpots are silently ignored forever — so I'll
+  ship it as the small correctness fix it is, not as an answer to the 176.
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ 825 pass. The change is last in the rule order so it can only turn null →
+  cash-prizes — but let me prove that against the live catalogue rather than
+  assert it:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Provably additive across all 5,441 rows: 3 gained (£50 Site Credits, two £55 
+  Jackpots comps), 0 changed, 0 lost.
+
+  Created PR #41 (ctrl+o to expand)
+
+⏺ The routine, named
+
+  "Cowork routine prompt v4 — PrizeDrawsDaily daily QA" — the file is
+  manager/PROMPT.md in pdd-aggregator. It's a scheduled Claude cowork routine,
+  and step 2b is the category call. What it needs, set once:
+
+  - a checkout of pdd-aggregator with bun install in setup
+  - env vars SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
+  - Full network access
+  - daily schedule, after the GitHub Action
+
+  Paste everything below the --- line in that file as the routine's task. It
+  stamps each call category_source:"claude" so it stays auditable.
+
+  Operator → niche: I checked it, and my own idea was wrong
+
+  You asked me to add it. I measured each operator's real category history
+  first, and not one operator qualifies. The ones that looked most single-niche
+  are the clearest refutation:
+
+  drift-competitions — 90% cash-prizes by history. Its 3 uncategorised rows:
+  - 𝐆𝐈𝐑𝐀𝐅𝐅𝐄 𝐒𝐀𝐅𝐀𝐑𝐈 𝐋𝐎𝐃𝐆𝐄 𝐒𝐓𝐀𝐘
+  - 𝐂𝐎𝐀𝐂𝐇 𝐃𝐄𝐍𝐈𝐌 𝐒𝐄𝐓
+  - PLOUISE 2026 ADVENT CALENDAR
+
+  A cash default would be 0 for 3.
+
+  Same for cosmetic-competitions-ltd (89% cash → its uncategorised are a mystery
+  bundle and an air purifier, 0/2).
+
+  The reason is structural: uncategorised rows are, by definition, the ones that
+  don't look like the operator's typical output. Applying its majority category
+  to them applies a statistic from the wrong population.
+
+  And the two I was most confident about by name —
+  capital-competitions-carp-catch and trade-tool-giveaways — turned out mixed in
+  the data (trade-tool is cash 19 / tech 15 / home-garden 13 / collectibles
+  12). I was pattern-matching on operator names, which is exactly what I said I
+  wouldn't do.
+
+  So I'm withdrawing it rather than shipping something that puts wrong 
+  categories on your category pages. If you still want it after seeing this, say
+  so and I'll build it with a category_source stamp so every row is reversible
+  — but I don't recommend it.
+
+  What I did ship — PR #41
+
+  While checking, I found a real bug: \b can't sit between credit and s, so the
+  cash rule rejected every plural — Site Credits, 2 vouchers, gift cards,
+  jackpots all returned null and could never publish.
+
+  Replayed over all 5,441 rows: 3 gained, 0 changed, 0 lost. Provably additive,
+  since cash-prizes is last in the rule order.
+
+  Honest about its size: it's worth 1 of the 176. A latent correctness bug, not
+  a backlog fix.
+
+  https://github.com/chanakya-goyal/prizedrawsdaily-aggregator/pull/41 — 825
+  tests pass.
+
+  Bottom line
+
+  The 176 need judgement, and the routine is the only thing that gives it.
+  That's the action: set up the cowork routine with manager/PROMPT.md.
+  Everything else I tried is either refuted or worth one row.
+
+✻ Cogitated for 4m 24s · done Wednesday, 7:30 PM
+
+※ recap: Goal is 1,000 live draws on PrizeDrawsDaily; you're at 675 live with 340 categorised drafts still draining automatically. Next action: set up the cowork routine from manager/PROMPT.md to classify the 176 uncategorised drafts, and merge PR #41.
+
+❯ is this a new routine or already in my clauede. if new then give me location  
+
+⏺ Good question — let me check rather than guess. The DB will tell us whether it
+  has ever actually run.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ 165 rows carry category_source='claude' — so the routine has run before. Let
+  me find out whether it's still running:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The newest draw it ever classified was created 21 days ago — all 165 are one
+  batch from ~19–21 August. It is not running now. Let me check whether a
+  routine object exists anywhere I can see:
+
+⏺ CronList only covers this session, so it can't answer that. But there's a
+  skill that manages scheduled cloud routines — let me use it to actually look:
+
+⏺ Skill(schedule)
+  ⎿  Successfully loaded skill · 3 tools allowed
+
+⏺ RemoteTrigger(list)
+  ⎿  HTTP 200 (1 lines)
+
+⏺ Definitive answer. Let me check one thing first — whether the environment
+  actually has the Supabase key, since a new routine would fail without it:
+
+⏺ RemoteTrigger(get_run_log cse_01UasPx8vpnwDQo1e5ycNzNL)
+  ⎿  HTTP 200 (1 lines)
+
+⏺ This changes the answer completely. Let me confirm one thing:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Found something more important than the answer to your question.
+
+  You have exactly one routine — and it's been broken for 3 weeks
+
+  "PDD aggregator — weekly review" (trig_01ArAcCY8UYhpHKXP6g3SQen) — every
+  Monday 10:00 UTC, enabled, last ran 7 Sep.
+
+  Its Supabase credentials point at the dead project. SUPABASE_URL in its
+  environment is kkuuwksgyypicnblwubs — the one you migrated away from on 20
+  Aug. Your GitHub Actions secrets were updated that day (I can see both,
+  stamped 2026-08-20T15:47); the routine's environment never was.
+
+  Its own last run figured this out and pushed you a mobile notification:
+
+  ▎ "this routine's Supabase credentials point at a dead database, not 
+  ▎ production… frozen since 2026-08-19 (zero writes since)"
+
+  It saw 30 live draws while your site had 410. It's been running weekly and
+  doing nothing for three weeks.
+
+  That's exactly why category classification stopped. All 165
+  category_source='claude' rows date to 19–21 Aug — right before the migration.
+  Not a coincidence.
+
+  Answering your actual question
+
+  It's a new routine. What you have is the weekly review — a different job. Its
+  prompt explicitly says "NEVER publish draws" and has no category step. The v4
+  daily QA in manager/PROMPT.md is the one with step 2b.
+
+  What to do, in order
+
+  1. Fix the environment first — this is yours, I can't set environment secrets.
+
+  - Go to https://claude.ai/code/routines → the routine → its environment
+    ("PrizeDrawsDaily", env_01SbXZNch2LubxwWmwtfypw4)
+  - Set SUPABASE_URL = https://ilnegxrsalmzpljotgpe.supabase.co
+  - Set SUPABASE_SERVICE_ROLE_KEY = the same value as your GitHub secret (it's
+    in your local ~/pdd-aggregator/.env)
+
+  Direct link to the routine:
+  https://claude.ai/code/routines/trig_01ArAcCY8UYhpHKXP6g3SQen
+
+  2. Then tell me, and I'll create the daily QA routine with the v4 prompt —
+  same repo, same environment, scheduled after the sweeps. I can do that in one
+  call via the routines API.
+
+  Creating it before step 1 would just produce a second routine reading a dead
+  database.
+
+  Worth knowing
+
+  Your weekly review has been reporting on a frozen snapshot since 20 August —
+  so any conclusion it drew in that window (stalled operators, retire
+  candidates, spot-checks) was about data three weeks stale. Once the
+  credentials are fixed, its next run is the first trustworthy one since.
+✻ Brewed for 2m 45s · done Wednesday, 7:44 PM
+
+※ recap: Goal is getting PrizeDrawsDaily past 1000 live draws; it's now at 675 with the scraper fixes merged and verified. Your weekly Claude routine has been reading the dead Supabase project since 20 Aug, so update its environment credentials at claude.ai/code/routines.
+
+❯ environment updated, proceed                                                  
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ The v4 prompt is 15KB. Rather than paste it in — which is exactly the manual
+  sync step that went stale on you — I'll point the routine at the file in git,
+  so it always follows the current version.
+
+  Ran 1 shell command (ctrl+o to expand)
+  ⎿  Invalid tool parameters
+  ⎿  Invalid tool parameters
+
+⏺ RemoteTrigger(create)
+  ⎿  HTTP 200 (1 lines)
+
+⏺ Created. Now let me run it immediately to verify your environment fix actually
+  took:
+
+⏺ RemoteTrigger(run trig_01QDtV6s8t6fPhXdsS59qECA)
+  ⎿  HTTP 200 (1 lines)
+
+⏺ Running as cse_01CysZ7iy6qruEA7QWByfuCW. Let me check whether it can see the
+  real database now:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ RemoteTrigger(get_run_log cse_01CysZ7iy6qruEA7QWByfuCW)
+  ⎿  HTTP 200 (1 lines)
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Background command "Wait for the routine run to progress" completed (exit code
+0)
+
+⏺ RemoteTrigger(get_run_log cse_01CysZ7iy6qruEA7QWByfuCW)
+  ⎿  HTTP 200 (1 lines)
+
+⏺ Environment fix confirmed working:
+
+  SUPABASE_URL=https://ilnegxrsalmzpljotgpe.supabase.co
+  SUPABASE_SERVICE_ROLE_KEY is set (length 219)
+
+  That's the live project — and it's reading 1,935 rows, not the 30 the old one
+  saw. It read manager/PROMPT.md, correctly detected Wednesday (skipping the
+  Sunday patrol), and is working through the steps. Let me let it finish:
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Done — and your environment fix is verified working. Here's the state.
+
+  The routine you had
+
+  "PDD aggregator — weekly review" — Mondays 10:00 UTC. Still there, still
+  enabled. It's read-only by design (its prompt says never publish) and does
+  curation and GSC attention checks. Now that you've fixed the environment, its 
+  next Monday run will be the first trustworthy one since 20 August.
+
+  The routine I created
+
+  "PDD aggregator — daily QA (v4)" — trig_01QDtV6s8t6fPhXdsS59qECA
+  https://claude.ai/code/routines/trig_01QDtV6s8t6fPhXdsS59qECA
+
+  ┌─────────────┬──────────────────────────────────────────────────────┐
+  │             │                                                      │
+  ├─────────────┼──────────────────────────────────────────────────────┤
+  │ schedule    │ daily 15:00 UTC = 20:30 IST (after the sweeps land)  │
+  ├─────────────┼──────────────────────────────────────────────────────┤
+  │ model       │ claude-sonnet-5 (same as your weekly)                │
+  ├─────────────┼──────────────────────────────────────────────────────┤
+  │ environment │ PrizeDrawsDaily                                      │
+  ├─────────────┼──────────────────────────────────────────────────────┤
+  │ does        │ step 2b — the category classification, plus daily QA │
+  └─────────────┴──────────────────────────────────────────────────────┘
+
+  One design choice I made deliberately
+
+  I did not paste the 15KB v4 prompt into the routine. Instead its prompt is a
+  short bootstrap that says "read manager/PROMPT.md and follow everything below 
+  the first ---".
+
+  That's because the manual paste is precisely what went stale on you. Now the
+  prompt lives in git — updating it is a commit, and the routine picks it up on
+  its next run. It can't drift again.
+
+  I also carried the three hard rules inline as a backstop (never publish, never
+  bulk-run the scraper, never patch without page evidence) so they survive even
+  if the file is ever misread.
+
+  Verified, not assumed
+
+  I ran it immediately rather than trusting the schedule:
+
+  SUPABASE_URL=https://ilnegxrsalmzpljotgpe.supabase.co
+  SUPABASE_SERVICE_ROLE_KEY is set (length 219)
+
+  Correct project. It read 1,935 rows — the real database, versus the 30 the
+  broken one saw. It loaded manager/PROMPT.md, correctly worked out today is
+  Wednesday so the Sunday deep patrol is skipped, and moved into the steps.
+
+  What to expect
+
+  It's mid-run now, and will run again on schedule at 15:08 UTC (~40 min) — two
+  passes today, harmless. Each run will classify a batch of the uncategorised
+  drafts and stamp them category_source:"claude", which unblocks them for
+  publishing.
+
+  The 176 should clear over the next few days, and new ones won't accumulate.
+  That was the last thing standing between you and comfortably past 1,000 live
+  draws.
+
+  If 20:30 IST is a bad time for the report landing, tell me and I'll move it.
+
+✻ Churned for 6m 44s · done Wednesday, 7:58 PM
+
+⏺ Background shell command didn't finish before the previous session ended
+
+⏺ That background timer was just a wait — no work lost. A day has passed, so let
+  me check what actually happened with the routine run I launched.
+
+⏺ RemoteTrigger(list_runs trig_01QDtV6s8t6fPhXdsS59qECA)
+  ⎿  HTTP 200 (1 lines)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ RemoteTrigger(get_run_log cse_01CysZ7iy6qruEA7QWByfuCW)
+  ⎿  HTTP 200 (1 lines)
+
+⏺ Run completed successfully — and it earned its keep immediately.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Loop closed — the run I was waiting on finished successfully, and it earned
+  its keep on the first pass.
+
+  What that run did
+
+  ┌────────────────────────┬─────────────────────────────────────────┐
+  │                        │                                         │
+  ├────────────────────────┼─────────────────────────────────────────┤
+  │ environment check      │ ilnegxrsalmzpljotgpe ✅ — your fix took │
+  ├────────────────────────┼─────────────────────────────────────────┤
+  │ drafts classified      │ 37 (3 left as genuinely undecidable)    │
+  ├────────────────────────┼─────────────────────────────────────────┤
+  │ descriptions rewritten │ 30                                      │
+  ├────────────────────────┼─────────────────────────────────────────┤
+  │ spot-check             │ 10/10 passed, 0 fields corrected        │
+  ├────────────────────────┼─────────────────────────────────────────┤
+  │ tripwire               │ green                                   │
+  └────────────────────────┴─────────────────────────────────────────┘
+
+  It didn't just pattern-match titles either — for the ambiguous ones it
+  downloaded and looked at the banner images, and confirmed podium-prize is a
+  cash instant-win brand because 7/7 sampled banners literally read "WIN UP TO
+  £X".
+
+  It also correctly caught a false alarm on itself: tripwire reported "🔴 Broken
+  — scrape outcome unknown", and it worked out that only fires because it ran
+  standalone without the CI-only SCRAPE_OUTCOME var, verified the four real
+  Action runs were green, and re-ran with the evidence supplied.
+
+  It found a real bug immediately
+
+  Its report flagged ~10 different lucky-day-competitions products all proposing
+  the same "corrected" price of £2.97. It re-checked one against the live
+  WooCommerce API and found the real price was £0.97, matching what was stored.
+
+  That's the ?slug= cache bug — the endpoint treats slug as a filter, not a
+  lookup, so a cached response handed every lucky-day row one stranger's price
+  and date. Per your memory it became PRs #42–#44, now merged, with no data
+  damage (the audit is report-only and never wrote).
+
+  The routine found that on day one.
+
+  Where things stand now
+
+  ┌────────────────────────┬──────┬─────┐
+  │                        │ then │ now │
+  ├────────────────────────┼──────┼─────┤
+  │ live draws             │ 561  │ 777 │
+  ├────────────────────────┼──────┼─────┤
+  │ uncategorised drafts   │ 176  │ 104 │
+  ├────────────────────────┼──────┼─────┤
+  │ claude-classified rows │ 165  │ 271 │
+  └────────────────────────┴──────┴─────┘
+
+  777 live plus 271 categorised enterable drafts puts you past 1,000 as the
+  queue drains. The classification backlog is falling on its own, which is
+  exactly what it was supposed to start doing.
+
+  One thing still open
+
+  Your memory has a 🔴 action I didn't do and can't: add bunx playwright install
+  chromium to the setup script of routine environment 
+  env_01SbXZNch2LubxwWmwtfypw4. Playwright 1.61 wants chromium build 1228 and
+  the image ships 1194, so any render-path work inside a routine fails until
+  that's added. Same place you fixed the Supabase vars.
+
+  Next scheduled run is 15:00 UTC today (~8 hours). Nothing needs me in the
+  meantime.
+
+✻ Crunched for 1m 33s · done Thursday, 12:44 PM
+
+❯ what is left from my end- tell me , ill do it.                                
+⏺ Let me check the actual state rather than list things from memory that may
+  already be done.
+
+  Ran 5 shell commands (ctrl+o to expand)
+
+⏺ Checked the live state rather than trusting memory. Here's what's actually
+  left, biggest first.
+
+  1. Affiliate links — nothing else on this list comes close
+
+  Verified just now: 0 of 110 operators have an affiliate_url.
+
+  The scraper works, the gate works, 777 draws are live, the site sends outbound
+  clicks — and every one of them earns £0. The plumbing is built and waiting;
+  only the links are missing.
+
+  This is purely yours: signing up to each operator's affiliate/partner
+  programme and getting the tracking URL. Start with the operators that actually
+  get traffic rather than all 110.
+
+  2. Merge two green PRs — one minute
+
+  ┌───────────────┬───────────────────────────────────┬─────────────────────┐
+  │     repo      │                PR                 │        state        │
+  ├───────────────┼───────────────────────────────────┼─────────────────────┤
+  │ site          │ #109 — category hub content (car  │ MERGEABLE, all      │
+  │               │ draws first)                      │ checks ✅           │
+  ├───────────────┼───────────────────────────────────┼─────────────────────┤
+  │ pdd-seo-tools │ #12 — watches the live category   │ MERGEABLE ✅        │
+  │               │ table                             │                     │
+  └───────────────┴───────────────────────────────────┴─────────────────────┘
+
+  Aggregator is clean — nothing open, no issues. (Say the word and I'll merge
+  these instead.)
+
+  3. Routine environment — one line
+
+  Add to the setup script of env_01SbXZNch2LubxwWmwtfypw4 (same place you fixed
+  the Supabase vars):
+
+  bunx playwright install chromium
+
+  Playwright 1.61 wants chromium build 1228; the image ships 1194, so any
+  render-path work inside a routine fails. I can't see or edit environment setup
+  scripts — tell me once it's in and I'll confirm it on the next run.
+
+  4. Four rating decisions — yours by policy
+
+  storm · pristine · 7days · good-life-plus are still capped at ±0.2 pending
+  your call. Ratings are never mine to move on flagship operators.
+
+  5. Outreach queue — ongoing
+
+  Zoho hello@ mailbox first, then send the 25 already-written Gmail drafts.
+  Reddit stays hand-posted by you, per your own rule.
+
+  ---
+
+  Nothing is blocking the scraper. It's running clean: 777 live, 104
+  uncategorised and falling, audit at 0 corrections, no open PRs or alarms. The
+  daily routine runs itself at 15:00 UTC.
+
+  The honest summary: the machine is built and working — item 1 is the one that 
+  turns it into money.
+
+✻ Brewed for 1m 18s · done Thursday, 12:48 PM
+
+※ recap: Goal is getting PrizeDrawsDaily past 1,000 live draws with clean data; the scraper is done and running at 777 live, 104 uncategorised and falling. Your next action: add affiliate URLs to operators, since all 110 are null and outbound clicks currently earn nothing. (disable recaps in /config)
+
+❯ i have changes environment now, also i want you to ignore the zoho or         
+  business mail setup for now. till we get daily new users                      
+
+⏺ Noted on both. Let me record the mail deferral so it stops resurfacing, and
+  verify the environment change.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Now verifying the environment change. Let me try a targeted smoke test rather
+  than a full 28-minute QA run:
+
+⏺ RemoteTrigger(run trig_01QDtV6s8t6fPhXdsS59qECA)
+  ⎿  HTTP 200 (1 lines)
+
+⏺ Run started (cse_01HHqh9vvEtRNFfvByh6h33L). Let me see whether the override
+  took:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ RemoteTrigger(get_run_log cse_01HHqh9vvEtRNFfvByh6h33L)
+  ⎿  HTTP 200 (1 lines)
+
+⏺ The override didn't take — it ran the stored prompt, so that's just today's QA
+  pass (harmless, it was due anyway). But I spotted something worth checking:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Same ~2.8s before and after — and bunx playwright install chromium downloads
+  ~150MB, which cannot finish in 2.8s on a fresh sandbox. That suggests it
+  didn't land, but timing isn't proof. Let me check directly with a one-off
+  smoke test:
+
+⏺ RemoteTrigger(create)
+  ⎿  HTTP 200 (1 lines)
+
+⏺ One-off smoke test scheduled for 11:33 UTC (auto-disables after firing).
+  Waiting for it:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Background command "Wait for the smoke test to reach its first commands"
+completed (exit code 0)
+
+⏺ RemoteTrigger(list_runs trig_01WcfPAFPaqTcuamhR8cCyZq)
+  ⎿  HTTP 200 (1 lines)
+
+⏺ RemoteTrigger(get_run_log cse_01P9w7dj451zpmEdJCxREgMq)
+  ⎿  HTTP 200 (1 lines)
+
+⏺ Definitive answer — and it's not what you'd hope.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The change didn't land. I tested it directly inside the routine environment
+  rather than guessing:
+
+  playwright version          1.61.0
+  chromium builds present     NONE
+  launch attempt              FAILED — Executable doesn't exist at
+                              /opt/pw-browsers/chromium_headless_shell-1228/...
+  had to install manually     YES (~291MB)
+
+  So the setup script is not installing chromium. The first clue was timing —
+  the setup step took 2.8s, same as before your change, and a real chromium
+  install takes ~40s+.
+
+  I also spotted why it may not have applied: the run log says Setup script 
+  cached from previous run. The environment caches it, so an edit doesn't
+  necessarily take effect on the next run.
+
+  But there's a second finding that changes my advice
+
+  After installing chromium manually, the browser launched fine — and then
+  page.goto('https://example.com') failed with net::ERR_CONNECTION_RESET, the
+  agent proxy closing the tunnel.
+
+  So installing chromium fixes the launch but did not give working browser
+  navigation in that test. Which means the thing you'd be fixing may not
+  actually buy you a working render path.
+
+  My recommendation: drop it
+
+  Chromium is only needed in the routine to diagnose a render operator via bun 
+  run.mjs. Everything the daily QA actually does — classification, description
+  enrichment, spot-checks, tripwire — runs on curl and the JSON APIs and has
+  been working fine without it (37 classified, 30 rewritten, 10/10 spot-check).
+
+  Adding a 291MB download to every run, for a capability that then hits a proxy
+  wall, is a poor trade. Render-operator diagnosis is better done on your Mac,
+  where it already works.
+
+  So: take this off your list. I've recorded the measurement so it doesn't get
+  re-raised as a blocker.
+
+  Two housekeeping bits
+
+  - I had to create a one-off routine to run that test (run won't accept a
+    custom prompt). It fired once and auto-disabled — "ONE-OFF chromium smoke 
+    test (delete after)" at https://claude.ai/code/routines. Delete it when
+    convenient; I can't.
+  - Today's daily QA also ran while I was testing, and will run again at 15:08
+    UTC. Harmless duplication.
+
+  Your list is now two items
+
+  1. Affiliate links — 0 of 110 operators. Still the only thing standing between
+     a working machine and revenue.
+  2. Merge two green PRs — site #109, seo-tools #12. Say the word and I'll merge
+     them.
+
+  Ratings (storm/pristine/7days/good-life-plus) whenever you want to make that
+  call. Business mail is parked until you're seeing daily new users, as you
+  said.
+
+✻ Cooked for 9m 54s · done Thursday, 5:07 PM
+
+※ recap: Goal is getting PrizeDrawsDaily earning: the scraper is done and running clean at 777 live draws. Next action is yours, adding affiliate URLs to operators, since all 110 are empty and every outbound click currently earns nothing. (disable recaps in /config)

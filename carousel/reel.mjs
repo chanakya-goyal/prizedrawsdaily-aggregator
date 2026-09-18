@@ -179,7 +179,6 @@ body { background:#111; color:#eee; font:600 15px system-ui; padding:14px; displ
 
 // ---------------------------------------------------------------- orchestration
 async function main() {
-  const { toDrawSlide } = await import("./format.mjs");
   const { minDimOk } = await import("./imgcheck.mjs");
   const { buildReelTimeline } = await import("./reel-template.mjs");
   const { pickAudio } = await import("./beat.mjs");
@@ -264,8 +263,9 @@ async function main() {
   const audioMeta = await pickAudio(catCfg(sel.slug).audioMood);
   const nowIso = new Date().toISOString();
   const closeIso = sel.draws[0]?.draw_date ?? sel.draws.map((d) => d.draw_date).filter(Boolean).sort()[0] ?? null;
-  const slides = sel.draws.map((d, i) => toDrawSlide(d, i + 1));
-  const tl = buildReelTimeline({ sel, slides, heroes, arm, audioMeta, nowIso, closeIso });
+  // No slides array: buildReelTimeline reads sel.draws directly, so mapping them through the
+  // old draw-slide shape first was doing work nothing consumed.
+  const tl = buildReelTimeline({ sel, heroes, arm, audioMeta, nowIso, closeIso });
   // No theme. Per-category identity is STRUCTURE now and comes from the scene module, so what
   // is worth logging is which scene resolved and whether its loop divides the reel.
   console.log(`Arm ${arm} · scene ${tl.sceneId} · ${tl.durationMs}ms · ${tl.drawsUsed} draws · cuts [${tl.cutTimesMs}] · inserts [${tl.stampTimesMs}] · audio ${audioMeta.file} (${audioMeta.mood}) · cover "${tl.coverText}"`);
