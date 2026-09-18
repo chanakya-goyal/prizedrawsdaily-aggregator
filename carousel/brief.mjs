@@ -23,6 +23,15 @@ ${rows}
 - Series line near the end: **we post TONIGHT'S UK DRAWS every night — follow so you don't miss yours** (follow-first, site second).
 - One send-CTA, fresh wording each day (never verbatim-repeat "send this to your comp buddy").
 - Comper vernacular welcome (GTD, odds, exact close times) — but ONLY when the facts table proves it.
+- 🔴 **NAME THE OPERATOR ON EVERY PRIZE LINE.** Meta suspended this Page on 4 Sep 2026 for
+  IMPERSONATION — "pretending a Page has a business relationship with a business" — because the
+  captions listed an Apple iPad, a Land Rover and a Harley-Davidson as prizes without ever saying
+  whose competition they were. Write "ROLEX Submariner · £25 · Elite Competitions", never
+  "ROLEX Submariner · £25". Attribution is the fix; dropping the brand name is not.
+- 🔴 **Include the independence line**: "We list draws. We run none — every one above is the
+  operator's own." On Facebook put it ABOVE the prize list.
+- Never imply endorsement by, or a relationship with, the prize's manufacturer. PDD has no
+  relationship with Apple, Rolex, Land Rover or any brand whose product is a prize.
 - End with: link in bio · 18+ · UK only
 - Do NOT write "play responsibly" or any gambling wording. A prize competition sits OUTSIDE
   Gambling Act 2005 licensing, so the operative code is CAP Section 8, not 16 or 17.
