@@ -11,11 +11,52 @@
 // to sanity-check a fresh Composio payload before it touches carousel_metrics.
 import { insertMetrics, recentPosts, recentMetrics } from "./state.mjs";
 
-const KINDS = ["ig_media", "ig_reach", "ig_insights", "fb_posts"];
+const KINDS = ["ig_media", "ig_reach", "ig_insights", "fb_posts",
+               "ig_media_insights", "ig_story_insights", "ig_account"];
 const BATCH = 50;
 
 const londonDay = (ts) => new Date(ts).toLocaleDateString("en-CA", { timeZone: "Europe/London" });
+
+// ⚠ THE DEFECT THIS FILE SHIPPED WITH. `num` turns an ABSENT field into a stored 0,
+// indistinguishable from a real zero. That is nearly harmless for like_count. It is not harmless
+// for reel_avg_watch_time_ms, where a missing field stores a reel that looks like total
+// abandonment — a number that would then be acted on.
+//
+// It is kept for the four ORIGINAL kinds, deliberately: carousel/tests/insights.test.mjs and
+// INSIGHTS.md both lock in "missing shares → 0" as the current contract, and changing it is a
+// separate migration with no benefit here. Every NEW kind uses `strict` instead:
+//   absent          ⇒ NO ROW WRITTEN
+//   present-and-zero ⇒ a row with value 0
 const num = (v) => Number(v) || 0;
+const strict = (v) => (v === null || v === undefined || v === "" ? undefined : (Number.isFinite(Number(v)) ? Number(v) : undefined));
+
+// ── the reading's age, which is part of its identity ──────────────────────────────────────────
+// Reach and views keep accruing for days. t72 is the canonical DECISION reading: long enough to
+// catch most of the initial distribution, short enough for a weekly loop. There is no maturation
+// curve published for an account this size, so 72h is design judgement, not a measured optimum.
+export const WINDOWS = ["t24", "t72", "t168", "late", "legacy"];
+export function windowFor(ageHours) {
+  if (!Number.isFinite(ageHours)) return "legacy";
+  if (ageHours <= 36) return "t24";
+  if (ageHours <= 120) return "t72";
+  if (ageHours <= 240) return "t168";
+  return "late";
+}
+
+// Age is computed from the POST's own timestamp to the capture time. Both are needed: a payload
+// that carries neither gets window 'legacy' and age_hours null rather than a guess, because a
+// reading that landed at 61h must not be silently recorded as exactly 72h.
+export function ageHours(postedAt, capturedAt) {
+  const a = +new Date(postedAt), b = +new Date(capturedAt);
+  if (!isFinite(a) || !isFinite(b)) return null;
+  const h = (b - a) / 3600000;
+  return h >= 0 ? Math.round(h) : null;
+}
+
+const stampRow = (row, { postedAt, capturedAt, source = "api" } = {}) => {
+  const age = postedAt ? ageHours(postedAt, capturedAt || Date.now()) : null;
+  return { ...row, source, age_hours: age, window: windowFor(age ?? NaN) };
+};
 
 // mapPayload — pure. Real Graph API field names in, carousel_metrics rows out.
 export function mapPayload(kind, json) {
@@ -76,6 +117,63 @@ export function mapPayload(kind, json) {
     }).filter((r) => r.metric && r.media_id !== "unknown");
   }
 
+  // ── the new kinds (§11.2 Channel A) ─────────────────────────────────────────────────────────
+  // ⚠ GRAPH API FIELD NAMES ARE NOT VERIFIED. The research is authoritative on platform BEHAVIOUR
+  // and says nothing about field spellings, and Meta has retired media metrics before
+  // (`impressions`). So these readers do not hard-code field names at all: they walk the response
+  // the way the Graph insights edge actually shapes it — `data[].name` / `data[].values[].value` —
+  // and the metric name PDD stores is whatever Graph returned. An unrecognised response SHAPE
+  // fails loudly rather than writing zeros.
+  //
+  // What each one is FOR: reach is the mandated denominator; saved is the intent signal a
+  // directory should optimise for, because a save is a viewer keeping the list; shares are how a
+  // 66-follower account reaches anybody new. Views are recorded and must never be reported as a
+  // win on their own — the Reel loops by construction, which inflates views, watch time and
+  // average watch time without reaching one extra person.
+  if (kind === "ig_media_insights" || kind === "ig_story_insights") {
+    const batches = Array.isArray(json) ? json : [json];
+    const rows = [];
+    for (const b of batches) {
+      const entries = b?.data;
+      if (!Array.isArray(entries)) {
+        throw new Error(`insights: ${kind} payload has no data[] array — refusing to write zeros for an unrecognised response shape`);
+      }
+      for (const e of entries) {
+        const media_id = String(b?.media_id || String(e?.id || "").split("/")[0] || "unknown");
+        if (media_id === "unknown" || !e?.name) continue;   // never file a metric under a guess
+        for (const v of e.values || []) {
+          const value = strict(v?.value);
+          if (value === undefined) continue;                // ABSENT ⇒ no row
+          rows.push(stampRow({
+            day: v.end_time ? londonDay(v.end_time) : (b.day ? londonDay(b.day) : londonDay(Date.now())),
+            media_id, metric: e.name, value,
+          }, { postedAt: b.posted_at || b.timestamp, capturedAt: b.captured_at }));
+        }
+      }
+    }
+    // A Story's insights are NOT retrievable once it expires, so they are pulled on the same day
+    // at t24 only and a missed day is permanently lost. That is why no Story criterion carries a
+    // target anywhere: Story data is diagnostic, never a gate.
+    return kind === "ig_story_insights" ? rows.map((r) => ({ ...r, window: "t24" })) : rows;
+  }
+
+  // The follower count, daily, keyed 'account'. It makes the 200-follower Trial Reels gate an
+  // OBSERVABLE EVENT rather than something noticed by accident.
+  if (kind === "ig_account") {
+    const src = Array.isArray(json?.data) ? json.data : [json];
+    const rows = [];
+    for (const a of src) {
+      const value = strict(a?.followers_count ?? a?.followers ?? a?.value);
+      if (value === undefined) continue;
+      rows.push(stampRow({ day: londonDay(a?.day || Date.now()), media_id: "account", metric: "followers", value },
+                         { postedAt: null }));
+    }
+    if (!rows.length && !Array.isArray(json?.data)) {
+      throw new Error("insights: ig_account payload carried no followers_count — refusing to write a zero");
+    }
+    return rows;
+  }
+
   if (kind === "fb_posts") {
     return data.flatMap((p) => {
       const day = londonDay(p.created_time);
@@ -113,7 +211,11 @@ async function cmdIngest(kind, file, { dryRun = false } = {}) {
     process.exit(1);
   }
 
-  const rows = mapPayload(kind, json);
+  const mapped = mapPayload(kind, json);
+  // Derived rows are appended, never substituted: source='derived' is what tells them apart from
+  // an observed figure later, and both must land in the same upsert so a partial write cannot
+  // leave a quotient without its inputs.
+  const rows = [...mapped, ...derivedRows(mapped)];
   if (!rows.length) {
     console.log(`(no rows mapped from ${kind} — empty payload)`);
     return;
@@ -131,6 +233,43 @@ async function cmdIngest(kind, file, { dryRun = false } = {}) {
     console.log(`  ✓ upserted ${batch.length} ${kind} rows (${Math.min(i + BATCH, rows.length)}/${rows.length})`);
   }
   console.log(`✓ ingested ${rows.length} rows from ${kind} (${file})`);
+}
+
+// ── derived rows (§11.2) ──────────────────────────────────────────────────────────────────────
+// Both follow directly from Meta's own published definition of average watch time: it is watch
+// time INCLUDING replays divided by INITIAL views.
+//
+//   reel_initial_views = reel_watch_time_total_ms ÷ reel_avg_watch_time_ms
+//   reel_replays       = views − reel_initial_views
+//
+// They are quotients of small integers and are UNUSABLE at this account's scale: with a handful
+// of views, rounding in reel_avg_watch_time_ms dominates the result entirely. So they are
+// suppressed below 50 views. That threshold is my design judgement about where rounding stops
+// swamping the signal — it is not a measured optimum, and it is written here rather than left
+// implicit so that nobody reads a derived figure as an observed one.
+export const DERIVED_MIN_VIEWS = 50;
+
+export function derivedRows(rows) {
+  const by = new Map();
+  for (const r of rows) {
+    const k = `${r.day}|${r.media_id}|${r.window || "legacy"}`;
+    if (!by.has(k)) by.set(k, { ...r, metrics: new Map() });
+    by.get(k).metrics.set(r.metric, Number(r.value));
+  }
+  const out = [];
+  for (const g of by.values()) {
+    const total = g.metrics.get("reel_watch_time_total_ms");
+    const avg = g.metrics.get("reel_avg_watch_time_ms");
+    const views = g.metrics.get("views");
+    if (!Number.isFinite(total) || !Number.isFinite(avg) || avg <= 0) continue;
+    if (!Number.isFinite(views) || views < DERIVED_MIN_VIEWS) continue;   // n/a, not zero
+    const initial = Math.round(total / avg);
+    out.push({ day: g.day, media_id: g.media_id, window: g.window || "legacy", age_hours: g.age_hours ?? null,
+               source: "derived", metric: "reel_initial_views", value: initial });
+    out.push({ day: g.day, media_id: g.media_id, window: g.window || "legacy", age_hours: g.age_hours ?? null,
+               source: "derived", metric: "reel_replays", value: Math.max(0, views - initial) });
+  }
+  return out;
 }
 
 // buildReport — joins last-7d carousel_posts × carousel_metrics and prints a

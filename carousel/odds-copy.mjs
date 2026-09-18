@@ -68,8 +68,13 @@ export const stampLong = (t, d) => `READ FROM OPERATORS ${t} · ${d}`;
 
 // The closing slide. Not a call to action: a statement of what PDD is, which is the one thing
 // that distinguishes a directory from the operators it lists.
+//
+// "EACH draw above", never "every draw above". `every` and `all` are exhaustiveness claims and
+// are class A unless a figure from the run's facts table binds them in the same sentence
+// (§10.6 cadenceOrCoverage); `each` distributes over the named set and asserts nothing. The
+// sentence loses no force and gains a gate it passes.
 export const closingHeadline = () => "WE LIST DRAWS. WE RUN NONE.";
-export const closingSubLine = () => "Every draw above is someone else's. We read the numbers and print them.";
+export const closingSubLine = () => "Each draw above is someone else's. We read the numbers and print them.";
 // The Story carries exactly ONE draw and nothing sits above it, so the closing slide's line is
 // simply false there. Same claim, correct number and correct place.
 export const storySubLine = () => "This draw is someone else's. We read the numbers and print them.";
@@ -83,7 +88,7 @@ export function proofLine({ drawsRendered, closesWithinDays, lowestCap }) {
   const d = Math.max(1, closesWithinDays);
   const window_ = d === 1 ? "within 24 hours" : `within ${d} days`;
   return [
-    `${drawsRendered} draws, all closing ${window_}.`,
+    `${drawsRendered} draws closing ${window_}.`,
     `Lowest ticket cap of the ${drawsRendered}: ${group(lowestCap)}.`,
   ];
 }
@@ -94,16 +99,50 @@ export function proofLine({ drawsRendered, closesWithinDays, lowestCap }) {
 // `absurd-comparison` is bound to its own draw's evidence: it states an upside at hero size, so
 // the proof line must carry the cap of the draw the cashAlt came from rather than the deck
 // minimum, or the frame states a prize with no probability attached to it.
+// The three-letter weekday token, and nothing else. A full weekday name breaks the arm twice
+// over: `WEDNESDAY.` measures 1,012.35px against the 895px well, and with any full name the long
+// form greedy-wraps to FOUR line boxes, which §5.5 hard-fails. A clock is banned outright — a
+// rendered closing time asserts a response deadline, which is CAP 8.22 and the DMCC Act 2024.
+export const DAY_TOKENS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+// Word-numbers, deliberately. A word never counts as a figure under §10.6 predicate 3, so the
+// deadline form carries no digit and the two-figure rule does not fire on it at all.
+const COUNT_WORD = { 2: "TWO", 3: "THREE", 4: "FOUR", 5: "FIVE", 6: "SIX", 7: "SEVEN", 8: "EIGHT" };
+
 export function headline(archetype, facts) {
   const n = facts.drawsRendered;
+  const priceAnchor = `${n} DRAWS. FROM ${facts.fromPrice}.`;
   switch (archetype) {
     case "question":       return `${n} DRAWS. HOW MANY TICKETS?`;
-    case "price-anchor":   return `${n} DRAWS. FROM ${facts.fromPrice}.`;
-    case "deadline":       return `${n} DRAWS. ALL CLOSING THIS WEEK.`;
+    case "price-anchor":   return priceAnchor;
+    // `{count} OF THESE CLOSE {day}.` The count is the REAL number closing on the modal day, as a
+    // word. Fewer than two, or no day token, and there is no deadline to state: the arm falls back
+    // to price-anchor and the substitution is counted (§10.8), exactly as absurd-comparison does.
+    // The previous form was `{n} DRAWS. ALL CLOSING THIS WEEK.` — an unbound exhaustiveness claim
+    // (`ALL`, no figure in its sentence) that the conformance gate rejects, and a week-wide
+    // deadline claim that the selection window does not evidence.
+    case "deadline": {
+      const w = COUNT_WORD[facts.closingCount];
+      return w && DAY_TOKENS.includes(facts.day) ? `${w} OF THESE CLOSE ${facts.day}.` : priceAnchor;
+    }
     case "absurd-comparison":
-      return facts.cashAlt && facts.price ? `${facts.cashAlt} FOR A ${facts.price} TICKET.` : `${n} DRAWS. FROM ${facts.fromPrice}.`;
-    default:               return `${n} DRAWS. FROM ${facts.fromPrice}.`;
+      return facts.cashAlt && facts.price ? `${facts.cashAlt} FOR A ${facts.price} TICKET.` : priceAnchor;
+    default:               return priceAnchor;
   }
+}
+
+// Which archetype actually rendered, for carousel_posts.hook_archetype (§11.2): the template id,
+// never the rendered string, so a wording revision leaves the experiment log intact. A wrong arm
+// credited to the right one is a corrupted experiment, which is why this is derived from the same
+// facts the headline is rather than assumed from the request.
+export function headlineArm(archetype, facts) {
+  if (archetype === "question") return "question:only";
+  if (archetype === "deadline") {
+    return COUNT_WORD[facts.closingCount] && DAY_TOKENS.includes(facts.day) ? "deadline:long" : "price-anchor:long";
+  }
+  if (archetype === "absurd-comparison") {
+    return facts.cashAlt && facts.price ? "absurd-comparison:long" : "price-anchor:long";
+  }
+  return "price-anchor:long";
 }
 
 // The conditions band, §10.2. Three lines, 38px, on every asset, because the ASA does not treat

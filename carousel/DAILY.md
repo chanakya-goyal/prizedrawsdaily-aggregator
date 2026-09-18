@@ -237,3 +237,43 @@ insufficient data.
 Change the Instagram **display name** (not the @handle) to **"Prize Draws Daily | UK Competitions"** —
 this is the strongest IG-search ranking signal and only you can set it from the Instagram app
 (Edit profile → Name). Not something Claude/Composio can do via API.
+
+---
+
+## Compliance gates and the compliance record (§10)
+
+`build.mjs` runs the **MODEL stage** of the wording gate *before* it renders anything, because a
+class-A failure has to mean "no PNG was written", not "a directory of assets you must remember are
+unpublishable". Every run writes `out/COMPLIANCE.json` and `out/COMPLIANCE.txt` — **on pass as well
+as on fail**, so a run with the gates disabled is distinguishable from a run that passed them.
+
+- **Class A** → non-zero exit, nothing rendered, nothing uploaded, no `publish.json`. Read
+  `out/COMPLIANCE.txt`: it names the gate, the stage, the asset, the role, the field and the value
+  that failed, so the failure is a work item rather than a mystery.
+- **Class B** → the draw is dropped and a backup promoted.
+- **Class C** → one figure does not render; counted. More than `floor(0.4 × drawsRendered)` of them
+  escalates the run to class A.
+- The predicate hit counts land in `carousel_posts.gate_violations`, so a backstop that never fires
+  is distinguishable from one that does nothing.
+
+Three of the gates run in **CI** (`bun run test:gates`, also in the `carousel-gates` job): the
+frozen fixture, the odds-literal scanner, and the allow-list/predicate conformance test. After the
+third, an allow-listed string and a predicate can only ever disagree in CI — never in production as
+a hard fail on an ordinary run.
+
+**If you are writing the caption by hand:** `out/BRIEFING.md` now prints the run's verified-fact
+KEYS and predicate 3 in full. Any sentence with a question mark must carry two figures from two
+differently-named facts, or it is a class-A failure at publish.
+
+## Migrations
+
+| File | Status |
+|---|---|
+| `migrations/0001-figures-provenance.sql` | applied |
+| `migrations/0002-conditions-and-time.sql` | applied |
+| `migrations/0003-instrumentation.sql` | **applied 2026-09-18** — `carousel_metrics` gained `source` / `window` / `age_hours` and its PK became `(day, media_id, metric, window)`; `carousel_curves` created; `carousel_posts` gained ten columns. Pre-migration snapshots of both tables were taken to `migrations/backups/` (local, gitignored). |
+
+⚠ The `carousel_metrics` PK is a **two-place** contract: the DDL in `0003` and `METRICS_KEY` in
+`carousel/state.mjs`. Changing one without the other reverts to last-write-wins, which is the
+defect the `window` column exists to fix — so `insertMetrics` fails loudly and names the migration
+rather than falling back to the old key.

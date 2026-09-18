@@ -350,6 +350,15 @@ async function main() {
   await Bun.write(`${OUT}/reel-meta.json`, JSON.stringify({
     arm, durationMs: tl.durationMs, stampTimesMs: tl.stampTimesMs,
     audio: { file: audioMeta.file, mood: audioMeta.mood }, coverText: tl.coverText,
+    // §11.2: REEL_ARM=A|B|C lets a human force an arm and nothing recorded that it was forced.
+    // An arm picked by hand and scored as a rotation draw is a corrupted experiment, so the
+    // PROVENANCE of the choice is stored beside the choice.
+    armSource: envArm ? "env_override" : "rotation",
+    // True by construction, not by assumption: the loop closure was asserted byte-identical at
+    // the wrap point above, and a run where it did not close never reaches this write. It is
+    // recorded so the watch figures always carry the inflation caveat — a seamless loop inflates
+    // views, watch time and average watch time without reaching one extra person.
+    isLoop: true,
   }, null, 2));
   console.log(`\nDone in ${((Date.now() - t0) / 1000).toFixed(1)}s → ${OUT}/reel.mp4 + cover.jpg + reel-keyframes.png + reel-meta.json`);
 }

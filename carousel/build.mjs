@@ -11,11 +11,12 @@ import { cleanTitle, closesLabel, cashAlt, priceLabel } from "./format.mjs";
 import * as oddsCopy from "./odds-copy.mjs";
 import { sceneFor } from "./scene.mjs";
 import { readdir, mkdir } from "node:fs/promises";
-import { workDir, catCfg } from "./config.mjs";
+import { workDir, catCfg, GLOBAL } from "./config.mjs";
 import { valueLine, altTexts } from "./honesty.mjs";
 import { minDimOk } from "./imgcheck.mjs";
 import { chromium } from "playwright";
 import { openEngine, normalise } from "./normalise.mjs";
+import * as compliance from "./compliance.mjs";
 
 const DIR = workDir();
 const sel = JSON.parse(await Bun.file(`${DIR}/selection.json`).text());
@@ -224,13 +225,32 @@ const dateline = [
   stamp,
 ].filter(Boolean).join(" \u00b7 ");
 
+// The modal closing day across the deck, and how many draws actually close on it — the deadline
+// arm's own evidence. Computed from draw_date in Europe/London, the same zone closesLabel() uses.
+const dayTok = (iso) => new Date(iso).toLocaleDateString("en-GB", { timeZone: "Europe/London", weekday: "short" }).toUpperCase();
+const dayTally = sel.draws.reduce((m, d) => {
+  const k = Number.isFinite(+new Date(d.draw_date)) ? dayTok(d.draw_date) : null;
+  if (k) m.set(k, (m.get(k) || 0) + 1);
+  return m;
+}, new Map());
+const [modalDay, modalCount] = [...dayTally.entries()].sort((a, b) => b[1] - a[1])[0] || [null, 0];
+
+const headlineFacts = {
+  drawsRendered: N, fromPrice: fromPrice || "n/a",
+  cashAlt: cashAlt(countDraw.grand_prize, countDraw.prize_description),
+  price: priceLabel(countDraw.ticket_price),
+  day: modalDay, closingCount: modalCount,
+};
+const renderedArm = oddsCopy.headlineArm(sel.archetype, headlineFacts);
+if (!renderedArm.startsWith(sel.archetype.split(":")[0])) {
+  // §10.8 counts the substitution rather than letting it be silent: a hand-read of the log must
+  // show that a price-anchor day was REQUESTED as something else.
+  console.log(`  \u26a0 archetype substituted: ${sel.archetype}\u2192${renderedArm}`);
+}
+
 const coverSlide = {
   type: "cover", stamp, dateline,
-  headline: oddsCopy.headline(sel.archetype, {
-    drawsRendered: N, fromPrice: fromPrice || "n/a",
-    cashAlt: cashAlt(countDraw.grand_prize, countDraw.prize_description),
-    price: priceLabel(countDraw.ticket_price),
-  }),
+  headline: oddsCopy.headline(sel.archetype, headlineFacts),
   // Figures wrapped so the renderer can set them in the one place green is authorised.
   proof: oddsCopy.proofLine({ drawsRendered: N, closesWithinDays, lowestCap })
     .map((l) => l.replace(/([\d,]+)/g, "<b>$1</b>")),
@@ -287,13 +307,117 @@ const facts = sel.draws.map((d, i) => ({
   title: cleanTitle(d.grand_prize || d.title),
   price: priceLabel(d.ticket_price),
   cap: capOf(d),
-  odds: capOf(d) ? `1 IN ${capOf(d).toLocaleString("en-GB")}` : null,
+  // Composed by oddsCopy, never here. The briefing is what the caption author reads, so the
+  // string it shows them has to be the permitted one — a second hand-rolled form in this file is
+  // exactly how a banned phrasing reaches a caption (§10.6a L1).
+  odds: capOf(d) ? oddsCopy.conditional(capOf(d)) : null,
   closes: closesLabel(d.draw_date),
   cashAlt: cashAlt(d.grand_prize, d.prize_description),
   operator: d.operators?.name || null,
 }));
 const missing = drawSlides.filter((s) => !s.photo);
 if (missing.length) console.log(`  \u26a0 ${missing.length} draw slide(s) have no photograph: ${missing.map((s) => s.slug).join(", ")}`);
+
+// The fallback caption is composed HERE, above the gate, rather than after the render. It is not
+// a draft: CAPTION_FALLBACK.txt is what publish.mjs ships when the model supplies no CAPTION.txt,
+// so it is a shipping surface and the gate has to see it. Composing it after the record was
+// written would have left the one caption that publishes unattended as the one caption nothing
+// checked.
+const caption = buildCaption(sel.name, sel.slug, facts, sel.seoKeyword);
+
+// ── the MODEL stage of the wording gate (§10.1, §10.6) ────────────────────────────────────────
+// It runs HERE, before renderSlides, because §10.8 class A means "no PNG or MP4 written, nothing
+// uploaded, no publish.json". A gate that ran after the render would leave a directory of assets
+// that must be REMEMBERED as unpublishable, which is exactly the state the write-ahead row exists
+// to avoid.
+const ledger = compliance.newLedger({ drawsPlanned: sel.draws.length, drawsRendered: N });
+const cFacts = compliance.factsTable({
+  drawsRendered: N,
+  caps: facts.map((f) => f.cap).filter((x) => x != null),
+  prices: facts.map((f) => f.price).filter(Boolean),
+  daysToClose: sel.draws.map((d) => Math.max(1, Math.ceil((+new Date(d.draw_date) - Date.now()) / 86400000))).filter(Number.isFinite),
+});
+const opNames = facts.map((f) => f.operator).filter(Boolean);
+const check = (asset, role, field, text, surface = "asset") =>
+  compliance.record(ledger, "model", asset, role, field,
+    compliance.checkUnit(text, { facts: cFacts, surface, bannedPhrases: GLOBAL.bannedPhrases, operatorNames: opNames }));
+
+// WHICH FIELDS ARE COPY, stated explicitly rather than inferred from "is it a string".
+//
+// The first version of this loop checked every string field on every slide, and the end-to-end run
+// showed why that is wrong: it fed base64 data URIs and URL slugs through predicates written for
+// prose, and a long enough base64 blob contains a bare `u` and a `$`-digit pair by chance alone.
+// Seven of the nine hard failures on the first real run were image data. An explicit map is also
+// auditable in a way "every string" is not — and any field in NEITHER list is COUNTED below, so a
+// new copy field cannot silently escape the gate the way it could escape a hand-written list.
+const OWN_VOICE = new Set([                 // PDD's own voice: the full predicate set applies
+  "headline", "dateline", "stamp", "eyebrow", "figure", "conditional", "annotation",
+  "kicker", "sub", "subline", "note", "counter", "proof", "band", "legend", "closes", "label",
+  "closesChip",   // a rendered closing-date chip; it reached this list because the counter below
+                  // named it on the first end-to-end run, which is what the counter is for
+]);
+const OPERATOR_TITLE = new Set(["title", "prize", "cashAlt"]);   // theirs, not ours — title rules only
+const NOT_COPY = new Set([                  // never prose: no predicate can say anything useful
+  "type", "slug", "photo", "image", "img", "src", "n", "index", "role", "scene", "operator",
+  "rating", "host", "price", "entryUrl", "url", "board", "tok", "style",
+]);
+const unclassified = new Set();
+
+for (const [i, s] of slides.entries()) {
+  const role = s.type;
+  const asset = `slide-${String(i + 1).padStart(2, "0")}`;
+  for (const [field, val] of Object.entries(s)) {
+    const strs = typeof val === "string" ? [[field, val]]
+      : Array.isArray(val) ? val.flatMap((x, j) => (typeof x === "string" ? [[`${field}[${j}]`, x]] : []))
+      : [];
+    if (!strs.length) continue;
+    if (NOT_COPY.has(field)) continue;
+    // An operator's own prize title is judged on the title rules: they really do write
+    // "Build Your Own PC", and "ULTIMATE PRIZE EVERY TIME" is a product name, not PDD claiming a
+    // cadence. A title putting the second person next to an odds word drops that DRAW (class B).
+    const surface = OPERATOR_TITLE.has(field) ? "title" : "asset";
+    if (!OWN_VOICE.has(field) && !OPERATOR_TITLE.has(field)) { unclassified.add(field); continue; }
+    for (const [f, v] of strs) check(asset, role, f, v, surface);
+  }
+}
+// Visible, so the map cannot rot into silence as the slide models grow.
+if (unclassified.size) compliance.count(ledger, "unclassified-field", [...unclassified].sort().join(", "));
+// An operator's own prize title is judged on the title rules, not PDD's own-voice rules: they
+// really do write "Build Your Own PC". A title putting the second person next to an odds word
+// drops that draw (class B) rather than failing the run.
+for (const f of facts) check(`draw:${f.slug}`, "title", "title", f.title || "", "title");
+
+// The cover's unit for the two-figure test is headline + proof line, because the proof line is a
+// mandatory block rendered directly beneath it. Checking the headline alone would hard-fail the
+// question archetype on every legitimate run — roughly 91 days a year.
+compliance.record(ledger, "model", "slide-01", "cover", "headline+proof",
+  compliance.checkQuestionUnit([coverSlide.headline, ...oddsCopy.proofLine({ drawsRendered: N, closesWithinDays, lowestCap })].join(" "), cFacts));
+
+// The caption and the alt text are the generated surfaces, judged on the caption rules: second
+// person survives in prose but never within 60 characters of an odds token.
+for (const [j, a] of altTexts(sel, facts).entries()) check("alt.json", "alt", `alt[${j}]`, a, "caption");
+check("CAPTION.txt", "caption", "caption", caption, "caption");
+for (const s of String(caption).split(/(?<=[.!?])\s+|\n+/)) {
+  compliance.record(ledger, "model", "CAPTION.txt", "caption", "sentence", compliance.checkQuestionUnit(s, cFacts));
+}
+if (renderedArm !== `${sel.archetype}:long` && renderedArm !== "question:only") {
+  compliance.count(ledger, "archetype-substituted", `${sel.archetype}\u2192${renderedArm}`);
+}
+if (N < sel.draws.length) compliance.count(ledger, "deck-shrunk", `${sel.draws.length}\u2192${N}`);
+
+const worst = compliance.worstClass(ledger);
+if (worst === compliance.CLASS.A || compliance.classCCeilingBreached(ledger)) {
+  // Written even on failure — especially on failure. The record is the work item.
+  await mkdir(`${DIR}/out`, { recursive: true });
+  await compliance.writeCompliance(`${DIR}/out`, ledger);
+  await browser.close();
+  console.error("\u2717 COMPLIANCE class A \u2014 refusing to render. See out/COMPLIANCE.txt\n");
+  console.error(compliance.complianceText(ledger));
+  process.exit(1);
+}
+if (ledger.violations.length) {
+  console.log(`  \u26a0 ${ledger.violations.length} non-blocking compliance finding(s) \u2014 see out/COMPLIANCE.txt`);
+}
 
 console.log(`Category: ${sel.slug}  |  scene: ${sceneFor(sel.slug).title}  |  ${slides.length} slides (${N} draws)`);
 const pngs = await renderSlides(slides, sel.slug, { browser });
@@ -310,10 +434,27 @@ await Bun.write(`${outDir}/images.json`, JSON.stringify(sheet, null, 2));
 // with a SECOND cleaner. It did, and the two disagreed, which would have put different prize
 // names on Instagram and Facebook for the same draw.
 await Bun.write(`${outDir}/facts.json`, JSON.stringify(facts, null, 2));
+// Written on PASS as well as fail, so a run with the gates disabled is distinguishable from a run
+// that passed them. A gate whose only output is an exit code gets switched off the first time it
+// is inconvenient, and this pipeline already has that switch in AUTO_PUBLISH.
+ledger.stage = "model:passed";
+await compliance.writeCompliance(outDir, ledger);
+// The model facts publish.mjs cannot recompute without re-deriving the headline with a SECOND
+// generator — which is the same mistake that once put different prize names on Instagram and
+// Facebook for the same draw. `requested` vs `rendered` are both stored because §10.6a's
+// fallbacks mean they legitimately differ, and a substituted post credited to the requested arm
+// is a corrupted experiment.
+await Bun.write(`${outDir}/model.json`, JSON.stringify({
+  drawsPlanned: sel.draws.length,
+  drawsRendered: N,
+  archetypeRequested: sel.archetype || null,
+  archetypeRendered: renderedArm,
+  coverHeadline: coverSlide.headline,
+  gateViolations: ledger.gate_violations,
+}, null, 2));
 
 let recentOpeners = [];
 try { recentOpeners = (await recentPosts(14)).map((r) => (r.caption || "").split("\n")[0]).filter(Boolean); } catch {}
-const caption = buildCaption(sel.name, sel.slug, facts, sel.seoKeyword);
 await Bun.write(`${outDir}/CAPTION_FALLBACK.txt`, caption);
 await Bun.write(`${outDir}/BRIEFING.md`, buildBriefing({ sel, drawSlides: facts, recentOpeners }));
 console.log("\n--- FALLBACK CAPTION (written to CAPTION_FALLBACK.txt; Claude: write CAPTION.txt + FB_CAPTION.txt from BRIEFING.md) ---\n" + caption);

@@ -7,10 +7,6 @@
     "bucket": "carousel-slides",
     "workDir": "~/Desktop/pdd-today",
     "archiveDays": 14,
-    "series": {
-      "name": "TONIGHT'S UK DRAWS",
-      "slotLine": "every night · 7pm UK"
-    },
     "primeWindowsUK": [
       [
         12,
@@ -24,7 +20,7 @@
     "fixedHashtags": [
       "#prizedrawsdaily",
       "#ukcompetition",
-      "#winbig"
+      "#ukprizedraws"
     ],
     "bannedPhrases": [
       "don't miss out",

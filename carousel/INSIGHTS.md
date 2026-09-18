@@ -1,4 +1,4 @@
-# PrizeDrawsDaily — Carousel Insights (weekly analytics pull)
+# PrizeDrawsDaily — Carousel Insights (Channel A daily, Channel B fortnightly)
 
 Pulls IG + FB performance numbers into `carousel_metrics` (Supabase) and prints a
 last-7-day report. Scripts here **cannot** call the Composio MCP directly (spec
@@ -70,13 +70,64 @@ deterministic mapping + upsert + report.
    honest reads.**
 
 3. **Ingest each file** (batches `insertMetrics` upserts 50 rows at a time,
-   keyed on `(day, media_id, metric)` — safe to re-run):
+   keyed on `(day, media_id, metric, window)` — safe to re-run):
    ```
    bun carousel/insights.mjs ingest ig_media  ~/Desktop/pdd-today/insights/ig_media.json
    bun carousel/insights.mjs ingest ig_reach  ~/Desktop/pdd-today/insights/ig_reach.json
    bun carousel/insights.mjs ingest fb_posts  ~/Desktop/pdd-today/insights/fb_posts.json
    bun carousel/insights.mjs ingest ig_insights ~/Desktop/pdd-today/insights/ig_insights.json
    ```
+
+   **The Stage E kinds (§11.2).** Prefer these for anything new. They differ from the four above
+   in one way that matters: **an absent field writes NO ROW**, where the older kinds store a 0.
+   ```
+   bun carousel/insights.mjs ingest ig_media_insights  …/ig_media_insights.json
+   bun carousel/insights.mjs ingest ig_story_insights  …/ig_story_insights.json
+   bun carousel/insights.mjs ingest ig_account         …/ig_account.json
+   ```
+
+   ⚠ **Pull Stories the SAME DAY.** Story insights are not retrievable once the Story expires, so
+   a missed day is permanently lost. Every story row is pinned to `window='t24'` for that reason,
+   and **no Story figure carries a target anywhere** — Story data is diagnostic, never a gate.
+
+   ⚠ **Graph API field names are NOT verified.** The readers do not hard-code them: they walk
+   `data[].name` / `data[].values[].value` and store whatever Graph returned. An unrecognised
+   response *shape* throws rather than writing zeros. If Meta retires a metric (it has retired
+   `impressions` before), the symptom is a missing row, not a silent zero.
+
+   **Each payload should carry `posted_at` and `captured_at`** on the batch object, so the reading
+   can be filed against its real age:
+
+   | `window` | age at capture | what it is for |
+   |---|---|---|
+   | `t24`  | ≤ 36h | the early read; every Story row |
+   | `t72`  | 36–120h | **the canonical decision reading** |
+   | `t168` | 120–240h | the late accrual |
+   | `late` | > 240h | anything after |
+   | `legacy` | unknown | the 95 pre-rework rows, and any payload with no timestamps |
+
+   `age_hours` stores the ACTUAL age, so a reading that landed at 61h is never treated as exactly
+   72h. Without timestamps a row is `legacy` with `age_hours` null — honest, not guessed.
+
+   **Derived rows** (`source='derived'`) are appended automatically:
+   `reel_initial_views = reel_watch_time_total_ms ÷ reel_avg_watch_time_ms` and
+   `reel_replays = views − reel_initial_views`, both following from Meta's own definition of
+   average watch time. They are **suppressed below 50 views**, because at a handful of views
+   rounding in `reel_avg_watch_time_ms` dominates the result. That threshold is design judgement,
+   not a measured optimum.
+
+   **Channel B — the retention curve, by hand.** No Graph API field returns skip rate or the
+   retention curve; they are charts in Instagram's own professional insights. One sitting per
+   fortnight, capped at 8 reels, written with `insertCurve()` — `source='app'`, and every row
+   carries an archived screenshot in `evidence_url`. `points` **must** include an explicit reading
+   at `t_ms = 3000`: "watch under 3 seconds" is a named input to the abandonment prediction head,
+   so a curve without it cannot answer the question it exists for. `insertCurve` refuses one that
+   lacks it.
+
+   The cadence is asymmetric on purpose: **Story insights expire in 24 hours and post insights do
+   not.** Batching a Story pull loses data; batching a post transcription loses only latency. So
+   Channel A runs on the same daily trigger as publishing, unattended — which adds no approval
+   gate, and the failure mode that killed this pipeline in July was its single manual gate.
    (paths shown are the default `workDir()` — adjust if `PDD_DIR` is set.)
 
    Sanity-check a payload before it touches `carousel_metrics` with `--dry-run`
@@ -101,7 +152,11 @@ deterministic mapping + upsert + report.
 | `ig_media`  | `data[].{id, like_count, comments_count, timestamp}`                       | per post: `(day, id, "likes", like_count)`, `(day, id, "comments", comments_count)` |
 | `ig_reach`  | `data[].{name:"reach", values:[{end_time, value}]}`                        | per day: `(day, "account", "reach", value)`                       |
 | `fb_posts`  | `data[].{id, created_time, reactions.summary.total_count, comments.summary.total_count, shares.count}` | per post: `(day, id, "fb_reactions", …)`, `(day, id, "fb_comments", …)`, `(day, id, "fb_shares", …)` (missing `shares` → 0) |
-| `ig_insights` | `data[].{name, values:[{value, end_time?}], id:"<media_id>/insights/…"}`, or `{media_id, day?, data:[…]}`, or an array of those | per metric: `(day, media_id, name, value)`. An entry whose media cannot be identified is DROPPED rather than filed under a guess |
+| `ig_insights` | `data[].{name, values:[{value, end_time?}], id:"<media_id>/insights/…"}`, or `{media_id, day?, data:[…]}`, or an array of those | per metric: `(day, media_id, name, value)`. An entry whose media cannot be identified is DROPPED rather than filed under a guess. ⚠ A missing value is stored as **0** — the original contract, locked by `insights.test.mjs` and left alone deliberately |
+| `ig_media_insights` | as `ig_insights`, plus `posted_at` / `captured_at` on the batch | per metric: `(day, media_id, name, value, source='api', window, age_hours)`. **Absent ⇒ NO ROW.** Present-and-zero ⇒ a row with 0. An unrecognised shape THROWS |
+| `ig_story_insights` | as `ig_media_insights` | same, with `window` pinned to `t24` — Story insights expire |
+| `ig_account` | `data[].{followers_count, day}` or a bare object | `(day, "account", "followers", n)`. An absent count throws rather than recording a zero-follower account |
+| *(derived)* | computed from the rows above | `reel_initial_views`, `reel_replays` with `source='derived'`, suppressed below 50 views |
 
 `day` is always the **Europe/London calendar date** of the item's own timestamp
 (`timestamp` / `end_time` / `created_time`), matching `state.mjs`'s `todayLondon()`
@@ -130,10 +185,14 @@ marketing collage for a backup, and it writes the decision back to `selection.js
 ## Notes
 
 - **Idempotent**: re-running `ingest` for the same file is safe — `insertMetrics`
-  upserts on `(day, media_id, metric)`.
+  upserts on `(day, media_id, metric, window)` — the `window` term is what lets an early and a late reading of the same metric coexist instead of the later one silently overwriting the earlier.
 - **CLI errors are explicit**: an unknown `kind` or a missing/unreadable file
   exits 1 with a clear message; nothing is silently skipped.
 - **Cadence**: there's no cron for this yet (Phase 3 territory) — run it
-  manually, e.g. weekly, by saying "pull insights".
+  on the same DAILY trigger as publishing by saying "pull insights". Weekly is not enough: it
+  cannot produce a t72 reading for most posts, and cannot produce a Story reading at all, because
+  Story insights expire in 24 hours. Ingest is idempotent (upsert on the PK), so a daily pull is
+  safe to re-run and needs no approval gate — and the single manual gate is what killed this
+  pipeline in July.
 - **Needs** `SUPABASE_SERVICE_ROLE_KEY` in `~/pdd-aggregator/.env` (already set,
   shared with `publish.mjs`/`state.mjs`) — `ingest` writes, `report` reads.

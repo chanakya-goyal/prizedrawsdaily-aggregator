@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import { valueLine, capValue, altTexts } from "../honesty.mjs";
+import { stripBrand } from "../compliance.mjs";
 
 // 2026-07-02 incident: Discovery draw = 2M entries × 5p = £100k ticket revenue,
 // but its own cash alternative proves the prize is worth £40k. Per-draw cap.
@@ -24,7 +25,13 @@ test("altTexts covers every slide with searchable, honest copy", () => {
   expect(alts[0]).toContain("UK luxury watch competitions");
   expect(alts[1]).toContain("Rolex Daytona");
   expect(alts[1]).toContain("£4.97");
-  expect(alts[1]).toContain("18+");
+  // Not "18+" and not "UK only". The age limit belongs to whoever runs the draw and lives in
+  // THEIR terms; PDD stores no territory field at all, so "UK only" was never an evidenced claim
+  // (CAP 3.7). Alt text points at the terms that really carry them, the same way the conditions
+  // band on every frame does.
+  expect(alts[1]).toContain("Age limits: in the operator's own terms.");
+  expect(alts[1]).not.toContain("18+");
+  expect(alts[1]).not.toMatch(/UK only/i);
   expect(alts[3]).toContain("prizedrawsdaily");
 });
 
@@ -52,4 +59,19 @@ test("valueLine v2 uses per-draw capped sum (2026-07-02 regression)", () => {
 
 test("valueLine v2 still suppresses below the category bar", () => {
   expect(valueLine([D(900, "LEGO set")], "collectibles")).toBe("");
+});
+
+test("no alt text asserts a cadence, a coverage claim or a territory", () => {
+  const alts = altTexts({ slug: "luxury", seoKeyword: "UK luxury watch competitions" },
+    [{ title: "Rolex Daytona", price: "£4.97", closes: "CLOSES TONIGHT" }]);
+  for (const a of alts) {
+    // stripBrand first: PDD is CALLED Prize Draws Daily, and a name is not a frequency claim.
+    // Using compliance.mjs's own carve-out keeps this assertion and the predicate in step.
+    expect(stripBrand(a)).not.toMatch(/\b(daily|nightly|always|24\/7)\b/i);
+    expect(a).not.toMatch(/\bevery\b/i);       // "See EVERY live UK prize draw" shipped here
+    expect(a).not.toMatch(/18\+|UK only/i);
+    expect(a).not.toMatch(/play responsibly/i);
+  }
+  // The CTA names the site instead of quantifying its coverage.
+  expect(alts[alts.length - 1]).toBe("See the live UK prize draws at prizedrawsdaily.co.uk — @prizedrawsdaily.");
 });
