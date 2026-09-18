@@ -12,9 +12,34 @@ const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLIS
 // the normal condition rather than the edge; 48h tolerates one miss and nothing more.
 const FRESHNESS_H = 48;
 
-export async function fetchEndingSoon(days = 7, minDays = 0, { requireProvenance = true } = {}) {
-  const from = new Date(Date.now() + minDays * 86400000).toISOString();
-  const end = new Date(Date.now() + days * 86400000).toISOString();
+// `days`/`minDays` are ROLLING offsets from now, which is the right shape for a runway floor —
+// "has a follower got time to enter?" is a question about hours, not about dates.
+//
+// It is the WRONG shape for a calendar instruction. "Nothing closing today or tomorrow" is a
+// statement about closing DATES, and a rolling floor answers it only approximately: at 20:03 on
+// Friday, minDays=2 starts the window at 20:03 on Sunday, so it silently drops every draw closing
+// Sunday MORNING even though Sunday is neither today nor tomorrow. It clips the far edge the same
+// way. So calendar bounds are their own parameter rather than a reinterpretation of these two:
+// both semantics are legitimate and they are not interchangeable.
+//
+// fromDate/toDate are inclusive Europe/London calendar dates ("2026-09-21"). London, not UTC and
+// not the operator's own timezone: the audience is British and the dateline on the frame is a UK
+// date, so the window has to agree with what the post says.
+const LDN = "Europe/London";
+export const londonDate = (t = Date.now()) => new Date(t).toLocaleDateString("en-CA", { timeZone: LDN });
+// London is UTC+1 in September, so a London calendar day starts an hour BEFORE the same UTC date.
+// Widening each end by 12 hours and letting the caller's dates do the real work would re-introduce
+// the clipping this exists to avoid, so the offset is computed rather than padded.
+export function londonDayBounds(dateStr) {
+  const noonUTC = new Date(dateStr + "T12:00:00Z");
+  const offsetMin = (new Date(noonUTC.toLocaleString("en-US", { timeZone: LDN })) - new Date(noonUTC.toLocaleString("en-US", { timeZone: "UTC" }))) / 60000;
+  const start = new Date(new Date(dateStr + "T00:00:00Z").getTime() - offsetMin * 60000);
+  return { start, end: new Date(start.getTime() + 86400000 - 1) };
+}
+
+export async function fetchEndingSoon(days = 7, minDays = 0, { requireProvenance = true, fromDate = null, toDate = null } = {}) {
+  const from = (fromDate ? londonDayBounds(fromDate).start : new Date(Date.now() + minDays * 86400000)).toISOString();
+  const end = (toDate ? londonDayBounds(toDate).end : new Date(Date.now() + days * 86400000)).toISOString();
   const u = new URL(SUPABASE_URL + "/rest/v1/draws");
   // `operators(rating)` feeds the draw slide's Trust Score chip; the three provenance columns
   // feed the read-at stamp and the eligibility predicate below. They are selected only when

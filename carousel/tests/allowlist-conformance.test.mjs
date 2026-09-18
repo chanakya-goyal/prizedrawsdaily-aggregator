@@ -272,6 +272,7 @@ describe("the ledger and the record", () => {
     expect(l.gate_violations["L2.secondPerson"]).toBe(1);
     expect(c.worstClass(l)).toBe("A");
     expect(c.complianceText(l)).toContain("verdict=FAIL class A");
+    expect(c.verdict(l)).toBe("FAIL class A — the run stopped");
     expect(c.complianceText(l)).toContain("L2.secondPerson=1");
   });
 
@@ -295,5 +296,17 @@ describe("the ledger and the record", () => {
     const bad = c.checkUnit("Improve Your Odds Bundle", { facts: f, surface: "title" });
     expect(bad).toHaveLength(1);
     expect(bad[0].class).toBe("B");        // drops the draw, never the whole run
+  });
+
+  // Class B dropped a draw; the run survived and shipped a shorter deck. A record that calls that
+  // "FAIL" teaches the reader to skip the line that matters.
+  test("only class A reads as a failed run", () => {
+    const l = c.newLedger({ drawsPlanned: 8, drawsRendered: 6, backupsUsed: 2 });
+    l.violations.push({ class: "B", predicate: "B.drawDropped" }, { class: "B", predicate: "B.drawDropped" });
+    expect(c.verdict(l)).toBe("PASS with degradation (2 class B)");
+    expect(c.complianceText(l)).toContain("drawsRendered=6");
+    expect(c.complianceText(l)).not.toContain("FAIL");
+    l.violations.push({ class: "A", predicate: "L2.secondPerson" });
+    expect(c.verdict(l)).toBe("FAIL class A — the run stopped");
   });
 });

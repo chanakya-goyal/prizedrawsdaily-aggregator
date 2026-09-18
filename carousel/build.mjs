@@ -119,13 +119,24 @@ try {
 // deck would trade a known-poor image for an unknown one, and a draw the selector already
 // ranked lower.
 const RANK = { low: 0, medium: 1, high: 2 };
-const spare = (sel.backups || []).filter((b) => photoData[b.slug] && RANK[posterRisk[b.slug] ?? "high"] === 0);
+// `!onDeckAlready` is load-bearing and was missing. build.mjs REWRITES selection.json with the
+// swapped deck (so publish.mjs records the draws we kept, not the ones we rejected) but left
+// sel.backups untouched — so on a re-run the promoted backup is in BOTH lists and gets swapped in
+// a second time. The symptom was the same prize on two slides of one deck.
+const onDeckAlready = new Set(sel.draws.map((d) => d.slug));
+const spare = (sel.backups || []).filter((b) =>
+  !onDeckAlready.has(b.slug) && photoData[b.slug] && RANK[posterRisk[b.slug] ?? "high"] === 0);
 for (let i = 0; i < sel.draws.length && spare.length; i++) {
   const d = sel.draws[i];
   if (RANK[posterRisk[d.slug] ?? "low"] < 2) continue;      // only a HIGH risk is worth a swap
   const b = spare.shift();
   console.log(`  ⇄ ${d.slug.slice(0, 40)} reads as a collage — swapped for ${b.slug.slice(0, 40)}`);
   sel.draws[i] = b;
+  // A consumed backup must leave the backup list. This was dormant until class B started
+  // promoting from the same list: the swap took the ASDA gift card into the deck, sel.backups
+  // still offered it, and class B promoted it a SECOND time — the same prize twice on one deck,
+  // which is worse than a short deck. A backup is consumed once, by whoever gets there first.
+  sel.backups = (sel.backups || []).filter((x) => x.slug !== b.slug);
 }
 const collages = sel.draws.filter((d) => posterRisk[d.slug] === "high");
 if (collages.length) console.log(`  ⚠ ${collages.length} slide(s) still carry poster-like artwork (no clean backup left): ${collages.map((d) => d.slug.slice(0, 30)).join(", ")}`);
@@ -133,6 +144,11 @@ if (collages.length) console.log(`  ⚠ ${collages.length} slide(s) still carry 
 // The swap happens here but publish.mjs re-reads selection.json, and it is publish.mjs that
 // records draw_slugs into carousel_posts. Without writing the decision back, the state row would
 // name the draws we REJECTED and every later report would be reading the wrong deck. Write it.
+//
+// ⚠ AND WRITE IT AGAIN AFTER THE CLASS-B PASS. This write is not the last word on the deck any
+// more: class B runs later and can drop draws and promote backups, so on its own this recorded
+// draw_slugs=8 for a deck that rendered 6 — naming two draws that never appeared. That is the
+// same defect this comment already warns about, reintroduced one stage further down.
 await Bun.write(`${DIR}/selection.json`, JSON.stringify(sel, null, 2));
 
 // (mode A only) free bg-removal in an ISOLATED subprocess — the @imgly WASM model
@@ -165,6 +181,93 @@ if (CARD === "cutout" && haveSlugs.length) {
     if (await Bun.file(`${cutDir}/${s}.png`).exists()) cutBySlug[s] = await toDataUrl(`${cutDir}/${s}.png`);
   }
   console.log(`Cutouts ready: ${Object.keys(cutBySlug).length}/${haveSlugs.length}`);
+}
+
+// The class-B ledger, and the two counts the record needs. They are captured BEFORE any drop,
+// because "8 planned, 7 rendered, 1 backup used" is the whole point of the record — reading them
+// afterwards would report a full deck every time.
+const drawsPlanned = sel.draws.length;
+const backupsBefore = (sel.backups || []).length;
+const ledgerB = compliance.newLedger({ drawsPlanned });
+
+// ---- class B: drop the draw, promote a backup, shrink once (§10.8) -------------------
+// WHY THIS IS ONE PASS AND NOT FOUR GATES
+// Four mechanisms swap draws out of one deck — provenance staleness, the data-field conditions,
+// title residue and image class — and a priority order between them is the wrong fix, because
+// whichever runs first wins and the rest escalate. So every draw is evaluated against every
+// condition in ONE pass, and promotion happens once against the resulting set: a draw failing
+// three conditions consumes one backup, not three.
+//
+// Detection without this was a LOG, not a gate. It matters on the first real run: a live
+// car-draws deck carried "YOUR CHOICE: WIN A TESLA MODEL 3…", which is an operator's own title
+// putting the second person next to an odds word — class B by §10.6's carve-out, and it would
+// otherwise have rendered at hero size on a published slide.
+const DRAWS_MIN = 4;                       // §5.11's floor; config.test asserts drawsPerDeck >= 4
+const STALE_MS = 48 * 3600e3;              // §10.4's window, the same one select.mjs queries on
+const T4_GLYPHS = 9;                       // §3.5's figure budget — a 10-glyph cap has no slot
+
+// Conditions are returned in §10.8's fixed order (provenance → data fields → title residue →
+// image class) so the record is stable and diffable rather than reordering run to run.
+function classBFailures(d) {
+  const out = [];
+  const checkedAt = d.figures_checked_at ? +new Date(d.figures_checked_at) : NaN;
+  if (!Number.isFinite(checkedAt) || Date.now() - checkedAt > STALE_MS) out.push("provenance-stale");
+  if (!d.entry_url) out.push("entry_url-null");
+  if (!Number.isFinite(+new Date(d.draw_date))) out.push("draw_date-unparseable");
+  if (!(Number(d.ticket_price) > 0)) out.push("ticket_price-missing");
+  if (!cleanTitle(d.grand_prize || d.title || "")) out.push("prize-name-empty");
+  const cap = Number(d.total_entries);
+  if (Number.isFinite(cap) && String(Math.round(cap)).length > T4_GLYPHS) out.push("cap-over-T4");
+  // The operator's title, on the title surface: second person is exempt (they really do write
+  // "Build Your Own PC") but "your" beside an odds word is not.
+  if (compliance.checkUnit(d.grand_prize || d.title || "", { surface: "title" }).length) out.push("title-second-person-odds");
+  if (posterRisk[d.slug] === "high") out.push("image-collage");
+  return out;
+}
+
+{
+  const failing = new Map();
+  for (const d of sel.draws) { const f = classBFailures(d); if (f.length) failing.set(d.slug, f); }
+  if (failing.size) {
+    // A backup is only a candidate if it is clean AND not already on the deck. The second half is
+    // not paranoia: the collage swap above draws from the same list, so without it a promoted
+    // backup can duplicate a prize already rendered.
+    const onDeck = new Set(sel.draws.map((d) => d.slug));
+    const pool = [...(sel.backups || [])].filter((b) => !onDeck.has(b.slug) && !classBFailures(b).length);
+    const kept = [];
+    const used = new Set();
+    for (const d of sel.draws) {
+      const f = failing.get(d.slug);
+      if (!f) { kept.push(d); used.add(d.slug); continue; }
+      let sub = null;
+      while (pool.length && !sub) { const c = pool.shift(); if (!used.has(c.slug)) sub = c; }
+      compliance.record(ledgerB, "model", `draw:${d.slug}`, "draw", "class-B",
+        [{ predicate: "B.drawDropped", class: compliance.CLASS.B, detail: `${d.slug} — ${f.join(", ")}${sub ? ` → promoted ${sub.slug}` : " → deck shrinks (no clean backup)"}` }]);
+      console.log(`  \u26a0 class B: ${d.slug} dropped (${f.join(", ")})${sub ? ` \u2192 promoted ${sub.slug}` : " \u2192 deck shrinks"}`);
+      if (sub) { kept.push(sub); used.add(sub.slug); }
+    }
+    // A duplicate prize on a published deck is the one outcome worse than a short one, so it is
+    // asserted rather than trusted to the logic above.
+    const slugs = kept.map((d) => d.slug);
+    if (new Set(slugs).size !== slugs.length) {
+      console.error(`\u2717 COMPLIANCE class A \u2014 duplicate draw on the deck: ${slugs.join(", ")}`);
+      await browser.close();
+      process.exit(1);
+    }
+    // Class-B exhaustion does NOT escalate straight to class A. A seven-draw deck of clean draws
+    // is strictly better than no post; class A fires only below §5.11's floor.
+    if (kept.length < DRAWS_MIN) {
+      console.error(`\u2717 COMPLIANCE class A \u2014 deck-underfilled: ${kept.length} of ${DRAWS_MIN} after class-B drops`);
+      await browser.close();
+      process.exit(1);
+    }
+    sel.draws = kept;
+    sel.backups = pool;
+    // The deck is only settled NOW. publish.mjs reads this file for draw_slugs, so a stale copy
+    // would put the dropped draws into carousel_posts and every later report would read the
+    // wrong deck — with draws_rendered disagreeing with draw_slugs.length in the same row.
+    await Bun.write(`${DIR}/selection.json`, JSON.stringify(sel, null, 2));
+  }
 }
 
 // ---- deck assembly -------------------------------------------------------------------
@@ -330,7 +433,12 @@ const caption = buildCaption(sel.name, sel.slug, facts, sel.seoKeyword);
 // uploaded, no publish.json". A gate that ran after the render would leave a directory of assets
 // that must be REMEMBERED as unpublishable, which is exactly the state the write-ahead row exists
 // to avoid.
-const ledger = compliance.newLedger({ drawsPlanned: sel.draws.length, drawsRendered: N });
+const backupsUsed = backupsBefore - (sel.backups || []).length;
+const ledger = compliance.newLedger({ drawsPlanned, drawsRendered: N, backupsUsed });
+// The class-B pass ran before this ledger could exist (it decides what N even is), so its
+// findings are carried over rather than recorded twice.
+ledger.violations.push(...ledgerB.violations);
+for (const [k, v] of Object.entries(ledgerB.gate_violations)) ledger.gate_violations[k] = (ledger.gate_violations[k] || 0) + v;
 const cFacts = compliance.factsTable({
   drawsRendered: N,
   caps: facts.map((f) => f.cap).filter((x) => x != null),
@@ -445,7 +553,10 @@ await compliance.writeCompliance(outDir, ledger);
 // fallbacks mean they legitimately differ, and a substituted post credited to the requested arm
 // is a corrupted experiment.
 await Bun.write(`${outDir}/model.json`, JSON.stringify({
-  drawsPlanned: sel.draws.length,
+  // The count BEFORE any class-B drop. Reading sel.draws here would report a full deck on a
+  // degraded run, which is the series corruption draws_rendered exists to make visible.
+  drawsPlanned,
+  backupsUsed,
   drawsRendered: N,
   archetypeRequested: sel.archetype || null,
   archetypeRendered: renderedArm,

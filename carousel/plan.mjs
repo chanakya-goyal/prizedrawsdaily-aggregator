@@ -15,6 +15,16 @@ const N = drawsPerDeck();
 const onlySlug = process.env.ONLY_CATEGORY || null;
 const DAYS = Number(process.env.DAYS || 7);       // upper bound (days out)
 const MIN_DAYS = Number(process.env.MIN_DAYS || 1); // runway floor — skip draws closing sooner
+// FROM_DATE/TO_DATE are inclusive Europe/London calendar dates and, when given, REPLACE the
+// rolling window above. Use them for a calendar instruction ("nothing closing today or tomorrow")
+// — a rolling floor answers that only approximately, dropping draws that close on a permitted day
+// but earlier in the day than the build ran.
+const FROM_DATE = process.env.FROM_DATE || null;
+const TO_DATE = process.env.TO_DATE || null;
+if ((FROM_DATE || TO_DATE) && !(FROM_DATE && TO_DATE))
+  throw new Error("FROM_DATE and TO_DATE must be given together (inclusive Europe/London dates, YYYY-MM-DD)");
+for (const [k, v] of [["FROM_DATE", FROM_DATE], ["TO_DATE", TO_DATE]])
+  if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error(`${k} must be YYYY-MM-DD (got "${v}")`);
 const DIR = workDir();
 const proxied = (u, w = 900) => `https://images.weserv.nl/?url=${encodeURIComponent(u)}&w=${w}&output=jpg&we`;
 
@@ -40,9 +50,12 @@ let excludeSlugs = new Set(), avoid = null;
 try { excludeSlugs = new Set(await recentDrawSlugs(7)); avoid = await lastCategory(); }
 catch (e) { console.error("⚠ history unavailable (selection not history-aware):", e.message); }
 
-const draws = await fetchEndingSoon(DAYS, MIN_DAYS);
+const draws = await fetchEndingSoon(DAYS, MIN_DAYS, { fromDate: FROM_DATE, toDate: TO_DATE });
+console.log(FROM_DATE
+  ? `Window: closing ${FROM_DATE} \u2192 ${TO_DATE} inclusive (Europe/London calendar dates) \u2014 ${draws.length} eligible`
+  : `Window: closing in ${MIN_DAYS}\u2013${DAYS} days (rolling) \u2014 ${draws.length} eligible`);
 const pick = pickBestCategory(draws, N, onlySlug, { excludeSlugs, avoidCategory: avoid });
-if (!pick) { console.log("No draws closing within 7 days" + (onlySlug ? ` in ${onlySlug}` : "")); process.exit(0); }
+if (!pick) { console.log(FROM_DATE ? `No deck available closing ${FROM_DATE}\u2013${TO_DATE}` : "No draws closing within 7 days" + (onlySlug ? ` in ${onlySlug}` : "")); process.exit(0); }
 
 const lines = [
   `PrizeDrawsDaily — carousel shot list (${new Date().toLocaleDateString("en-GB", { timeZone: "Europe/London" })})`,

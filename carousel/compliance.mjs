@@ -304,6 +304,17 @@ export function count(ledger, kind, detail) {
   return ledger;
 }
 
+// A one-line human verdict. The distinction it draws is the one §10.8 draws: class A stopped the
+// run; every other class is a degradation the run survived and recorded.
+export function verdict(l) {
+  const w = worstClass(l);
+  if (w === CLASS.A) return "FAIL class A — the run stopped";
+  if (!w) return "PASS";
+  const by = Object.fromEntries([CLASS.B, CLASS.C, CLASS.D].map((c) => [c, l.violations.filter((v) => v.class === c).length]));
+  const parts = Object.entries(by).filter(([, n]) => n).map(([c, n]) => `${n} class ${c}`);
+  return `PASS with degradation (${parts.join(", ")})`;
+}
+
 export const worstClass = (l) => [CLASS.A, CLASS.B, CLASS.C, CLASS.D].find((c) => l.violations.some((v) => v.class === c)) || null;
 
 // §10.8's class-C ceiling is a PROPORTION, not a count: collapsed > floor(0.4 × drawsRendered)
@@ -318,7 +329,10 @@ export function complianceText(l) {
   const L = [
     `PrizeDrawsDaily — compliance record (§10.8)`,
     `stage=${l.stage}  drawsPlanned=${l.drawsPlanned}  drawsRendered=${l.drawsRendered}  backupsUsed=${l.backupsUsed}  poolTruncated=${l.poolTruncated}`,
-    `verdict=${worstClass(l) ? "FAIL class " + worstClass(l) : "PASS"}`,
+    // Only class A is a RUN failure. Class B dropped a draw, C collapsed a slot, D downgraded a
+    // figure — all of those are the ladder working, and a record that calls them "FAIL" teaches
+    // the reader to ignore the line that matters.
+    `verdict=${verdict(l)}`,
     "",
   ];
   if (l.violations.length) {

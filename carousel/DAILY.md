@@ -277,3 +277,34 @@ differently-named facts, or it is a class-A failure at publish.
 `carousel/state.mjs`. Changing one without the other reverts to last-write-wins, which is the
 defect the `window` column exists to fix — so `insertMetrics` fails loudly and names the migration
 rather than falling back to the old key.
+
+## Choosing the closing window
+
+By default the deck takes draws closing `MIN_DAYS`–`DAYS` days out as a **rolling** window from
+the moment `plan.mjs` runs (1–7). That is the right shape for a runway floor: "has a follower got
+time to enter?" is a question about hours.
+
+It is the wrong shape for a **calendar** instruction. "Nothing closing today or tomorrow" is about
+closing DATES, and a rolling floor answers it only approximately — at 20:03 on a Friday,
+`MIN_DAYS=2` starts the window at 20:03 on Sunday and silently drops every draw closing Sunday
+*morning*, even though Sunday is neither today nor tomorrow. For that, give the dates:
+
+```
+FROM_DATE=2026-09-21 TO_DATE=2026-09-25 bun carousel/plan.mjs
+```
+
+Inclusive Europe/London calendar dates, both required together. London rather than UTC or the
+operator's timezone, because the dateline on the frame is a UK date and the window has to agree
+with what the post says. They REPLACE the rolling window; `MIN_DAYS`/`DAYS` are then ignored.
+
+⚠ **Pick a category with backup headroom.** `pickBestCategory` scores adequacy × visual weight and
+knows nothing about class-B risk, so it can pick a category that has exactly `drawsPerDeck`
+eligible draws and **zero** backups — and then every class-B drop shrinks the deck instead of
+promoting. On 18 Sep, car-draws won with 11 eligible and no backups and fell 8 → 5, while
+cash-prizes had 69 eligible and held 6 after three drops. If the run reports a big shrink, check
+`ONLY_CATEGORY` against a deeper pool before publishing.
+
+⚠ **An `assets_uploaded` row burns its draws for 7 days.** `recentDrawSlugs(7)` reads
+`carousel_posts.draw_slugs` regardless of status, so a run that uploads and is then abandoned
+excludes those draws from the next selection. That is usually what you want (no repeats) but it
+means re-planning after an aborted publish gives you a *different* deck, not the same one.
