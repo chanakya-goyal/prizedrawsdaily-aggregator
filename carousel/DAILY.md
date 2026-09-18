@@ -31,8 +31,15 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
 
 4. **Build everything** — `bun carousel/build.mjs` (7 carousel slides + `out/BRIEFING.md` + `out/CAPTION_FALLBACK.txt`
    + `out/alt.json`), `bun carousel/reel.mjs` (today's arm — see below) → `out/reel.mp4` + `out/cover.jpg` +
-   `out/reel-keyframes.png` + `out/reel-meta.json`, and `bun carousel/story.mjs` (the soonest-closing draw's
-   countdown) → `out/story.mp4` + `out/story-meta.json`. All three read the *same* `.fetched/{slug}/pick.txt`
+   `out/reel-keyframes.png` + `out/reel-meta.json`. The Reel is a broadcast insert now: one
+   photograph per draw, full bleed, with chrome that EXPANDS to state the cap, HOLDS, then COLLAPSES.
+   A `loop` stage runs before the 97-second capture and refuses any reel whose frame at t=0 differs
+   from the frame at t=duration — the duration is chosen as a whole multiple of the category scene's
+   own loop so it closes by construction, and `bun carousel/story.mjs` (the soonest-closing draw) →
+   `out/story.png`. The Story is a STILL: it goes to existing followers, sits outside the Reels
+   chaining system, has no length cohort or watch-duration head ranking it, and needs no audio — so
+   the old twelve-second timeline, frame loop, encode and audio mux were all cost with nothing
+   measuring them. All three read the *same* `.fetched/{slug}/pick.txt`
    picks (or your own dropped photo, or fall back to a typographic card) — so a pick.txt edit during QA (next
    step) means re-running whichever of the three actually used that photo.
 
@@ -52,7 +59,7 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
      `pick.txt` chose the cleanest, no-rival-branding shot. Swap a pick (edit `.fetched/{slug}/pick.txt`) or a
      whole draw (swap in a `selection.json.backups` entry) if a page came back blocked/branded (e.g. UKCC) —
      then re-run `build.mjs`/`reel.mjs`/`story.mjs` for whatever used that photo.
-   - `out/0X-*.png` slides + `out/reel-keyframes.png` + a look at `out/story.mp4` (or its frame folder) — the
+   - `out/0X-*.png` slides + `out/reel-keyframes.png` + a look at `out/story.png` — the
      **QA gates** below.
    - If a draw's page is blocked/branded and no backup helps, fall back to a clean typographic card (no photo).
 
@@ -86,10 +93,10 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
 
 8. **Host everything** — `bun carousel/publish.mjs`:
    - Converts + uploads the 7 slide PNGs to JPEG, and — if they exist and aren't already published today —
-     `reel.mp4` + `cover.jpg` and `story.mp4`, all to the public `carousel-slides` Supabase bucket.
+     `reel.mp4` + `cover.jpg` and `story.png`, all to the public `carousel-slides` Supabase bucket.
    - Writes `out/publish.json`: `caption`, `fbCaption`, `heroUrl`, `urls`, `altTexts`, `reelUrl`, `coverUrl`,
      `storyUrl`, `reelMeta` (`{arm, durationMs, stampTimesMs, audio, coverText}`).
-   - Writes idempotent write-ahead `assets_uploaded` rows in `carousel_posts`: `carousel` and `fb_photo` every
+   - Writes idempotent write-ahead `assets_uploaded` rows in `carousel_posts`: `carousel` and `fb_album` every
      run, `reel`/`story` only when that asset was actually (re-)uploaded this run (a reel/story already marked
      `published` today is skipped, not re-hosted, so its real row is never clobbered — but `reelUrl`/`storyUrl`
      still resolve to the canonical public URL on a skip, so `publish.json` stays complete), and `fb_video`
@@ -125,17 +132,17 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
         `fb_video` `assets_uploaded` write-ahead row): `FACEBOOK_CREATE_VIDEO_POST` (`page_id: 1106603652538117`,
         `file_url: publish.json.reelUrl`, `description: fbCaption`) →
         `bun carousel/state-mark.mjs fb_video published --fb <post_id>` **AND**
-        `bun carousel/state-mark.mjs fb_photo skipped` — the photo mirror never posts on a video day, so its
+        `bun carousel/state-mark.mjs fb_album skipped` — the album mirror never posts on a video day, so its
         write-ahead row needs a terminal status too, or `cleanup.mjs` would wait on it forever.
-      - **FALLBACK — the video post fails:** `FACEBOOK_CREATE_PHOTO_POST` (`url: heroUrl`, `message: fbCaption`)
-        → `bun carousel/state-mark.mjs fb_photo published --fb <post_id>` **AND**
+      - **FALLBACK — the video post fails:** ONE multi-photo feed post carrying every `fbUrls` entry (NOT the single-photo call, which posts the cover and drops the rest; NOT a link-card carousel, which becomes a link post) (`url: heroUrl`, `message: fbCaption`)
+        → `bun carousel/state-mark.mjs fb_album published --fb <post_id>` **AND**
         `bun carousel/state-mark.mjs fb_video skipped` — record the video failure, then close its row so cleanup
         can still proceed.
       - **Carousel-only day (no reel ran):** `publish.mjs` never writes an `fb_video` row at all (there's no
         `reelUrl` to post), so the photo post is simply the primary FB action, unchanged from v2:
-        `FACEBOOK_CREATE_PHOTO_POST` → `bun carousel/state-mark.mjs fb_photo published --fb <post_id>`.
+        ONE multi-photo feed post carrying every `fbUrls` entry (NOT the single-photo call, which posts the cover and drops the rest; NOT a link-card carousel, which becomes a link post) → `bun carousel/state-mark.mjs fb_album published --fb <post_id>`.
 
-10. **Cleanup** — `bun carousel/cleanup.mjs`. Once every `carousel_posts` row for today (`carousel` + `fb_photo`
+10. **Cleanup** — `bun carousel/cleanup.mjs`. Once every `carousel_posts` row for today (`carousel` + `fb_album`
     + `fb_video`/`reel`/`story` if they ran) reads `published` **or** `skipped` — with at least one row actually
     `published` — deletes today's raw JPEGs/mp4s from the bucket — the platforms already copied the media in at
     ingest. Refuses loudly (exit 1) while anything's still pending (i.e. neither `published` nor `skipped`) —
@@ -185,7 +192,7 @@ insufficient data.
   `.fetched/{slug}/pick.txt` to a different candidate — then re-run whichever of `build.mjs`/`reel.mjs`/
   `story.mjs` used that photo.
 - **Caption** — Claude authors both from `out/BRIEFING.md` (verified facts + hook archetype + banned phrases):
-  IG caption → `out/CAPTION.txt`, FB caption (fuller, real clickable link + "18+ · UK only · Play responsibly")
+  IG caption → `out/CAPTION.txt`, FB caption (fuller, real clickable link + "18+ · UK only" — never "play responsibly", which is gambling wording for a non-gambling product)
   → `out/FB_CAPTION.txt`. `caption.mjs`'s `buildCaption`/`buildFbCaption` templates are only used as a
   **fallback for dry runs** where no `out/FB_CAPTION.txt`/`out/CAPTION.txt` exists.
 - **Best UK posting time (prime windows):** ~12–1 PM UK (≈ 4:30–5:30 PM IST) or 7–9 PM UK (≈ 11:30 PM–1:30 AM
@@ -202,8 +209,8 @@ insufficient data.
   `assets_uploaded` (written by `publish.mjs` before Composio posts, so a crash mid-post can't cause a
   silent double-publish) → `published` (written by you/Claude via `state-mark.mjs` once Composio confirms the
   post id) → or `skipped` (also via `state-mark.mjs`, when a format is deliberately dropped this run — a rejected
-  story, or whichever of `fb_video`/`fb_photo` didn't post — `published` and `skipped` are both terminal for
-  `cleanup.mjs`'s gate, see step 10). Formats seen today: `carousel`, `fb_photo`, `reel`, `story`, `fb_video` —
+  story, or whichever of `fb_video`/`fb_album` didn't post — `published` and `skipped` are both terminal for
+  `cleanup.mjs`'s gate, see step 10). Formats seen today: `carousel`, `fb_album`, `reel`, `story`, `fb_video` —
   `publish.mjs` now write-aheads an `assets_uploaded` `fb_video` row itself whenever a reel ran this run (or a
   published reel's URL was resolved via the skip branch), preflighted against an already-`published` `fb_video`
   row exactly like `reel`/`story`. Also stores `category`, `draw_slugs`, `hook_archetype` (plain archetype id for
@@ -230,3 +237,43 @@ insufficient data.
 Change the Instagram **display name** (not the @handle) to **"Prize Draws Daily | UK Competitions"** —
 this is the strongest IG-search ranking signal and only you can set it from the Instagram app
 (Edit profile → Name). Not something Claude/Composio can do via API.
+
+---
+
+## Compliance gates and the compliance record (§10)
+
+`build.mjs` runs the **MODEL stage** of the wording gate *before* it renders anything, because a
+class-A failure has to mean "no PNG was written", not "a directory of assets you must remember are
+unpublishable". Every run writes `out/COMPLIANCE.json` and `out/COMPLIANCE.txt` — **on pass as well
+as on fail**, so a run with the gates disabled is distinguishable from a run that passed them.
+
+- **Class A** → non-zero exit, nothing rendered, nothing uploaded, no `publish.json`. Read
+  `out/COMPLIANCE.txt`: it names the gate, the stage, the asset, the role, the field and the value
+  that failed, so the failure is a work item rather than a mystery.
+- **Class B** → the draw is dropped and a backup promoted.
+- **Class C** → one figure does not render; counted. More than `floor(0.4 × drawsRendered)` of them
+  escalates the run to class A.
+- The predicate hit counts land in `carousel_posts.gate_violations`, so a backstop that never fires
+  is distinguishable from one that does nothing.
+
+Three of the gates run in **CI** (`bun run test:gates`, also in the `carousel-gates` job): the
+frozen fixture, the odds-literal scanner, and the allow-list/predicate conformance test. After the
+third, an allow-listed string and a predicate can only ever disagree in CI — never in production as
+a hard fail on an ordinary run.
+
+**If you are writing the caption by hand:** `out/BRIEFING.md` now prints the run's verified-fact
+KEYS and predicate 3 in full. Any sentence with a question mark must carry two figures from two
+differently-named facts, or it is a class-A failure at publish.
+
+## Migrations
+
+| File | Status |
+|---|---|
+| `migrations/0001-figures-provenance.sql` | applied |
+| `migrations/0002-conditions-and-time.sql` | applied |
+| `migrations/0003-instrumentation.sql` | **applied 2026-09-18** — `carousel_metrics` gained `source` / `window` / `age_hours` and its PK became `(day, media_id, metric, window)`; `carousel_curves` created; `carousel_posts` gained ten columns. Pre-migration snapshots of both tables were taken to `migrations/backups/` (local, gitignored). |
+
+⚠ The `carousel_metrics` PK is a **two-place** contract: the DDL in `0003` and `METRICS_KEY` in
+`carousel/state.mjs`. Changing one without the other reverts to last-write-wins, which is the
+defect the `window` column exists to fix — so `insertMetrics` fails loudly and names the migration
+rather than falling back to the old key.

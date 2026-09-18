@@ -12,7 +12,7 @@ import { buildFbCaption } from "./caption.mjs";
 import { toDrawSlide } from "./format.mjs";
 import { GLOBAL, workDir } from "./config.mjs";
 import { withRetry } from "./util.mjs";
-import { upsertPost, todayLondon, getPost } from "./state.mjs";
+import { upsertPost, todayLondon, getPost, recentMetrics } from "./state.mjs";
 import { uploadHeaders } from "../lib/storage.mjs";
 
 const DIR = workDir();
@@ -144,15 +144,23 @@ try {
 }
 
 try {
-  if (await Bun.file(`${OUT}/story.mp4`).exists()) {
+  // The Story is a STILL. It is delivered to existing followers with a 24h life, is not in the
+  // Reels chaining system, has no length cohort and no watch-duration head, and does not need
+  // audio — so a twelve-second timeline, a frame loop, an ffmpeg encode and an audio mux were
+  // all cost with nothing ranking them. story.mp4 is still accepted so a half-migrated working
+  // directory does not silently drop the Story.
+  const storyStill = await Bun.file(`${OUT}/story.png`).exists();
+  const storyFile = storyStill ? "story.png" : "story.mp4";
+  const storyMime = storyStill ? "image/png" : "video/mp4";
+  if (await Bun.file(`${OUT}/${storyFile}`).exists()) {
     const existingStory = await getPost(todayLondon(), "story").catch((e) => { console.error("⚠ story preflight skipped (state unreachable): " + e.message); return null; });
     if (existingStory?.status === "published") {
       console.error(`⚠ today's STORY is already PUBLISHED (ig_media_id=${existingStory.ig_media_id}). Skipping re-hosting story.`);
-      storyUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${today}/${sel.slug}/story.mp4`;
+      storyUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${today}/${sel.slug}/${storyFile}`;
     } else {
-      const storyBuf = Buffer.from(await Bun.file(`${OUT}/story.mp4`).arrayBuffer());
-      storyUrl = await withRetry(() => upload(`${today}/${sel.slug}/story.mp4`, storyBuf, "video/mp4"), { label: "upload story" });
-      console.log(`  ✓ story.mp4 → ${(storyBuf.length / 1024 / 1024).toFixed(1)}MB → ${storyUrl}`);
+      const storyBuf = Buffer.from(await Bun.file(`${OUT}/${storyFile}`).arrayBuffer());
+      storyUrl = await withRetry(() => upload(`${today}/${sel.slug}/${storyFile}`, storyBuf, storyMime), { label: "upload story" });
+      console.log(`  ✓ ${storyFile} → ${(storyBuf.length / 1024).toFixed(0)}KB → ${storyUrl}`);
       storyUploadedThisRun = true;
     }
   }
@@ -160,16 +168,97 @@ try {
   console.error("⚠ story hosting failed (carousel continues): " + e.message);
 }
 
-// Facebook: ONE detailed captioned post (FACEBOOK_CREATE_PHOTO_POST), not a pile
-// of caption-less photos. heroUrl = the intro slide (most eye-catching); fbCaption
-// is the full body with a real clickable link.
-const fbItems = sel.draws.map((d) => { const s = toDrawSlide(d); return { title: s.title, price: s.price }; });
+// Facebook: ONE multi-photo feed post carrying the whole deck, not one photo and not a pile of
+// caption-less ones. The 4:5 slides already rendered ARE Meta's own recommended feed ratio, so
+// nothing is re-cut.
+//
+// What this deliberately does NOT build is a child_attachments carousel. Every card in one
+// requires a link, which makes the whole thing a LINK post — the worst-performing organic
+// format measured (0.05% engagement, roughly 200 views against 1,125 for a photo, Socialinsider
+// across 25M posts). A multi-photo post keeps the photo treatment and still carries one real
+// clickable link in the body, which is the thing Instagram cannot do at all.
+const fbItems = await Bun.file(`${OUT}/facts.json`).json().catch(() => sel.draws.map((d) => {
+  // Fallback only. Prefer build.mjs's facts: recomputing titles here with a second cleaner is
+  // how Instagram and Facebook ended up calling the same prize two different things.
+  const s = toDrawSlide(d); return { title: s.title, price: s.price };
+}));
 const fbCaption = (await Bun.file(`${OUT}/FB_CAPTION.txt`).text().catch(() => "")).trim()
   || buildFbCaption(sel.name, sel.slug, fbItems);
-const heroUrl = urls[0];
+const heroUrl = urls[0];              // still the album's lead image and the fb_video thumbnail
+// Meta caps a feed post's photo array; the carousel is ten slides, which is inside every
+// published limit, so the album is the deck.
+const fbUrls = urls;
 
-const altTexts = await Bun.file(`${OUT}/alt.json`).json().catch(() => []);
-const publish = { date: today, category: sel.slug, seoKeyword: sel.seoKeyword || null, archetype: sel.archetype || null, igUserId: IG_USER_ID, caption, fbCaption, heroUrl, urls, altTexts, reelUrl, coverUrl, storyUrl, reelMeta };
+// §10.7: a missing or unparseable alt.json USED to publish silently with no alt text at all —
+// `.catch(() => [])`. Alt text is where the untruncated prize title and the full provenance
+// sentence live, so an empty array is not a degraded post, it is a post that lost its record.
+// Class A.
+let altTexts;
+try {
+  altTexts = await Bun.file(`${OUT}/alt.json`).json();
+} catch (e) {
+  console.error(`\u2717 alt.json missing or unparseable (${e?.message || e}) \u2014 refusing to publish without alt text`);
+  process.exit(1);
+}
+if (!Array.isArray(altTexts) || altTexts.length === 0) {
+  console.error("\u2717 alt.json carries no alt text \u2014 refusing to publish");
+  process.exit(1);
+}
+
+// §10.7 P1 \u2014 THE CAPTION HASH BINDING, and what it can and cannot do.
+//
+// publish.json is NOT what reaches the platform. An agent session reads it and calls Composio
+// tools, and that agent has already been observed choosing a different tool than the runbook
+// specified, producing five to seven separate posts with the caption attached as a self-comment.
+// So nothing here gates what actually gets sent: the caption can be edited, the alt array
+// dropped, a different asset posted, and this file would still read "cleared".
+//
+// P1 is therefore a RECORD, not a gate, and it is labelled as one. It is the enforcement point
+// P2 needs: a posting step that re-hashes what it is about to send and refuses on mismatch. P2 is
+// specified and DORMANT — it has no evaluator until P3 (a first-party Bun posting step calling
+// the Graph API directly) exists, and it must not be listed as an enforced control until then.
+// Writing a hash that nothing checks is still worth doing, because it makes the divergence
+// detectable after the fact, which is P4.
+// The model facts, written by build.mjs. A missing model.json is not fatal — the deck can be
+// republished from assets alone — but it IS recorded as unknown rather than defaulted, because a
+// deck silently logged at the configured size when it shipped short is exactly the series
+// corruption draws_rendered exists to prevent.
+// The follower count ON THE DAY, so the one permitted follower-denominated line is computed
+// against the right number rather than against today's. Read from carousel_metrics, where
+// insights.mjs's ig_account kind files it daily; null when it has never been pulled, which is
+// honest — a stale count silently reused would make every rate wrong in the same direction.
+const followersAtPost = await recentMetrics(7)
+  .then((rows) => rows.filter((r) => r.metric === "followers").sort((a, b) => String(b.day).localeCompare(String(a.day)))[0]?.value ?? null)
+  .then((v) => (Number.isFinite(Number(v)) ? Number(v) : null))
+  .catch(() => null);
+
+const model = await Bun.file(`${OUT}/model.json`).json().catch(() => null);
+if (!model) console.error("\u26a0 model.json missing \u2014 draws_rendered / cover_headline / gate_violations will be null for this post");
+
+const sha256 = (s) => new Bun.CryptoHasher("sha256").update(String(s), "utf8").digest("hex");
+const captionFallback = (await Bun.file(`${OUT}/CAPTION_FALLBACK.txt`).text().catch(() => "")).trim();
+const cleared = {
+  // The serialised array, not the joined strings: the ORDER is part of what was cleared, because
+  // alt[i] belongs to slide i.
+  "alt.json": sha256(JSON.stringify(altTexts)),
+  "CAPTION.txt": sha256(caption),
+  "FB_CAPTION.txt": sha256(fbCaption),
+  ...(captionFallback ? { "CAPTION_FALLBACK.txt": sha256(captionFallback) } : {}),
+};
+const publish = {
+  date: today, category: sel.slug, seoKeyword: sel.seoKeyword || null, archetype: sel.archetype || null,
+  igUserId: IG_USER_ID, caption, fbCaption, heroUrl, urls, altTexts, reelUrl, coverUrl, storyUrl, reelMeta,
+  // The Facebook album and, explicitly, the tools that must not be used for it. Naming the
+  // forbidden ones in the manifest is the point: the single-photo call is still the obvious
+  // thing to reach for, and a link-card carousel is the tempting one.
+  fbUrls,
+  fbForbiddenTools: ["FACEBOOK_CREATE_PHOTO_POST (single photo — posts the cover and drops nine slides)",
+                     "child_attachments / link-card carousel (every card needs a link, which makes it a LINK post)"],
+  // SHA-256 of every cleared artefact (§10.7 P1). `enforcement` is stated in the payload rather
+  // than in prose so that nobody reads the presence of a hash as the presence of a gate.
+  clearedHashes: cleared,
+  hashEnforcement: "record-only (P1). P2 — the posting step re-hashing and refusing on mismatch — is DORMANT until a first-party posting step (P3) exists.",
+};
 await Bun.write(`${OUT}/publish.json`, JSON.stringify(publish, null, 2));
 // write-ahead row (spec §4.2): marks today's carousel "assets_uploaded" before Composio posts,
 // so a crash/retry mid-post can't silently double-publish. Tables are pending a one-time SQL
@@ -179,12 +268,21 @@ try {
     date: todayLondon(), format: "carousel", status: "assets_uploaded",
     category: sel.slug, draw_slugs: sel.draws.map((d) => d.slug),
     hook_archetype: sel.archetype || null, seo_keyword: sel.seoKeyword || null,
-    caption, asset_urls: urls,
+    caption, asset_urls: urls, caption_sha256: cleared["CAPTION.txt"],
+    // §11.2. hook_archetype stores the TEMPLATE ID actually emitted, never the rendered string:
+    // a permitted-wording revision then leaves the experiment log intact, which a stored string
+    // would not.
+    hook_archetype: model?.archetypeRendered ?? (sel.archetype || null),
+    archetype_requested: sel.archetype || null,
+    cover_headline: model?.coverHeadline ?? null,
+    draws_rendered: model?.drawsRendered ?? null,
+    gate_violations: model?.gateViolations ?? {},
+    followers_at_post: followersAtPost,
   });
   await upsertPost({
-    date: todayLondon(), format: "fb_photo", status: "assets_uploaded",
+    date: todayLondon(), format: "fb_album", status: "assets_uploaded",
     category: sel.slug, draw_slugs: sel.draws.map((d) => d.slug),
-    caption: fbCaption, asset_urls: [heroUrl],
+    caption: fbCaption, asset_urls: fbUrls, caption_sha256: cleared["FB_CAPTION.txt"],
   });
   // reel/story rows only get written when we actually uploaded something THIS run —
   // gated on uploadedThisRun (not URL truthiness), since the skip branches above now
@@ -195,7 +293,14 @@ try {
     await upsertPost({
       date: todayLondon(), format: "reel", status: "assets_uploaded",
       category: sel.slug, draw_slugs: sel.draws.map((d) => d.slug),
-      hook_archetype: reelMeta?.arm ? `arm-${reelMeta.arm}` : null,
+      // reel_arm, not hook_archetype. The column was carrying the caption archetype on carousel
+      // rows and arm-A/B/C on reel rows; two experiments in one column cannot be crossed.
+      reel_arm: reelMeta?.arm ? `arm-${reelMeta.arm}` : null,
+      arm_source: reelMeta?.armSource ?? null,
+      duration_ms: Number.isFinite(reelMeta?.durationMs) ? reelMeta.durationMs : null,
+      is_loop: reelMeta?.isLoop ?? null,
+      draws_rendered: model?.drawsRendered ?? null,
+      followers_at_post: followersAtPost,
       asset_urls: [reelUrl, coverUrl],
     });
   }
@@ -224,10 +329,14 @@ try {
       });
     }
   }
-  console.log(`✓ write-ahead rows: carousel + fb_photo${reelUploadedThisRun ? " + reel" : ""}${storyUploadedThisRun ? " + story" : ""}${reelUrl ? " + fb_video" : ""} assets_uploaded (idempotent re-runs will not double-post)`);
+  console.log(`✓ write-ahead rows: carousel + fb_album${reelUploadedThisRun ? " + reel" : ""}${storyUploadedThisRun ? " + story" : ""}${reelUrl ? " + fb_video" : ""} assets_uploaded (idempotent re-runs will not double-post)`);
 } catch (e) {
   console.log(`⚠ state write failed (tables pending?): ${e?.message || e}`);
 }
 console.log(`\n✓ ${urls.length} public JPEGs hosted. Wrote ${OUT}/publish.json`);
 console.log("\n--- FB CAPTION (single detailed post) ---\n" + fbCaption);
-console.log("\nNext: IG → carousel (urls + caption). FB → FACEBOOK_CREATE_PHOTO_POST(heroUrl, message=fbCaption).");
+console.log("\ncleared hashes (§10.7 P1 — a record, not a gate):");
+for (const [k, v] of Object.entries(cleared)) console.log(`  ${k}  sha256=${v.slice(0, 16)}\u2026`);
+console.log(`\nNext: IG → carousel (${urls.length} urls + caption).`);
+console.log(`      FB → ONE multi-photo feed post (all ${fbUrls.length} urls, message=fbCaption).`);
+console.log("      FB → do NOT use the single-photo call (posts the cover, drops the rest) and do NOT build a link-card carousel (it becomes a link post).");

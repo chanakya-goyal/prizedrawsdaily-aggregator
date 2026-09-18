@@ -3,8 +3,12 @@ name: CI
 # Every push and PR runs the scraper test suite (test/, via `bun run test:scraper`). The
 # self-improving loop depends on this: audit-caught mistakes append fixtures to
 # test/fixtures/regressions.json, and this job is what makes them permanent.
-# carousel/tests/* is deliberately excluded here: it's environment-bound local tooling (a
-# hardcoded macOS ffmpeg path) exercised by the daily carousel runbook, not CI.
+# Most of carousel/tests/* is deliberately excluded here: it's environment-bound local tooling (a
+# hardcoded macOS ffmpeg path, a headless Chromium) exercised by the daily carousel runbook.
+# The WORDING gates are the exception and run in the `carousel-gates` job below: spec §10.6a
+# Part 2 specifies them as CI gates precisely because they are pure JS — no browser, no ffmpeg,
+# no network — and because every one of them catches a class of bug that otherwise ships as a
+# published image that cannot be retracted.
 on:
   push:
     branches: [main]
@@ -23,3 +27,19 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run test:scraper
+
+  # The compliance gates (spec §10.6a Part 2). Three controls, in increasing strength:
+  #   1. odds-copy.test.mjs        — the allow-list matches a frozen fixture, character for character
+  #   2. odds-literal-gate.test.mjs — no other file COMPOSES an odds string
+  #   3. allowlist-conformance.test.mjs — every string the allow-list can emit passes every predicate
+  # Gate 3 is the structural one: after it, an allow-listed string and a predicate can never again
+  # disagree in production — they disagree here, which is where the previous round's build-failing
+  # question headline should have surfaced.
+  carousel-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run test:gates

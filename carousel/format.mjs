@@ -50,7 +50,9 @@ export function closesLabel(iso, now = new Date()) {
   return `CLOSES ${dn} ${dm}`;
 }
 
-export const oddsLabel = (n) => (n ? `1 IN ${Number(n).toLocaleString("en-GB")}` : null);
+// oddsLabel() is retired (§10.6a 1.0): an odds string is composed only in odds-copy.mjs, and
+// this one had a single consumer — the slide model below, whose `odds` field only ever reached the
+// caption briefing. build.mjs now builds that field with oddsCopy.conditional().
 
 export function toDrawSlide(d, n) {
   return {
@@ -59,7 +61,6 @@ export function toDrawSlide(d, n) {
     title: cleanTitle(d.title),
     cashAlt: cashAlt(d.grand_prize, d.prize_description),
     closes: closesLabel(d.draw_date),
-    odds: oddsLabel(d.total_entries),
     image: d.image_url,
     slug: d.slug,
   };

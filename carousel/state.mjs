@@ -65,11 +65,51 @@ export async function lastCategory() {
   return rows.find((r) => r.category)?.category || null;
 }
 
+// ⚠ THE UPSERT KEY IS HALF OF A TWO-PLACE CHANGE. The other half is the primary key in
+// migrations/0003-instrumentation.sql. `window` is in the key because reach and views keep
+// accruing for days: without it the last capture silently overwrites the first, and a post's 12
+// views at 6 hours are indistinguishable from 12 views at 6 days. Changing the DDL without this
+// line, or this line without the DDL, reverts to last-write-wins — which is the defect, not a
+// degraded version of the fix. So a key mismatch fails LOUDLY and names the remedy rather than
+// falling back to the old key, because a silent fallback would look exactly like success.
+const METRICS_KEY = "day,media_id,metric,window";
+
 export async function insertMetrics(rows) {
   if (!rows?.length) return null;
-  return rest(`carousel_metrics?on_conflict=${encodeURIComponent("day,media_id,metric")}`, {
+  // Every row carries the three provenance columns. A row without them is a row that cannot be
+  // read back later, so they are defaulted here rather than left to each caller.
+  const stamped = rows.map((r) => ({ source: "api", window: "legacy", age_hours: null, ...r }));
+  try {
+    return await rest(`carousel_metrics?on_conflict=${encodeURIComponent(METRICS_KEY)}`, {
+      method: "POST",
+      headers: hdrs({ Prefer: "resolution=merge-duplicates,return=minimal" }),
+      body: JSON.stringify(stamped),
+    }, "insertMetrics");
+  } catch (e) {
+    const m = String(e?.message || e);
+    if (/window|on_conflict|42703|PGRST/i.test(m)) {
+      throw new Error(
+        `insertMetrics refused on the upsert key "${METRICS_KEY}".\n` +
+        `  This is almost certainly migrations/0003-instrumentation.sql not yet applied.\n` +
+        `  Paste it into Supabase \u2192 SQL editor, then re-run. Nothing was written.\n  Underlying: ${m}`);
+    }
+    throw e;
+  }
+}
+
+// The retention curve, hand-transcribed from Instagram's own professional insights (Channel B).
+// No Graph API field returns it, so the spec must not pretend otherwise: source is always 'app'
+// and every row carries an archived screenshot in evidence_url.
+export async function insertCurve({ day, media_id, kind = "reel_retention", points, evidence_url = null }) {
+  if (!Array.isArray(points) || !points.length) throw new Error("insertCurve: points must be a non-empty array");
+  // The 3-second reading is mandatory, not conventional: "watch under 3 seconds" is a named input
+  // to the abandonment prediction head, so a curve without it cannot answer the question it is for.
+  if (!points.some((pt) => Number(pt?.t_ms) === 3000)) {
+    throw new Error("insertCurve: points must include an explicit reading at t_ms = 3000");
+  }
+  return rest(`carousel_curves?on_conflict=${encodeURIComponent("day,media_id,kind")}`, {
     method: "POST",
     headers: hdrs({ Prefer: "resolution=merge-duplicates,return=minimal" }),
-    body: JSON.stringify(rows),
-  }, "insertMetrics");
+    body: JSON.stringify([{ day, media_id, kind, points, source: "app", evidence_url }]),
+  }, "insertCurve");
 }

@@ -15,7 +15,9 @@ const DESC = "Enter this cash competition for the chance to win £1,000 paid str
 const fresh = (over = {}) => ({
   title: "Win £1,000 Cash", grand_prize: "£1,000", category: "cash-prizes", description: DESC,
   ticket_price: 1, total_entries: 2000, draw_date: "2026-09-20T20:00:00+01:00",
-  image_url: "https://cdn.test/a.jpg", entry_url: "https://op.test/c/a", ...over,
+  image_url: "https://cdn.test/a.jpg", entry_url: "https://op.test/c/a",
+  // fieldsFromHtml now returns the cap's provenance alongside the cap itself.
+  total_entries_method: "labelled-cap", figures_source_url: "https://op.test/c/a", ...over,
 });
 const stored = (over = {}) => ({
   id: "row-1", slug: "win-1000-cash-op", status: "draft", category_source: "rule",
@@ -88,10 +90,42 @@ describe("routeDraw", () => {
       expect(p.kind).toBe("correct");
       expect(p.row.ticket_price).toBe(2);
     });
-    test("a pool-only drift patches ONLY the pool — no unforced rewrite of a public row", () => {
+    test("a pool-only drift rewrites no DATA field of a public row", () => {
       const p = routeDraw(live({ total_prize_value: 999 }), fresh(), { now: NOW, catMap: CAT });
       expect(p.kind).toBe("correct");
-      expect(Object.keys(p.row)).toEqual(["total_prize_value"]);
+      // The rule this protects is "no unforced rewrite of a public row", and it is about the
+      // row's DATA. The three provenance columns are not data — they record that we read the
+      // page and re-confirmed the cap that is already stored, which is the only thing keeping a
+      // stable row inside the carousel's 48h freshness window. Asserted as an exclusion so the
+      // test keeps failing if a title or a date ever creeps back into this patch.
+      for (const f of ["title", "grand_prize", "ticket_price", "total_entries", "draw_date", "category_id", "image_url", "status"]) {
+        expect(p.row).not.toHaveProperty(f);
+      }
+      expect(p.row.total_prize_value).toBe(2000);
+      expect(p.row.total_entries_method).toBe("labelled-cap");
+      expect(p.row.figures_checked_at).toBe(NOW.toISOString());
+    });
+
+    test("a cap that MOVED does not get the stored row's freshness stamp", () => {
+      // The stamp means "we re-read this and the number is still what we hold". If the fresh
+      // read disagrees, stamping would claim provenance for a number we did not observe.
+      const p = routeDraw(live({ total_prize_value: 2000 }), fresh({ total_entries: 7777 }), { now: NOW, catMap: CAT });
+      expect(p.kind).toBe("correct");
+      // It is a real correction, so the cap AND its provenance are written together.
+      expect(p.row.total_entries).toBe(7777);
+      expect(p.row.total_entries_method).toBe("labelled-cap");
+    });
+
+    test("a skip still carries a stamp when the read re-confirmed the cap", () => {
+      const p = routeDraw(live({ total_prize_value: 2000 }), fresh(), { now: NOW, catMap: CAT });
+      expect(p.kind).toBe("skip");
+      expect(p.stamp).toMatchObject({ total_entries_method: "labelled-cap", figures_checked_at: NOW.toISOString() });
+    });
+
+    test("corrections switched off still stamps freshness", () => {
+      const p = routeDraw(live(), fresh({ ticket_price: 2 }), { now: NOW, catMap: CAT, correctLive: false });
+      expect(p).toMatchObject({ kind: "skip", reason: "correct-live-off" });
+      expect(p.stamp?.total_entries_method).toBe("labelled-cap");
     });
     test("the cap is checked AFTER the decision, so the same draws consume it", () => {
       const p = routeDraw(live({ total_prize_value: 2000 }), fresh({ ticket_price: 2 }), { now: NOW, catMap: CAT, correctRemaining: 0 });

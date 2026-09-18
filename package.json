@@ -7,7 +7,8 @@
     "test": "bun test",
     "test:scraper": "bun test test/",
     "test:carousel": "bun test carousel/tests/",
-    "scrape": "bun run.mjs"
+    "scrape": "bun run.mjs",
+    "test:gates": "bun test carousel/tests/odds-copy.test.mjs carousel/tests/odds-literal-gate.test.mjs carousel/tests/allowlist-conformance.test.mjs carousel/tests/brief.test.mjs carousel/tests/config.test.mjs carousel/tests/honesty.test.mjs carousel/tests/tokens.test.mjs carousel/tests/scene.test.mjs"
   },
   "devDependencies": {
     "@types/bun": "latest"

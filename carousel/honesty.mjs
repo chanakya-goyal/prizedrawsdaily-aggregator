@@ -30,9 +30,9 @@ export function valueLine(draws, slug) {
 
 export function altTexts(sel, drawSlides) {
   const kw = sel.seoKeyword || catCfg(sel.slug).seoKeyword;
-  const intro = `${drawSlides.length} ${kw} closing this week — prize draw round-up from Prize Draws Daily (18+, UK only).`;
+  const intro = `${drawSlides.length} ${kw} closing this week — prize draw round-up from Prize Draws Daily. Age limits: in each operator's own terms.`;
   const draws = drawSlides.map((s) =>
-    `${s.title} prize draw — tickets ${s.price || "available"}, ${String(s.closes || "").toLowerCase()} (18+, UK only).`);
-  const cta = `See every live UK prize draw at prizedrawsdaily.co.uk — @prizedrawsdaily (18+, UK only).`;
+    `${s.title} prize draw — tickets ${s.price || "available"}, ${String(s.closes || "").toLowerCase()}. Age limits: in the operator's own terms.`);
+  const cta = `See the live UK prize draws at prizedrawsdaily.co.uk — @prizedrawsdaily.`;
   return [intro, ...draws, cta];
 }

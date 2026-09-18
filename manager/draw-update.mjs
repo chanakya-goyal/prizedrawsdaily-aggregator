@@ -17,7 +17,7 @@ if (!id || !json) { console.error("usage: bun manager/draw-update.mjs <id> '<jso
 let body;
 try { body = JSON.parse(json); } catch (e) { console.error("invalid JSON:", e.message); process.exit(1); }
 
-const ALLOWED = new Set(["prize_description", "status", "category_id", "category_source", "title", "grand_prize", "image_url", "draw_date", "ticket_price", "total_entries", "total_prize_value", "featured"]);
+const ALLOWED = new Set(["prize_description", "status", "category_id", "category_source", "title", "grand_prize", "image_url", "draw_date", "ticket_price", "total_entries", "total_prize_value", "featured", "figures_source_url", "figures_checked_at", "total_entries_method", "free_entry_route"]);
 const bad = Object.keys(body).filter((k) => !ALLOWED.has(k));
 if (bad.length) { console.error("disallowed fields:", bad.join(", ")); process.exit(1); }
 
@@ -30,6 +30,29 @@ const CATEGORY_SOURCES = ["rule", "claude", "manual"];
 if ("category_source" in body && !CATEGORY_SOURCES.includes(body.category_source)) {
   console.error(`category_source must be one of ${CATEGORY_SOURCES.join(", ")} — got ${JSON.stringify(body.category_source)}`);
   process.exit(1);
+}
+
+// total_entries_method is the same kind of thing for the same reason, and it decides whether
+// the carousel may render an odds figure from this row at all. Validate it here rather than
+// letting the DB CHECK return an opaque 400 — and note that an agent editing a cap by hand is
+// 'agent-read', never the method the scraper would have used. Guessing a provenance we did not
+// observe is worse than recording none.
+const ENTRIES_METHODS = ["operator-pattern", "labelled-cap", "derived-sum", "progress-bar", "bare-count", "agent-read", "manual"];
+if ("total_entries_method" in body && body.total_entries_method !== null && !ENTRIES_METHODS.includes(body.total_entries_method)) {
+  console.error(`total_entries_method must be one of ${ENTRIES_METHODS.join(", ")} (or null) — got ${JSON.stringify(body.total_entries_method)}`);
+  process.exit(1);
+}
+const FREE_ENTRY_ROUTES = ["postal", "online-free", "none-stated", "unknown"];
+if ("free_entry_route" in body && !FREE_ENTRY_ROUTES.includes(body.free_entry_route)) {
+  console.error(`free_entry_route must be one of ${FREE_ENTRY_ROUTES.join(", ")} — got ${JSON.stringify(body.free_entry_route)}`);
+  process.exit(1);
+}
+
+// Changing total_entries by hand without saying so would leave the row wearing whatever
+// provenance the scraper last wrote — a method describing a number that is no longer there.
+if ("total_entries" in body && !("total_entries_method" in body)) {
+  body.total_entries_method = "agent-read";
+  body.figures_checked_at = new Date().toISOString();
 }
 
 // If a fresh image_url is being set, re-host it onto our own Storage first (same reason as

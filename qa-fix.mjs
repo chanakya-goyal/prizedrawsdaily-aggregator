@@ -102,7 +102,17 @@ for (const d of draws) {
 
   // entries
   const ent = realEntries(`${c.pageText} ${clean(c.desc)}`, c.remaining);
-  if (ent.value && ent.value !== d.total_entries) { patch.total_entries = ent.value; notes.push(`entries ${d.total_entries}→${ent.value} (${ent.how})`); }
+  if (ent.value && ent.value !== d.total_entries) {
+    patch.total_entries = ent.value;
+    // The cap is being set by this tool, so the provenance has to say so. 'manual' is the
+    // honest label: a human ran qa-fix against a page a human chose. Writing the cap without
+    // the method would leave the row wearing whatever the scraper last claimed, describing a
+    // number that is no longer there — and the carousel would render an odds figure on it.
+    patch.total_entries_method = "manual";
+    patch.figures_checked_at = new Date().toISOString();
+    if (d.entry_url) patch.figures_source_url = d.entry_url;
+    notes.push(`entries ${d.total_entries}→${ent.value} (${ent.how})`);
+  }
 
   // grand_prize: too much judgment for regex (instant "up to £X" vs fixed "£Y main prize",
   // prize printed only on the image) — hand EVERY name-as-prize draw to the LLM/vision routine.
