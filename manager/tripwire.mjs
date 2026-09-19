@@ -1,4 +1,5 @@
 // Tripwire: exits 1 (and writes tripwire.md) when the daily pipeline is BROKEN. The Aug 2026
+import { publicBases } from "../lib/storage.mjs";
 // outage (carousel tests skipping the scrape for 10+ days) is exactly what this catches.
 // tripwire.md also carries an "Operator scoreboard" section (never trips the run — advisory
 // only, see that block below) for the Sunday patrol's curation pass.
@@ -266,11 +267,15 @@ async function storageBytes() {
 // cached object, so a HEAD-based check would report 100% uncacheable forever.
 async function uncacheableImages(limit = 12) {
   try {
-    const prefix = `${SB}/storage/v1/object/public/`;
+    // EVERY base we serve images from, not just Supabase. After the R2 move the
+    // live rows hold R2 URLs, and a Supabase-only prefix would match nothing — the
+    // check would return null and this alarm would go silently blind at exactly the
+    // moment a new provider makes it most worth having.
+    const bases = publicBases({ supabaseUrl: SB, bucket: process.env.BUCKET || "draw-images" });
     const live = await rows(
       `draws?select=image_url&status=eq.active&image_url=not.is.null&limit=${limit * 6}`,
     );
-    const ours = [...new Set(live.map((d) => d.image_url).filter((u) => typeof u === "string" && u.startsWith(prefix)))].slice(0, limit);
+    const ours = [...new Set(live.map((d) => d.image_url).filter((u) => typeof u === "string" && bases.some((b) => u.startsWith(b))))].slice(0, limit);
     if (ours.length === 0) return null;
 
     let uncacheable = 0;
