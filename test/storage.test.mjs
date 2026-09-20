@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { objectPathFromUrl, classifyOrphans, PUBLIC_PREFIX, UPLOAD_CACHE_CONTROL, uploadHeaders } from "../lib/storage.mjs";
+import { objectPathFromUrl, classifyOrphans, PUBLIC_PREFIX, UPLOAD_CACHE_CONTROL, uploadHeaders, publicBases, r2PublicBase } from "../lib/storage.mjs";
 
 const creds = { supabaseUrl: "https://proj.supabase.co", bucket: "draw-images" };
 const PREFIX = PUBLIC_PREFIX(creds);
@@ -162,5 +162,77 @@ describe("no upload site may hand-roll its headers", () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("multi-provider image bases", () => {
+  // Why this exists: moving images to Cloudflare R2 leaves the database holding a
+  // MIX of Supabase and R2 URLs for as long as the backfill takes — and permanently,
+  // for anything the backfill could not copy. Every function that maps a stored URL
+  // back to an object key has to understand both.
+  //
+  // The failure this prevents is not cosmetic. `referencedPaths` feeds
+  // `classifyOrphans`, which feeds `prune-orphans.mjs`. A base it does not recognise
+  // yields an empty referenced-set, every object looks unreferenced, and the pruner
+  // deletes the bucket that is also the rollback copy.
+  const R2 = "https://img.prizedrawsdaily.co.uk/";
+
+  const withR2 = (fn) => {
+    const prev = process.env.R2_PUBLIC_BASE;
+    process.env.R2_PUBLIC_BASE = R2;
+    try { return fn(); } finally {
+      if (prev === undefined) delete process.env.R2_PUBLIC_BASE;
+      else process.env.R2_PUBLIC_BASE = prev;
+    }
+  };
+
+  test("publicBases lists Supabase alone when R2 is not configured", () => {
+    const prev = process.env.R2_PUBLIC_BASE;
+    delete process.env.R2_PUBLIC_BASE;
+    try {
+      expect(publicBases(creds)).toEqual([PREFIX]);
+    } finally { if (prev !== undefined) process.env.R2_PUBLIC_BASE = prev; }
+  });
+
+  test("publicBases adds R2 once configured, Supabase still first", () => {
+    withR2(() => {
+      expect(publicBases(creds)).toEqual([PREFIX, R2]);
+    });
+  });
+
+  test("a missing trailing slash on R2_PUBLIC_BASE is repaired", () => {
+    // Without this, every R2 path would come back with a leading slash and never
+    // match a bucket key.
+    const prev = process.env.R2_PUBLIC_BASE;
+    process.env.R2_PUBLIC_BASE = "https://img.prizedrawsdaily.co.uk";
+    try { expect(r2PublicBase()).toBe(R2); }
+    finally { if (prev === undefined) delete process.env.R2_PUBLIC_BASE; else process.env.R2_PUBLIC_BASE = prev; }
+  });
+
+  test("objectPathFromUrl resolves a path against ANY of several bases", () => {
+    const bases = [PREFIX, R2];
+    expect(objectPathFromUrl(`${PREFIX}op/draw.webp`, bases)).toBe("op/draw.webp");
+    expect(objectPathFromUrl(`${R2}op/draw.webp`, bases)).toBe("op/draw.webp");
+  });
+
+  test("a URL on no base of ours still returns null", () => {
+    // Must stay null rather than guess: a wrong guess here invents a referenced
+    // path, and a missed one destroys a live image.
+    expect(objectPathFromUrl("https://cdn.someoneelse.com/op/draw.webp", [PREFIX, R2])).toBeNull();
+  });
+
+  test("the weserv wrapper is unwrapped for an R2 origin too", () => {
+    // The site proxies every image through weserv, so rows can hold the wrapped form
+    // for whichever origin was current when they were written.
+    const inner = encodeURIComponent(`${R2}op/draw.webp`);
+    expect(objectPathFromUrl(`https://images.weserv.nl/?url=${inner}&w=960`, [PREFIX, R2])).toBe("op/draw.webp");
+  });
+
+  test("percent-encoding still decodes on the R2 base", () => {
+    expect(objectPathFromUrl(`${R2}op/win%20a%20car.webp`, [PREFIX, R2])).toBe("op/win a car.webp");
+  });
+
+  test("an array containing the bare base yields null, not an empty key", () => {
+    expect(objectPathFromUrl(R2, [PREFIX, R2])).toBeNull();
   });
 });
