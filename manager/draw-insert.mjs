@@ -14,6 +14,7 @@
 import { schemaGate } from "../gate.mjs";
 import { templateDescription } from "../lib/describe.mjs";
 import { rehostImage } from "../lib/rehost.mjs";
+import { uniqueSlug } from "../lib/slug.mjs";
 
 const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -107,8 +108,7 @@ if (dup.length) {
 // Stable slug (title + operator slug), collision-suffixed against existing.
 const taken = new Set((await sbGet(`draws?select=slug`)).map((x) => x.slug));
 const base = `${slugify(d.title).slice(0, 100)}-${d.operator_slug}`.slice(0, 120);
-let slug = base, i = 2;
-while (taken.has(slug)) slug = `${base}-${i++}`.slice(0, 120);
+const slug = uniqueSlug(base, taken);
 
 const draw = {
   slug, operator_id: op.id, category_id, category_source,

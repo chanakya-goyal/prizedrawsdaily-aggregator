@@ -18,6 +18,7 @@ import { permalinkKey } from "./lib/liveness.mjs";
 import { routeDraw, figuresPatch } from "./lib/route.mjs";
 import { shardConfig, shardOf, shardedPublishCap, rotateRoster, rosterOffset } from "./lib/shard.mjs";
 import { fetchWithRetry } from "./lib/fetcher.mjs";
+import { uniqueSlug } from "./lib/slug.mjs";
 import { CATEGORIES } from "./lib/parse.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
@@ -414,7 +415,8 @@ for (const op of operators) {
     }
 
     if (!d.description) d.description = templateDescription(d);
-    const slug = (() => { let s = makeSlug(d.title, op.slug), i = 2; const b = s; while (takenSlugs.has(s)) s = `${b}-${i++}`.slice(0, 120); takenSlugs.add(s); return s; })();
+    const slug = uniqueSlug(makeSlug(d.title, op.slug), takenSlugs);
+    takenSlugs.add(slug);
     const flags = fieldFlags(d);
     const status = flags.length ? "draft" : PUBLISH_STATUS;
     if (status === "active") c.published++; else c.heldDraft++;
