@@ -665,7 +665,12 @@ describe("extractDate — short form", () => {
   });
 
   test("reads a labelled short date with no year at all", () => {
-    expect(day(extractDate("Draw Thu 17th Sep Instant Wins"))).toBe("2026-09-17");
+    // Year-agnostic for the same reason as the percentage test below: a yearless date resolves
+    // relative to today, so a pinned "2026-09-17" went red on the calendar and, via the test
+    // gate, blocked every scrape from 2026-09-20.
+    const d = day(extractDate("Draw Thu 17th Sep Instant Wins"));
+    expect(d).toEndWith("-09-17");
+    expect(Number(d.slice(0, 4))).toBeGreaterThanOrEqual(new Date().getFullYear());
   });
 
   test("a trailing percentage is never read as a year", () => {
