@@ -45,10 +45,16 @@ for (const b of await listBuckets(creds)) {
   }
 }
 
+// Is the switched-on provider actually usable? (lib/storage-watch.mjs explains why this alarms.)
+let config = null;
+try {
+  if (IMAGE_PROVIDER === "cloudinary" && !cloudinaryConfig()) config = { provider: IMAGE_PROVIDER, error: "no CLOUDINARY_URL set" };
+} catch (e) { config = { provider: IMAGE_PROVIDER, error: (e.message || String(e)).slice(0, 120) }; }
+
 let cloudinary = null;
 let cldDetail = "";
 try {
-  if (cloudinaryConfig()) {
+  if (!config && cloudinaryConfig()) {
     const u = await cloudinaryUsage();
     const c = u.credits || {};
     cloudinary = {
@@ -65,6 +71,7 @@ const { alarm, lines } = assessStorage({
   supabase: { bytes, limitBytes: LIMIT, writeTarget: IMAGE_PROVIDER === "supabase", recentWrites, recentBytes, recentWindowH: RECENT_H },
   cloudinary,
   threshold: THRESHOLD,
+  config,
 });
 
 const body = [

@@ -52,6 +52,15 @@ describe("assessStorage", () => {
     expect(r.lines[0]).toMatch(/~20 MB\/day it is full in ~1 day/);
   });
 
+  test("a provider switched on without working credentials alarms", () => {
+    // run.mjs treats a failed upload as "keep the operator's URL" — graceful for one image,
+    // but with broken credentials EVERY new draw silently hotlinks again (the bug rehost
+    // exists to prevent). Nothing else would notice.
+    const r = assessStorage({ supabase: sb({ writeTarget: false }), config: { provider: "cloudinary", error: "missing CLOUDINARY_API_SECRET" } });
+    expect(r.alarm).toBe(true);
+    expect(r.lines.join("\n")).toMatch(/hotlink/i);
+  });
+
   test("the threshold is adjustable", () => {
     expect(assessStorage({ supabase: sb({ bytes: 0.6 * GiB }), threshold: 0.5 }).alarm).toBe(true);
   });

@@ -67,6 +67,10 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Where re-hosted draw photos are written (lib/storage.mjs). Unset = Supabase, the
+          # historical default. CLOUDINARY.md is the runbook for switching.
+          IMAGE_PROVIDER: ${{ secrets.IMAGE_PROVIDER }}
+          CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
           FLARESOLVERR_URL: http://localhost:8191/v1 # Cloudflare solver for flaresolverr operators
           DRY_RUN: "false"
           METHODS: "render" # browser-driven operators only; api/woo/shopify run in aggregate-json.yml
@@ -118,6 +122,23 @@ jobs:
           AUDIT: "report"
           STATUS: "active,draft" # expire LIVE comps that have finished, plus stale drafts
 
+      # After the ended-sweep, so a draw that closed today is already `ended` when retention
+      # looks. Lets go of photos on the image provider once their draws have been over for
+      # RETENTION_DAYS — the lifecycle whose absence filled the free bucket three times.
+      # Self-limiting: a no-op until Cloudinary is configured, and a dry run unless
+      # IMAGE_PROVIDER=cloudinary (image-retention.mjs).
+      - name: Image retention (photos of draws over > RETENTION_DAYS)
+        if: always()
+        run: bun image-retention.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          IMAGE_PROVIDER: ${{ secrets.IMAGE_PROVIDER }}
+          CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
+          DRY_RUN: "false"
+          RETENTION_DAYS: "30"
+          RETENTION_MAX: "500"
+
       - name: Render-liveness tally (report mode — counts, does not drop)
         if: always()
         run: |
@@ -161,6 +182,9 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # publicBases() needs the provider's base too, or the image-cache check matches no
+          # live row after the move and goes silently blind.
+          CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
           SCRAPE_OUTCOME: ${{ steps.scrape.outcome }}
           TRIPWIRE_FLOOR: "150" # BROKEN level — reds the run
           TRIPWIRE_TARGET: "350" # growth target — reported, stays green
@@ -190,6 +214,38 @@ jobs:
             EXISTING=$(gh issue list --label tripwire --state open --json number -q '.[0].number' || true)
             if [ -n "$EXISTING" ]; then
               gh issue comment "$EXISTING" --body "✅ Cleared by [run ${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on $(date -u +%Y-%m-%d) — tripwire passed. Closing; a future failure opens a fresh issue."
+              gh issue close "$EXISTING"
+            fi
+          fi
+
+      # The number that takes the whole site down: Supabase answers 402 on EVERY API once the
+      # free storage quota is exceeded. It filled in Aug 2026 and again in Oct 2026, and both
+      # times nobody knew until it happened. Same open/comment/close pattern as the tripwire,
+      # under its own label so the two alarms never share a thread. Rules: lib/storage-watch.mjs.
+      - name: Storage watch — alarm before image storage fills
+        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          IMAGE_PROVIDER: ${{ secrets.IMAGE_PROVIDER }}
+          CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
+          STORAGE_ALARM_AT: "0.7"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! bun storage-watch.mjs; then
+            EXISTING=$(gh issue list --label storage-alarm --state open --json number -q '.[0].number' || true)
+            if [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --body-file storage-watch.md
+            else
+              gh label create storage-alarm --color D93F0B --description "image storage near its limit or misconfigured" 2>/dev/null || true
+              gh issue create --title "🔴 Image storage: near the limit or still writing to Supabase" \
+                --label storage-alarm --body-file storage-watch.md
+            fi
+            exit 1
+          else
+            EXISTING=$(gh issue list --label storage-alarm --state open --json number -q '.[0].number' || true)
+            if [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --body "✅ Cleared by [run ${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on $(date -u +%Y-%m-%d) — storage back under the line. Closing; a future breach opens a fresh issue."
               gh issue close "$EXISTING"
             fi
           fi
