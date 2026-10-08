@@ -46,6 +46,12 @@ describe("assessStorage", () => {
     expect(r.lines.join("\n")).toMatch(/could not read/i);
   });
 
+  test("the warning states the measured days left, not a remembered growth rate", () => {
+    const r = assessStorage({ supabase: sb({ bytes: 0.98 * GiB, recentBytes: 40 * 1048576, recentWindowH: 48 }) });
+    // 2% of 1 GiB ≈ 20.5 MB left at 20 MB/day → 1 day.
+    expect(r.lines[0]).toMatch(/~20 MB\/day it is full in ~1 day/);
+  });
+
   test("the threshold is adjustable", () => {
     expect(assessStorage({ supabase: sb({ bytes: 0.6 * GiB }), threshold: 0.5 }).alarm).toBe(true);
   });
