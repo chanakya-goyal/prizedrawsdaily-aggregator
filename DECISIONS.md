@@ -208,3 +208,42 @@ entirely.
   immediately after an upload reports a false failure — `servedCacheControl()` polls for this
   reason. The object's stored metadata is correct the instant the upload returns; only the
   edge lags.
+
+---
+
+## 2026-10-09 · Draw photos have a lifecycle, and live on Cloudinary while there is no card.
+
+**Decided:** new photos are written to Cloudinary (`IMAGE_PROVIDER=cloudinary`). Only what the
+site still needs is copied there — live and draft draws, draws ended within 30 days, every
+logo (`lib/retention.mjs` `selectNecessary`). Every day, after the ended-sweep, a photo whose
+draws have **all** been over for `RETENTION_DAYS` is repointed to its Supabase original (or to
+null, the category cover) and then deleted from Cloudinary. Supabase becomes a frozen archive:
+**nothing is ever deleted from it** by this pipeline.
+
+**Root cause it answers — stored forever, deleted never.** Three quota incidents in two
+months (Aug storage, Sep egress, Oct storage again: 1,004 MB of 1,024 MB on 2026-10-09 at
+~14 MB/day) came from one habit: every ingest stores a photo and nothing removes one. On a
+fixed-size free bucket that fills in ~2 months regardless of anything else. A new
+organisation reset the counter and kept the habit — a third one would do the same, and
+Supabase's fair-use policy names "continually exceeding Free Plan quotas" as abuse.
+
+**Rejected:**
+- *R2* — the better product, built and tested (`R2.md`, #52), but Cloudflare will not enable
+  it without a payment method and the owner declined to add one.
+- *Backblaze B2* — 10 GB free, but a first **public** bucket requires payment history or a
+  card fee.
+- *Deleting old photos from Supabase to make room* — offered; the owner chose not to, since
+  the images were moving anyway. Supabase stays frozen just under its cap instead, which is
+  why the storage watch judges it on new writes rather than on percentage.
+- *A third Supabase organisation* — resets the same clock (see above).
+
+**Guards that make it stick:** `storage-watch.mjs` (70% alarm; "anything new in the frozen
+bucket" alarm; "provider on, credentials broken" alarm), the workflows test that pins both
+sweeps to the same provider, and `sameObject()` so rehost cannot delete the webp it has just
+uploaded (on Cloudinary `x.jpg` and `x.webp` are one asset).
+
+**Reverses if:** a payment method goes on the Cloudflare account → move to R2 (10 GB, egress
+free; `migrate-images.mjs --to=r2`). Or Cloudinary usage sits above 70% of monthly credits
+for two consecutive months → shorten `RETENTION_DAYS` before anything else. Or the owner
+wants the frozen Supabase copies reclaimed → that is a separate, deliberate prune of
+objects no row references, not part of this.

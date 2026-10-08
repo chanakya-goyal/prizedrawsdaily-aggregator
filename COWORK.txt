@@ -52,6 +52,11 @@ HOW TO SET UP THE COWORK ROUTINE (one time)
  3. Give it environment variables:
         SUPABASE_URL                = https://ilnegxrsalmzpljotgpe.supabase.co
         SUPABASE_SERVICE_ROLE_KEY   = <your Supabase service role key>
+        IMAGE_PROVIDER              = cloudinary        (once switched — see CLOUDINARY.md)
+        CLOUDINARY_URL              = cloudinary://<api_key>:<api_secret>@<cloud_name>
+    The routine re-hosts images (manager/draw-insert.mjs, draw-update.mjs). If these two
+    are missing here it keeps writing to the full Supabase bucket while the Actions have
+    moved on — the storage-alarm issue reports exactly that within a day.
  4. Set its network access to FULL (so it can reach every operator site).
  5. Schedule: once daily, a bit AFTER the GitHub Action (e.g. 09:00 UK).
  6. As the routine's task, paste the contents of:  manager/PROMPT.md
