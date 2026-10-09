@@ -29,7 +29,7 @@ import { homedir } from "node:os";
 import { mkdir, readdir, appendFile } from "node:fs/promises";
 import { join, dirname, resolve, sep } from "node:path";
 import { listBucketDeep, PUBLIC_PREFIX, IMAGE_PROVIDER, cloudinaryConfig, cloudinaryPublicBase, cloudinaryUpload, cloudinaryInventory, publicIdOf, r2Client, r2PublicBase, UPLOAD_CACHE_CONTROL, objectPathFromUrl } from "./lib/storage.mjs";
-import { selectToMove, emptyGate } from "./lib/migration.mjs";
+import { selectToMove, emptyGate, onceAsync } from "./lib/migration.mjs";
 
 const URL_ = process.env.SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -113,22 +113,24 @@ function destination() {
       console.error("✗ Cloudinary not configured — set CLOUDINARY_URL (see CLOUDINARY.md)"); process.exit(1);
     }
     const base = cloudinaryPublicBase(cfg);
-    let byId = null;
+    // Shared, one-shot index load: concurrent lookups must all wait for the SAME finished
+    // inventory, never see a half-built Map (see onceAsync in lib/migration.mjs).
+    const index = onceAsync(async () => {
+      const byId = new Map();
+      for (const v of (await cloudinaryInventory()).values()) byId.set(v.publicId, v);
+      return byId;
+    });
     return {
       name: `Cloudinary (${cfg.cloudName})`,
       base,
       // One Admin API call per 500 assets — never one per image (500 calls/hour on Free).
       async lookup(path) {
-        if (!byId) {
-          byId = new Map();
-          for (const v of (await cloudinaryInventory()).values()) byId.set(v.publicId, v);
-        }
-        const hit = byId.get(publicIdOf(path));
+        const hit = (await index()).get(publicIdOf(path));
         return hit ? { bytes: hit.bytes, url: base + enc(`${hit.publicId}.${hit.format}`) } : null;
       },
       async put(path, bytes, type) {
         const res = await cloudinaryUpload({ path, bytes, contentType: type });
-        if (byId) byId.set(res.public_id, { publicId: res.public_id, format: res.format, bytes: res.bytes });
+        (await index()).set(res.public_id, { publicId: res.public_id, format: res.format, bytes: res.bytes });
         return { bytes: res.bytes, url: base + enc(`${res.public_id}.${res.format}`) };
       },
     };
