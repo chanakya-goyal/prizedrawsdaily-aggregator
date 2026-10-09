@@ -20,8 +20,9 @@ import { shardConfig, shardOf, shardedPublishCap, rotateRoster, rosterOffset } f
 import { fetchWithRetry } from "./lib/fetcher.mjs";
 import { uniqueSlug } from "./lib/slug.mjs";
 import { CATEGORIES } from "./lib/parse.mjs";
+import { supabaseUrl } from "./lib/sb.mjs";
 
-const SUPABASE_URL = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
+const SUPABASE_URL = supabaseUrl();
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const ANON_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || "";
 const DRY_RUN = process.env.DRY_RUN !== "false";

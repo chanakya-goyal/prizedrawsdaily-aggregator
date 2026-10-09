@@ -8,11 +8,12 @@
 //        ONLY=dream-car-giveaways bun manager/ai-fetch.mjs
 // Env (optional): SUPABASE_SERVICE_ROLE_KEY / SUPABASE_PUBLISHABLE_KEY to skip already-known draws.
 import { load, parseJsonLd, findProductLd, pickTitleImage, extractPrice, inferCategory, textOf, compileOpRegex, decodeEntities, extractGrandPrize } from "../lib/parse.mjs";
+import { supabaseUrl } from "../lib/sb.mjs";
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";
 const PER_OP = Number(process.env.PER_OP || 6);
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
-const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
+const SB = supabaseUrl();
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "";
 
 const DEFAULT_DRAW_RE = /\/(competitions?|product|draws?|raffles?|win|prize)\/[a-z0-9][a-z0-9-]{4,}\/?$/i;

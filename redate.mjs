@@ -3,8 +3,9 @@ import { chromium } from "playwright";
 import { chromiumLaunchOptions } from "./lib/browser.mjs";
 import { renderPage, makeContext, sleep } from "./extractor.mjs";
 import { fieldsFromHtml } from "./lib/parse.mjs";
+import { supabaseUrl } from "./lib/sb.mjs";
 
-const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
+const SB = supabaseUrl();
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const DOMAINS = ["7daysperformance.co.uk", "ukcc.co.uk", "dreamcargiveaways.co.uk", "revcomps.com"];
 

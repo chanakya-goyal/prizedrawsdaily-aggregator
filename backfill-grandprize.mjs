@@ -12,8 +12,9 @@
 // grand_prize is a generic slogan AND a concrete, non-slogan replacement is found. Draws whose
 // grand_prize already names the prize are skipped without even a network call.
 import { load, parseJsonLd, findProductLd, extractGrandPrize, isGenericTitle, UA } from "./lib/parse.mjs";
+import { supabaseUrl } from "./lib/sb.mjs";
 
-const SUPABASE_URL = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
+const SUPABASE_URL = supabaseUrl();
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const ANON = process.env.SUPABASE_PUBLISHABLE_KEY || "";
 if (!ANON) {

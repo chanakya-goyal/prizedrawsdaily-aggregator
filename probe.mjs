@@ -15,8 +15,9 @@ import { chromiumLaunchOptions } from "./lib/browser.mjs";
 import { renderPage, makeContext, pickDrawLinks, DRAW_RE, BAD_LINK, CATEGORY_TAIL, looksBlocked } from "./extractor.mjs";
 import { fetchHtml } from "./lib/fetcher.mjs";
 import { load, parseJsonLd, findProductLd } from "./lib/parse.mjs";
+import { supabaseUrl } from "./lib/sb.mjs";
 
-const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
+const SB = supabaseUrl();
 const ANON = process.env.SUPABASE_PUBLISHABLE_KEY || "";
 if (!ANON) {
   console.error("No Supabase key available. Bun auto-loads .env — check SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_PUBLISHABLE_KEY) is set there.");

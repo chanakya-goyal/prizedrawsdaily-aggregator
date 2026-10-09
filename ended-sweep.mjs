@@ -14,9 +14,9 @@ import { hydraOperator } from "./lib/adapters/hydra.mjs";
 import { inertiaOperator } from "./lib/adapters/inertia.mjs";
 import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, saysFinished } from "./lib/liveness.mjs";
 import { wooProductForUrl } from "./lib/woo.mjs";
-import { sbGetAll, sbCount } from "./lib/sb.mjs";
+import { sbGetAll, sbCount, supabaseUrl } from "./lib/sb.mjs";
 import { auditDecision, auditPatch, comparableFields, shouldApplyAudit } from "./lib/audit.mjs";
-const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
+const URL = supabaseUrl();
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
 // Which statuses to scan. Default 'draft' (queue cleanup); the daily cron passes 'active,draft'

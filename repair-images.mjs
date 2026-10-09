@@ -31,6 +31,8 @@ const DRY_RUN = process.env.DRY_RUN !== "false";
 const STATUS = (process.env.STATUS || "active,draft").split(",").map((s) => s.trim()).filter(Boolean);
 const LIMIT = Number(process.env.LIMIT || 0);
 const CONCURRENCY = Number(process.env.CONCURRENCY || 6);
+// The dead project's ref, used only to RECOGNISE rows whose image still points there — data,
+// never a connection target (the live project comes from SUPABASE_URL alone).
 const DEAD_REF = process.env.DEAD_REF || "kkuuwksgyypicnblwubs";
 const WAYBACK = process.env.WAYBACK !== "false"; // archive fallback for dead product pages
 

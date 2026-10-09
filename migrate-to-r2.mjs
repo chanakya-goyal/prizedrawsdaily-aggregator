@@ -160,6 +160,7 @@ if (PHASE === "rewrite") {
       if (!url) continue;
       if (url.startsWith(BASE)) { already++; continue; }
       // Dead-project rows are a different problem (repair-images.mjs) — never touched here.
+      // The refs are matched as DATA in stored URLs; they are never a connection target.
       if (/kkuuwksgyypicnblwubs|hnmutpztdkzmtdopdjuo/.test(url)) { dead++; continue; }
       const path = objectPathFromUrl(url, bases);
       if (!path) { foreign++; continue; }

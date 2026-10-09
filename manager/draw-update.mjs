@@ -7,8 +7,9 @@
 //   overwriting your judgment with a keyword guess (see run.mjs's category write paths).
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (required — write).
 import { rehostImage } from "../lib/rehost.mjs";
+import { supabaseUrl } from "../lib/sb.mjs";
 
-const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
+const SB = supabaseUrl();
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const [, , id, json] = process.argv;
 if (!KEY) { console.error("need SUPABASE_SERVICE_ROLE_KEY"); process.exit(1); }

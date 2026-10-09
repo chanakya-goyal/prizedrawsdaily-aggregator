@@ -23,8 +23,9 @@
 //   DRY_RUN=false + SUPABASE_SERVICE_ROLE_KEY → restore status='active'.
 import { UA } from "./lib/parse.mjs";
 import { saysFinished } from "./lib/liveness.mjs";
+import { supabaseUrl } from "./lib/sb.mjs";
 
-const URL = "https://ilnegxrsalmzpljotgpe.supabase.co";
+const URL = supabaseUrl();
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN !== "false";
 if (!DRY && !KEY) { console.error("DRY_RUN=false needs SUPABASE_SERVICE_ROLE_KEY"); process.exit(1); }
