@@ -55,7 +55,21 @@ queue, never overlap.
    rewrote in the meantime is left alone.
 
 **Any failure before step 6 leaves every row where it was, still loading from Cloudinary.**
-The workflow opens a `pages-alarm` issue and closes it on the next clean run.
+The workflow opens a `pages-alarm` issue and closes it on the next clean run. The same issue
+opens once the site holds over **15,000** photos.
+
+## Capacity
+
+Each public draw keeps one file for its live time (median ~6 days) plus `RETENTION_DAYS`
+(180) after it ends: about 188 days. 19,500 ÷ 188 ≈ **100 new public draws a day**,
+sustained. Intake on 2026-09-27…10-08 was ~110 a day, so the warning will fire some time
+in early 2027. Two ways to raise the ceiling:
+
+| | public draws/day |
+|---|---|
+| `RETENTION_DAYS=120` | ~150 |
+| `RETENTION_DAYS=90` | ~200 |
+| a second Pages project (photos split by operator) | ~200 at 180 days |
 
 **Retention** (`image-retention.mjs`, 180 days after a draw ends) nulls expired rows on Pages
 too. The next deploy leaves those photos out.

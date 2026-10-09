@@ -72,14 +72,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           OUTCOME: ${{ steps.publish.outcome }}
+          NEAR_LIMIT: ${{ steps.publish.outputs.near_limit }}
         run: |
           EXISTING=$(gh issue list --label pages-alarm --state open --json number -q '.[0].number' || true)
-          if [ "$OUTCOME" = "failure" ]; then
+          if [ "$OUTCOME" = "failure" ] || [ "$NEAR_LIMIT" = "true" ]; then
             { echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"; echo; echo '```'; tail -40 publish-images.log 2>/dev/null; echo '```'; } > body.md
             if [ -n "$EXISTING" ]; then gh issue comment "$EXISTING" --body-file body.md
             else
               gh label create pages-alarm --color D93F0B --description "photo copy to Cloudflare Pages failed" 2>/dev/null || true
-              gh issue create --title "🟠 Photos not copied to Cloudflare Pages (still served from Cloudinary)" --label pages-alarm --body-file body.md
+              gh issue create --title "🟠 Cloudflare Pages photos: copy failed or site nearly full" --label pages-alarm --body-file body.md
             fi
           elif [ -n "$EXISTING" ]; then
             gh issue comment "$EXISTING" --body "✅ Cleared by run ${GITHUB_RUN_ID} on $(date -u +%Y-%m-%d). Closing."

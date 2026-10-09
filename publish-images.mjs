@@ -23,7 +23,7 @@ import { dirname, join } from "node:path";
 import { cloudinaryConfig } from "./lib/storage.mjs";
 import {
   planMirror, pagesBase, pagesSite, pagesProject, pagesUrl, manifestOf,
-  HEADERS_FILE, NOT_FOUND_FILE, PAGES_MAX_FILES, PAGES_MAX_BYTES,
+  HEADERS_FILE, NOT_FOUND_FILE, PAGES_MAX_FILES, PAGES_WARN_FILES, PAGES_MAX_BYTES,
 } from "./lib/pages.mjs";
 
 const SB = process.env.SUPABASE_URL;
@@ -207,6 +207,10 @@ const lost = deployedKeys.filter((k) => !staged.has(k) && want.get(k)?.from === 
 if (lost.length) {
   console.error(`✗ refusing to deploy: ${lost.length} photo(s) that rows point at would be removed (${lost.slice(0, 5).join(", ")}).`);
   process.exit(1);
+}
+if (staged.size > PAGES_WARN_FILES) {
+  console.log(`⚠️ NEAR THE LIMIT: ${staged.size} photos; Pages free plan stops at 20,000 per site. Lower RETENTION_DAYS or add a second Pages project (PAGES.md).`);
+  if (gh) await writeFile(gh, "near_limit=true\n", { flag: "a" });
 }
 if (staged.size + 3 > PAGES_MAX_FILES) {
   console.error(`✗ refusing to deploy: ${staged.size} files is past the ${PAGES_MAX_FILES} guard (Pages free plan stops at 20,000). Lower RETENTION_DAYS.`);
