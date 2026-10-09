@@ -1,9 +1,10 @@
 // carousel/freshness.mjs — dead-man's-switch check (spec §4.10). Anon-readable.
 // Run anywhere: bun carousel/freshness.mjs   (exit 0 = fresh, 1 = stale)
 import { GLOBAL } from "./config.mjs";
+import { supabaseUrl } from "../lib/sb.mjs";
 const KEY = GLOBAL.supabasePublishableKey;
 try {
-  const r = await fetch(`${GLOBAL.supabaseUrl}/rest/v1/carousel_posts?status=eq.published&order=posted_at.desc&limit=1`,
+  const r = await fetch(`${supabaseUrl()}/rest/v1/carousel_posts?status=eq.published&order=posted_at.desc&limit=1`,
     { headers: { apikey: KEY, Authorization: "Bearer " + KEY } });
   const [last] = r.ok ? await r.json() : [];
   if (!last?.posted_at) { console.log("STALE — no published posts recorded yet"); process.exit(1); }
