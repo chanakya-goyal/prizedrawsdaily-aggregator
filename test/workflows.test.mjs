@@ -95,27 +95,42 @@ describe("split aggregator workflows", () => {
     }
   });
 
-  test("image retention runs AFTER the ended-sweep, and the storage alarm runs every day", () => {
-    // Retention judges "ended > N days"; run before the sweep it misses everything that
-    // closed today. The storage watch is the only thing that sees the bucket filling.
-    const sweep = RENDER.indexOf("run: bun ended-sweep.mjs");
+  test("retention runs AFTER the ended-sweep, then the Cloudinary sweep, then the guardian", () => {
+    // Retention judges "ended"; run before the ended-sweep it misses everything that closed
+    // today. The Cloudinary sweep deletes copies of what retention just let go. The guardian
+    // reads every limit last, after the day's deletions.
+    const ended = RENDER.indexOf("run: bun ended-sweep.mjs");
     const retention = RENDER.indexOf("run: bun image-retention.mjs");
-    expect(sweep).toBeGreaterThan(-1);
-    expect(retention).toBeGreaterThan(sweep);
-    expect(RENDER).toContain("bun storage-watch.mjs");
-    expect(RENDER).toMatch(/--label storage-alarm/);
+    const sweep = RENDER.indexOf("run: bun cloudinary-sweep.mjs");
+    const guardian = RENDER.indexOf("bun quota-watch.mjs");
+    expect(ended).toBeGreaterThan(-1);
+    expect(retention).toBeGreaterThan(ended);
+    expect(sweep).toBeGreaterThan(retention);
+    expect(guardian).toBeGreaterThan(sweep);
   });
 
-  test("the Supabase egress alarm runs every day, and only a real signal opens or closes it", () => {
-    // usage-watch.mjs exits 2 (warn) / 1 (red) / 0 (clear) / 3 (no signal). A no-signal run must
-    // never close an open alarm, and a warn must not turn the scrape red.
-    expect(RENDER).toContain("bun usage-watch.mjs");
-    expect(RENDER).toMatch(/--label usage-alarm/);
-    const step = RENDER.slice(RENDER.indexOf("Usage watch"));
+  test("the Cloudinary sweep deletes for real, every day, with its brakes left at their defaults", () => {
+    const from = RENDER.indexOf("- name: Cloudinary sweep");
+    const step = RENDER.slice(from, RENDER.indexOf("- name:", from + 10));
     expect(step).toMatch(/if: always\(\)/);
+    expect(step).toContain('DRY_RUN: "false"');
+    // A one-off clean-up may raise these by hand; the daily run never does.
+    expect(step).not.toContain("SWEEP_MAX_SHARE");
+    expect(step).not.toContain("SWEEP_MIN_AGE_HOURS");
+  });
+
+  test("the quota guardian runs every day, and only a real signal opens or closes its issue", () => {
+    // quota-watch.mjs exits 2 (warn) / 1 (red) / 0 (clear). A warn must not turn the scrape red;
+    // the old storage and usage alarms it replaces are closed, not left open forever.
+    const step = RENDER.slice(RENDER.indexOf("Quota guardian"));
+    expect(step).toMatch(/if: always\(\)/);
+    expect(step).toMatch(/--label quota-alarm/);
     expect(step).toContain('[ "$CODE" = "1" ] && exit 1');
-    expect(step).toMatch(/elif \[ "\$CODE" = "3" \]/);
+    expect(step).toContain("for OLD in storage-alarm usage-alarm");
     expect(step).toContain("SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}");
+    expect(RENDER).not.toContain("bun storage-watch.mjs");
+    expect(RENDER).not.toContain("bun usage-watch.mjs");
+    expect(RENDER).toMatch(/actions: read/); // the Actions cache size
   });
 
   test("every ENABLED operator is actually claimed by one of the sweeps", async () => {

@@ -25,6 +25,7 @@ jobs:
     permissions:
       contents: read
       issues: write # tripwire opens/updates an alarm issue when the pipeline breaks
+      actions: read # the quota guardian reads the Actions cache size
     services:
       # Self-hosted Cloudflare solver for operators with "fetcher": "flaresolverr".
       # Keyless & free; reachable at http://localhost:8191 from the run step. No internal
@@ -142,6 +143,21 @@ jobs:
           RETENTION_DAYS: "0"
           RETENTION_MAX: "500"
 
+      # Retention nulls a dead draw's row and the next Pages deploy drops its photo, but the
+      # Cloudinary copy it came from would stay forever. This deletes Cloudinary files no live
+      # draw, draft or logo needs (older than 48h, so a photo uploaded mid-scrape is safe).
+      # Brakes: refuses if the database reads back empty or the plan is over 25% of the
+      # account; at most 1,000 files a day. Rules: lib/sweep.mjs.
+      - name: Cloudinary sweep — delete copies no live draw needs
+        if: always()
+        run: bun cloudinary-sweep.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          IMAGE_PROVIDER: ${{ secrets.IMAGE_PROVIDER }}
+          CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
+          DRY_RUN: "false"
+
       - name: Render-liveness tally (report mode — counts, does not drop)
         if: always()
         run: |
@@ -221,74 +237,45 @@ jobs:
             fi
           fi
 
-      # The number that takes the whole site down: Supabase answers 402 on EVERY API once the
-      # free storage quota is exceeded. It filled in Aug 2026 and again in Oct 2026, and both
-      # times nobody knew until it happened. Same open/comment/close pattern as the tripwire,
-      # under its own label so the two alarms never share a thread. Rules: lib/storage-watch.mjs.
-      - name: Storage watch — alarm before image storage fills
+      # Every free limit the site depends on, in one table with a forecast: Pages files,
+      # Cloudinary credits, Supabase database / file storage / data transfer, Actions cache.
+      # Each outage so far was one of these filling with nobody looking. 🔴 at 90% or under
+      # 7 days to full (the run fails), 🟡 at 80% or under 21 days (issue, run stays green).
+      # Replaces the separate storage and usage alarms; their open issues are closed here.
+      # Rules: lib/quota.mjs. Needs sql/2026-10-10-quota-guardian.sql applied once.
+      - name: Quota guardian — every free limit, with a forecast
         if: always()
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           IMAGE_PROVIDER: ${{ secrets.IMAGE_PROVIDER }}
           CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
-          STORAGE_ALARM_AT: "0.7"
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if ! bun storage-watch.mjs; then
-            EXISTING=$(gh issue list --label storage-alarm --state open --json number -q '.[0].number' || true)
-            if [ -n "$EXISTING" ]; then
-              gh issue comment "$EXISTING" --body-file storage-watch.md
-            else
-              gh label create storage-alarm --color D93F0B --description "image storage near its limit or misconfigured" 2>/dev/null || true
-              gh issue create --title "🔴 Image storage: near the limit or still writing to Supabase" \
-                --label storage-alarm --body-file storage-watch.md
-            fi
-            exit 1
-          else
-            EXISTING=$(gh issue list --label storage-alarm --state open --json number -q '.[0].number' || true)
-            if [ -n "$EXISTING" ]; then
-              gh issue comment "$EXISTING" --body "✅ Cleared by [run ${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on $(date -u +%Y-%m-%d) — storage back under the line. Closing; a future breach opens a fresh issue."
-              gh issue close "$EXISTING"
-            fi
-          fi
-
-      # The quota that took the old project down in Sep and again in Oct 2026: Supabase EGRESS
-      # (5 GB/month Free; over it the org is restricted and every API returns 402). Supabase has
-      # no egress API, so this projects a month from the database's own API request counter
-      # (sql/2026-10-09-usage-snapshots.sql, applied once by hand) × a calibrated bytes/request.
-      # Exit 2 = past 50%: the issue opens but the run stays green. Exit 1 = past 80%: red.
-      # Exit 3 = no signal (not installed yet, or the read failed): leave any open issue alone.
-      # Rules: lib/usage-watch.mjs.
-      - name: Usage watch — alarm before Supabase egress runs out
-        if: always()
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
-          bun usage-watch.mjs
+          bun quota-watch.mjs
           CODE=$?
           set -e
-          EXISTING=$(gh issue list --label usage-alarm --state open --json number -q '.[0].number' || true)
+          RUN="[run ${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+          for OLD in storage-alarm usage-alarm; do
+            for N in $(gh issue list --label "$OLD" --state open --json number -q '.[].number' || true); do
+              gh issue comment "$N" --body "Superseded by the quota guardian (label \`quota-alarm\`), which watches this limit with every other one. Closing."
+              gh issue close "$N"
+            done
+          done
+          EXISTING=$(gh issue list --label quota-alarm --state open --json number -q '.[0].number' || true)
           if [ "$CODE" = "1" ] || [ "$CODE" = "2" ]; then
             if [ -n "$EXISTING" ]; then
-              gh issue comment "$EXISTING" --body-file usage-watch.md
+              gh issue comment "$EXISTING" --body-file quota-watch.md
             else
-              gh label create usage-alarm --color FBCA04 --description "Supabase egress projected past 50% of the free quota" 2>/dev/null || true
-              gh issue create --title "🟡 Supabase egress: projected past half of the free quota" \
-                --label usage-alarm --body-file usage-watch.md
+              gh label create quota-alarm --color D93F0B --description "a free limit is close to full or filling fast" 2>/dev/null || true
+              gh issue create --title "🛑 Free limits: one is close to full or filling fast" --label quota-alarm --body-file quota-watch.md
             fi
             [ "$CODE" = "1" ] && exit 1
             exit 0
-          elif [ "$CODE" = "0" ]; then
-            if [ -n "$EXISTING" ]; then
-              gh issue comment "$EXISTING" --body "✅ Cleared by [run ${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on $(date -u +%Y-%m-%d) — projected egress back under the line. Closing; a future breach opens a fresh issue."
-              gh issue close "$EXISTING"
-            fi
-          elif [ "$CODE" = "3" ]; then
-            echo "usage watch: no signal this run — an open alarm (if any) is left as it is"
-          else
+          elif [ "$CODE" = "0" ] && [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "✅ Cleared by ${RUN} on $(date -u +%Y-%m-%d): every free limit is clear. Closing; a future breach opens a fresh issue."
+            gh issue close "$EXISTING"
+          elif [ "$CODE" != "0" ]; then
             exit "$CODE"
           fi
