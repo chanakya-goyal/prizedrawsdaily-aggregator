@@ -8,6 +8,7 @@ import {
   publicBases,
   objectPathFromUrl,
   PUBLIC_PREFIX,
+  cloudinaryUpload,
 } from "../lib/storage.mjs";
 
 // Why this file exists: the Supabase Free bucket filled for the second time (994 MB of
@@ -140,5 +141,28 @@ describe("Cloudinary as an image base", () => {
 
   test("another Cloudinary account's URL is not ours", () => {
     expect(objectPathFromUrl("https://res.cloudinary.com/someone-else/image/upload/v1/op/d.webp", [SB, CDN])).toBeNull();
+  });
+});
+
+describe("cloudinaryUpload multipart body", () => {
+  // Found by the first live probe, 2026-10-09: Bun's FormData encodes a Blob appended
+  // WITHOUT a filename as a plain text field, so Cloudinary answered 400 "Missing
+  // required parameter - file" for every upload while all the unit tests above passed.
+  // Inspect the bytes that actually go over the wire, not the FormData object.
+  test("sends the image as a FILE part (with a filename), not a text field", async () => {
+    const realFetch = globalThis.fetch;
+    let body = "";
+    globalThis.fetch = async (_url, init) => {
+      body = await new Response(init.body).text();
+      return new Response(JSON.stringify({ public_id: "op/draw", format: "webp", bytes: 3 }), { status: 200 });
+    };
+    try {
+      await withEnv({ CLOUDINARY_URL: "cloudinary://123:secret@demo" }, () =>
+        cloudinaryUpload({ path: "op/draw.webp", bytes: new Uint8Array([1, 2, 3]), contentType: "image/webp" }));
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    expect(body).toMatch(/Content-Disposition: form-data; name="file"; filename="[^"]+"/i);
+    expect(body).toMatch(/Content-Type: image\/webp/i);
   });
 });
