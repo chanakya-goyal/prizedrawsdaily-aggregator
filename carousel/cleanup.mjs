@@ -11,8 +11,10 @@
 // publishable-key fallback state.mjs uses for reads can't delete storage objects).
 import { GLOBAL } from "./config.mjs";
 import { recentPosts, todayLondon } from "./state.mjs";
+import { supabaseUrl } from "../lib/sb.mjs";
 
-const SUPABASE_URL = process.env.SUPABASE_URL || GLOBAL.supabaseUrl;
+// Resolved per call, never at import (tests import this module); no default project — lib/sb.mjs.
+const SUPABASE_URL = () => supabaseUrl();
 const BUCKET = GLOBAL.bucket;
 
 // readyForCleanup — pure. True only when there's at least one row for the day, every
@@ -30,7 +32,7 @@ export function readyForCleanup(rows) {
 }
 
 async function listObjects(key, prefix) {
-  const r = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${BUCKET}`, {
+  const r = await fetch(`${SUPABASE_URL()}/storage/v1/object/list/${BUCKET}`, {
     method: "POST",
     headers: { apikey: key, Authorization: "Bearer " + key, "Content-Type": "application/json" },
     body: JSON.stringify({ prefix, limit: 100 }),
@@ -40,7 +42,7 @@ async function listObjects(key, prefix) {
 }
 
 async function deleteObject(key, path) {
-  const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
+  const r = await fetch(`${SUPABASE_URL()}/storage/v1/object/${BUCKET}/${path}`, {
     method: "DELETE",
     headers: { apikey: key, Authorization: "Bearer " + key },
   });

@@ -18,7 +18,7 @@
 //        JSON=true bun manager/inventory-scorecard.mjs  # machine-readable
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_PUBLISHABLE_KEY for read).
 
-const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
+import { supabaseUrl } from "../lib/sb.mjs";
 
 /**
  * Pure scoring arithmetic — no I/O, so the weights and the clamping are testable offline.
@@ -133,6 +133,8 @@ export function evaluateGates({ sweptRows, sweepScope, testsPass, unbackedBranch
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────
 if (import.meta.main) {
+  // Resolved here, not at import: the tests import this module. No default project — lib/sb.mjs.
+  const SB = supabaseUrl();
   const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "";
   if (!KEY) { console.error("need SUPABASE_SERVICE_ROLE_KEY or SUPABASE_PUBLISHABLE_KEY"); process.exit(1); }
 
@@ -153,6 +155,7 @@ if (import.meta.main) {
     count(`draws?select=id&status=eq.active&draw_date=gte.${now}`),
     count(`draws?select=id&status=eq.active&draw_date=lt.${now}`),
     count(`draws?select=id&status=eq.ended&draw_date=gte.${now}`),
+    // Live draws whose image still points at the dead project (matched as data, not connected to).
     count(`draws?select=id&status=eq.active&image_url=like.*kkuuwksgyypicnblwubs*`),
   ]);
 

@@ -1,7 +1,9 @@
 // Fetch live draws closing within N days and pick the strongest category.
 import { GLOBAL, catCfg, drawsPerDeck } from "./config.mjs";
 import { withRetry, fetchOk } from "./util.mjs";
-const SUPABASE_URL = process.env.SUPABASE_URL || GLOBAL.supabaseUrl;
+import { supabaseUrl } from "../lib/sb.mjs";
+// Resolved per call, never at import (tests import this module); no default project — lib/sb.mjs.
+const SUPABASE_URL = () => supabaseUrl();
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || GLOBAL.supabasePublishableKey;
 
 // minDays = a runway floor: never feature a draw closing sooner than this (so a post
@@ -40,7 +42,7 @@ export function londonDayBounds(dateStr) {
 export async function fetchEndingSoon(days = 7, minDays = 0, { requireProvenance = true, fromDate = null, toDate = null } = {}) {
   const from = (fromDate ? londonDayBounds(fromDate).start : new Date(Date.now() + minDays * 86400000)).toISOString();
   const end = (toDate ? londonDayBounds(toDate).end : new Date(Date.now() + days * 86400000)).toISOString();
-  const u = new URL(SUPABASE_URL + "/rest/v1/draws");
+  const u = new URL(SUPABASE_URL() + "/rest/v1/draws");
   // `operators(rating)` feeds the draw slide's Trust Score chip; the three provenance columns
   // feed the read-at stamp and the eligibility predicate below. They are selected only when
   // provenance is required, so a caller that opts out does not hit a 400 on a pre-migration DB.

@@ -3,7 +3,9 @@
 //   DRY_RUN=true bun discovery/approve.mjs <slug> → prints both payloads, writes nothing
 // The DB row lands with review_status: null so the site renders the operator as UNVERIFIED —
 // the editorial review (cowork) is what earns the "verified" badge, never this script.
-const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
+import { supabaseUrl } from "../lib/sb.mjs";
+// Resolved when it writes, never at import (the tests import the builders). No default project.
+const SB = () => supabaseUrl();
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const DRY = process.env.DRY_RUN === "true";
 
@@ -47,7 +49,7 @@ if (import.meta.path === Bun.main) {
   }
   if (!KEY) { console.error("need SUPABASE_SERVICE_ROLE_KEY (repo .env)"); process.exit(1); }
 
-  const r = await fetch(`${SB}/rest/v1/operators`, {
+  const r = await fetch(`${SB()}/rest/v1/operators`, {
     method: "POST",
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
     body: JSON.stringify([row]),

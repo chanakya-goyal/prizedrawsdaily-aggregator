@@ -2,7 +2,6 @@
   "global": {
     "igUserId": "27332554436394910",
     "fbPageId": "1106603652538117",
-    "supabaseUrl": "https://ilnegxrsalmzpljotgpe.supabase.co",
     "supabasePublishableKey": "",
     "bucket": "carousel-slides",
     "workDir": "~/Desktop/pdd-today",

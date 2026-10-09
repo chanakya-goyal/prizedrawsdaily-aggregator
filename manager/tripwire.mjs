@@ -18,8 +18,11 @@ import { publicBases } from "../lib/storage.mjs";
 // rows means the scrape ran but produced nothing — the exact shape of the Aug outage, and
 // invisible to a total-inventory check because auto-expire drains inventory only slowly.
 import { probeSilentReasons } from "../lib/manager.mjs";
+import { supabaseUrl } from "../lib/sb.mjs";
 
-const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
+// Resolved when a check actually queries, never at import: the test suite imports
+// evaluateTripwire() and must not need SUPABASE_URL. No default project — see lib/sb.mjs.
+const SB = () => supabaseUrl();
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 export function evaluateTripwire({
@@ -200,7 +203,7 @@ export function evaluateTripwire({
 
 async function count(query) {
   try {
-    const r = await fetch(`${SB}/rest/v1/${query}`, {
+    const r = await fetch(`${SB()}/rest/v1/${query}`, {
       headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, Prefer: "count=exact", Range: "0-0" },
       signal: AbortSignal.timeout(30000),
     });
@@ -212,7 +215,7 @@ async function count(query) {
 async function rows(query, { all = false } = {}) {
   try {
     if (!all) {
-      const r = await fetch(`${SB}/rest/v1/${query}`, {
+      const r = await fetch(`${SB()}/rest/v1/${query}`, {
         headers: { apikey: KEY, Authorization: `Bearer ${KEY}` },
         signal: AbortSignal.timeout(30000),
       });
@@ -225,7 +228,7 @@ async function rows(query, { all = false } = {}) {
     // that must page through it explicitly or silently lose rows past the cap.
     const out = [];
     for (let from = 0; ; from += 1000) {
-      const r = await fetch(`${SB}/rest/v1/${query}`, {
+      const r = await fetch(`${SB()}/rest/v1/${query}`, {
         headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, Range: `${from}-${from + 999}` },
         signal: AbortSignal.timeout(30000),
       });
@@ -246,7 +249,7 @@ const tally = (list, key) => list.reduce((acc, r) => { const k = key(r); if (k) 
 // any failure so a missing signal never reds the run by itself.
 async function storageBytes() {
   try {
-    const r = await fetch(`${SB}/rest/v1/rpc/storage_usage`, {
+    const r = await fetch(`${SB()}/rest/v1/rpc/storage_usage`, {
       method: "POST",
       headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
       body: "{}",
@@ -271,7 +274,7 @@ async function uncacheableImages(limit = 12) {
     // live rows hold R2 URLs, and a Supabase-only prefix would match nothing — the
     // check would return null and this alarm would go silently blind at exactly the
     // moment a new provider makes it most worth having.
-    const bases = publicBases({ supabaseUrl: SB, bucket: process.env.BUCKET || "draw-images" });
+    const bases = publicBases({ supabaseUrl: SB(), bucket: process.env.BUCKET || "draw-images" });
     const live = await rows(
       `draws?select=image_url&status=eq.active&image_url=not.is.null&limit=${limit * 6}`,
     );

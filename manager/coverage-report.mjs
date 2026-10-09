@@ -5,8 +5,8 @@
 //                                                    # GitHub Action step summary)
 //        JSON=true bun manager/coverage-report.mjs   # machine-readable, for the cowork routine
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_PUBLISHABLE_KEY for read).
-import { sbGetAll } from "../lib/sb.mjs";
-const SB = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
+import { sbGetAll, supabaseUrl } from "../lib/sb.mjs";
+const SB = supabaseUrl();
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "";
 if (!KEY) { console.error("need SUPABASE_SERVICE_ROLE_KEY or SUPABASE_PUBLISHABLE_KEY"); process.exit(1); }
 

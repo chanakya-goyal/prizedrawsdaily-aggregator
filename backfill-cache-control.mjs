@@ -52,8 +52,9 @@
 // Safe to interrupt and re-run: anything already carrying the header is skipped.
 
 import { listAllObjects, objectPathFromUrl, PUBLIC_PREFIX, uploadHeaders, UPLOAD_CACHE_CONTROL } from "./lib/storage.mjs";
+import { supabaseUrl as projectUrl } from "./lib/sb.mjs";
 
-const supabaseUrl = process.env.SUPABASE_URL || "https://ilnegxrsalmzpljotgpe.supabase.co";
+const supabaseUrl = projectUrl();
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const bucket = process.env.BUCKET || "draw-images";
 const DRY = process.env.DRY_RUN !== "false";

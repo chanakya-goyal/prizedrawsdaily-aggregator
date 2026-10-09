@@ -2,8 +2,10 @@
 // Writes need SUPABASE_SERVICE_ROLE_KEY; reads fall back to the publishable key.
 import { GLOBAL } from "./config.mjs";
 import { withRetry } from "./util.mjs";
+import { supabaseUrl } from "../lib/sb.mjs";
 
-const URL_ = process.env.SUPABASE_URL || GLOBAL.supabaseUrl;
+// Resolved per call, never at import (tests import this module); no default project — lib/sb.mjs.
+const URL_ = () => supabaseUrl();
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || GLOBAL.supabasePublishableKey;
 
 let _fetch = fetch;
@@ -13,7 +15,7 @@ const hdrs = (extra = {}) => ({ apikey: KEY, Authorization: "Bearer " + KEY, "Co
 
 async function rest(path, init = {}, label = "state") {
   return withRetry(async () => {
-    const r = await _fetch(`${URL_}/rest/v1/${path}`, init);
+    const r = await _fetch(`${URL_()}/rest/v1/${path}`, init);
     if (!r.ok) throw new Error(`${label} ${r.status}: ${(await r.text()).slice(0, 200)}`);
     const t = await r.text();
     return t ? JSON.parse(t) : null;

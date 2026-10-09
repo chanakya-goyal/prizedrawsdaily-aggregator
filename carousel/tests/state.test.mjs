@@ -1,6 +1,9 @@
 import { test, expect, beforeEach } from "bun:test";
 import { upsertPost, markStatus, recentDrawSlugs, insertMetrics, recentMetrics, todayLondon, _setFetch } from "../state.mjs";
 
+// state.mjs has no default project (lib/sb.mjs supabaseUrl()); fetch is mocked, so any URL works.
+process.env.SUPABASE_URL ||= "https://proj.supabase.co";
+
 let calls;
 beforeEach(() => {
   calls = [];

@@ -11,6 +11,7 @@
 
 const SB = process.env.SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Recognises image URLs still on the dead project — data, never a connection target.
 const DEAD = "kkuuwksgyypicnblwubs";
 const N = Number(process.argv[2] || 3);
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36";

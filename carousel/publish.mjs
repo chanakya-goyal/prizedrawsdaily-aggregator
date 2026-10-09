@@ -14,10 +14,12 @@ import { GLOBAL, workDir } from "./config.mjs";
 import { withRetry } from "./util.mjs";
 import { upsertPost, todayLondon, getPost, recentMetrics } from "./state.mjs";
 import { uploadHeaders } from "../lib/storage.mjs";
+import { supabaseUrl } from "../lib/sb.mjs";
 
 const DIR = workDir();
 const OUT = `${DIR}/out`;
-const SUPABASE_URL = process.env.SUPABASE_URL || GLOBAL.supabaseUrl;
+// Resolved per call, never at import (tests import this module); no default project — lib/sb.mjs.
+const SUPABASE_URL = () => supabaseUrl();
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const BUCKET = GLOBAL.bucket;
 const IG_USER_ID = GLOBAL.igUserId;
@@ -70,7 +72,7 @@ async function toJpeg(pngPath) {
 
 // 2) ensure the public bucket exists (idempotent)
 async function ensureBucket() {
-  const r = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+  const r = await fetch(`${SUPABASE_URL()}/storage/v1/bucket`, {
     method: "POST", headers: { apikey: KEY, Authorization: "Bearer " + KEY, "Content-Type": "application/json" },
     body: JSON.stringify({ id: BUCKET, name: BUCKET, public: true }),
   });
@@ -83,13 +85,13 @@ async function ensureBucket() {
 // 3) upload a buffer → public URL. Defaults to image/jpeg (slide path, unchanged
 // call sites below); pass "video/mp4" for reel.mp4/story.mp4.
 async function upload(path, buf, contentType = "image/jpeg") {
-  const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`, {
+  const r = await fetch(`${SUPABASE_URL()}/storage/v1/object/${BUCKET}/${path}`, {
     method: "POST",
     headers: uploadHeaders({ serviceKey: KEY, contentType }),
     body: buf,
   });
   if (!r.ok) throw new Error(`upload ${path} failed ${r.status}: ${(await r.text()).slice(0, 160)}`);
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${path}`;
+  return `${SUPABASE_URL()}/storage/v1/object/public/${BUCKET}/${path}`;
 }
 
 await withRetry(() => ensureBucket(), { label: "ensureBucket" });
@@ -125,8 +127,8 @@ try {
       // resolve to the canonical public URLs the upload path would have produced —
       // publish.json must stay complete (FB video post + DAILY.md both read reelUrl)
       // even on a retry run that skips re-hosting.
-      reelUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${today}/${sel.slug}/reel.mp4`;
-      coverUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${today}/${sel.slug}/cover.jpg`;
+      reelUrl = `${SUPABASE_URL()}/storage/v1/object/public/${BUCKET}/${today}/${sel.slug}/reel.mp4`;
+      coverUrl = `${SUPABASE_URL()}/storage/v1/object/public/${BUCKET}/${today}/${sel.slug}/cover.jpg`;
     } else {
       const reelBuf = Buffer.from(await Bun.file(`${OUT}/reel.mp4`).arrayBuffer());
       reelUrl = await withRetry(() => upload(`${today}/${sel.slug}/reel.mp4`, reelBuf, "video/mp4"), { label: "upload reel" });
@@ -156,7 +158,7 @@ try {
     const existingStory = await getPost(todayLondon(), "story").catch((e) => { console.error("⚠ story preflight skipped (state unreachable): " + e.message); return null; });
     if (existingStory?.status === "published") {
       console.error(`⚠ today's STORY is already PUBLISHED (ig_media_id=${existingStory.ig_media_id}). Skipping re-hosting story.`);
-      storyUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${today}/${sel.slug}/${storyFile}`;
+      storyUrl = `${SUPABASE_URL()}/storage/v1/object/public/${BUCKET}/${today}/${sel.slug}/${storyFile}`;
     } else {
       const storyBuf = Buffer.from(await Bun.file(`${OUT}/${storyFile}`).arrayBuffer());
       storyUrl = await withRetry(() => upload(`${today}/${sel.slug}/${storyFile}`, storyBuf, storyMime), { label: "upload story" });
