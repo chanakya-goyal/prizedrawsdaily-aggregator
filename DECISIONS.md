@@ -234,8 +234,7 @@ only has to exist; without one the account just fills more slowly.
 months (Aug storage, Sep egress, Oct storage again: 1,004 MB of 1,024 MB on 2026-10-09 at
 ~14 MB/day) came from one habit: every ingest stores a photo and nothing removes one. On a
 fixed-size free bucket that fills in ~2 months regardless of anything else. A new
-organisation reset the counter and kept the habit — a third one would do the same, and
-Supabase's fair-use policy names "continually exceeding Free Plan quotas" as abuse.
+organisation reset the counter and kept the habit — a third one would do the same.
 
 **Rejected:**
 - *R2* — the better product, built and tested (`R2.md`, #52), but Cloudflare will not enable
@@ -249,8 +248,10 @@ Supabase's fair-use policy names "continually exceeding Free Plan quotas" as abu
   projects across all organisations**, the old dead project (`kkuuwksgyypicnblwubs`) still
   holds a slot and must not be deleted (~390 ended draws' only images, `pg_cron` job), and a
   new project means moving the whole database — every PostgREST/auth call site, every key,
-  the cowork routine — to fix what is only a storage problem. It also resets the same clock,
-  and Supabase's fair-use policy names "continually exceeding Free Plan quotas" as abuse.
+  the cowork routine — to fix what is only a storage problem. It also resets the same clock.
+  (The database DID later move to a new organisation, `pgsbumozdiqxvcdgjjdz`, but for a
+  different reason: the old org's egress grace period ends 2026-10-13, after which every API
+  402s. Photos still go to Cloudinary, never to the new project.)
 
 **Guards that make it stick:** `emptyGate` refuses — deleting nothing — while any row still
 points at Supabase or any referenced object lacks a byte-exact backup or a verified copy;
