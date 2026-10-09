@@ -106,6 +106,18 @@ describe("split aggregator workflows", () => {
     expect(RENDER).toMatch(/--label storage-alarm/);
   });
 
+  test("the Supabase egress alarm runs every day, and only a real signal opens or closes it", () => {
+    // usage-watch.mjs exits 2 (warn) / 1 (red) / 0 (clear) / 3 (no signal). A no-signal run must
+    // never close an open alarm, and a warn must not turn the scrape red.
+    expect(RENDER).toContain("bun usage-watch.mjs");
+    expect(RENDER).toMatch(/--label usage-alarm/);
+    const step = RENDER.slice(RENDER.indexOf("Usage watch"));
+    expect(step).toMatch(/if: always\(\)/);
+    expect(step).toContain('[ "$CODE" = "1" ] && exit 1');
+    expect(step).toMatch(/elif \[ "\$CODE" = "3" \]/);
+    expect(step).toContain("SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}");
+  });
+
   test("every ENABLED operator is actually claimed by one of the sweeps", async () => {
     // The assertion above compares the two workflows to a hardcoded list, which cannot notice an
     // operator added with a method neither sweep runs — it would simply never be scraped again,

@@ -304,3 +304,43 @@ already counted; re-uploading would only add storage churn. They age out with re
 
 **Reverses if:** Cloudinary stops counting image uploads as transformations, or we need a
 Cloudinary-side transformation (an image asset is then the only option for that file).
+
+## 2026-10-09 · Supabase egress is watched through the API request counter, not a usage API.
+
+**Decided:** `usage-watch.mjs` runs daily in the render workflow. It reads
+`public.api_request_total()` (sql/2026-10-09-usage-snapshots.sql, applied once by hand in the
+SQL editor), which sums pg_stat_statements calls of PostgREST's per-request
+`select set_config('search_path', …)` preamble by role (anon = the site, service_role = the
+scraper, authenticated = signed-in users) plus the Storage API's preamble. It keeps one row a
+day in `public.usage_snapshots`, turns consecutive snapshots into requests/day, and projects a
+month at a calibrated bytes per request. 50% of the 5 GB quota opens a `usage-alarm` issue
+and leaves the run green; 80% turns it red. No install yet, or a failed read, is "no signal":
+never an alarm, and never a reason to close one.
+
+**Why:** the old org went over its egress quota in Sep and again in Oct 2026; after a grace
+period every API returns 402 and the site goes down. Both times the dashboard was the first
+signal. The Management API has request counts and logs but no egress figure (checked against
+its OpenAPI on 2026-10-09), and a personal access token carries the owner's full account
+privileges, which is too much to leave in CI for a counter. The database's own counter needs
+nothing new: the scraper's existing service_role key reads it through a function that
+returns counts only, never query text.
+
+**Calibration:** 4,200 bytes/request by default. On 2026-09-12 the dashboard's per-source
+breakdown showed 101.19 MB of PostgREST egress in a day; the old project's counter averaged
+~24.5k REST requests/day over 20 Aug–9 Oct (1,144,347 anon + 81,348 service_role calls). That
+day predates site PR #117's payload cut, so the figure errs high and the alarm fires early.
+Recalibrate with a week of snapshots against the dashboard (lib/usage-watch.mjs says how) and
+set `USAGE_BYTES_PER_REQUEST`.
+
+**Also decided, same PR:** run.mjs reads ended rows lean. Full columns only for active/draft
+(the only rows routing compares field by field); ended rows get
+id/entry_url/slug/status/draw_date/category_source. Measured on the live table (9,335 rows,
+6,268 ended): 2,083 KB → 1,284 KB on the wire per run. The identity read still covers EVERY
+row, although an ended-only identity read would save another ~230 KB: with two disjoint
+reads, a row that flips status between them is in neither, and a missing row looks brand new
+and is inserted twice. `test/existing.test.mjs` records, through a Proxy, every field routing
+reads from a non-mutable row and fails if one falls outside the lean column list.
+
+**Reverses if:** Supabase ships an egress figure in the Management API (read it directly), or
+pg_stat_statements stops recording the PostgREST preamble (the counter reads 0; the
+watch would then report no traffic, which the first week's calibration would expose).
