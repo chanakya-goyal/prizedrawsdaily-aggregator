@@ -46,6 +46,16 @@ describe("assessStorage", () => {
     expect(assessStorage({ ...base, cloudinary: { usedPercent: 70 } }).alarm).toBe(true);
   });
 
+  test("the Cloudinary alarm describes the ROLLING 30-day window, not a monthly reset", () => {
+    // Cloudinary's Free plan meters transformations and bandwidth over the last 30 days;
+    // usage never drops to zero on the 1st. "Until the month resets" told the reader to
+    // wait for a reset that does not come — a heavy day stays on the meter for 30 days.
+    const r = assessStorage({ supabase: sb({ writeTarget: false }), cloudinary: { usedPercent: 80, creditsUsed: 20, creditsLimit: 25 } });
+    const text = r.lines.join("\n");
+    expect(text).toMatch(/last 30 days/i);
+    expect(text).not.toMatch(/month/i);
+  });
+
   test("a usage read that failed is reported, never an alarm by itself", () => {
     // Same rule as the tripwire: a missing signal must not red the run on its own.
     const r = assessStorage({ supabase: sb(), cloudinary: { error: "429 rate limited" } });

@@ -112,12 +112,16 @@ function destination() {
       if (canPreview) return PREVIEW_ONLY;
       console.error("✗ Cloudinary not configured — set CLOUDINARY_URL (see CLOUDINARY.md)"); process.exit(1);
     }
-    const base = cloudinaryPublicBase(cfg);
+    // The migration's world is the IMAGE assets it created on 2026-10-09: selectToMove,
+    // verify, rewrite and empty-check all reason about `/image/upload/` URLs and
+    // extension-less public_ids. New uploads elsewhere are raw (cloudinaryUpload explains
+    // why); this script stays image so its bookkeeping stays true if it is ever re-run.
+    const base = cloudinaryPublicBase(cfg, "image");
     // Shared, one-shot index load: concurrent lookups must all wait for the SAME finished
     // inventory, never see a half-built Map (see onceAsync in lib/migration.mjs).
     const index = onceAsync(async () => {
       const byId = new Map();
-      for (const v of (await cloudinaryInventory()).values()) byId.set(v.publicId, v);
+      for (const v of (await cloudinaryInventory({ resourceTypes: ["image"] })).values()) byId.set(v.publicId, v);
       return byId;
     });
     return {
@@ -129,7 +133,7 @@ function destination() {
         return hit ? { bytes: hit.bytes, url: base + enc(`${hit.publicId}.${hit.format}`) } : null;
       },
       async put(path, bytes, type) {
-        const res = await cloudinaryUpload({ path, bytes, contentType: type });
+        const res = await cloudinaryUpload({ path, bytes, contentType: type, resourceType: "image" });
         (await index()).set(res.public_id, { publicId: res.public_id, format: res.format, bytes: res.bytes });
         return { bytes: res.bytes, url: base + enc(`${res.public_id}.${res.format}`) };
       },
