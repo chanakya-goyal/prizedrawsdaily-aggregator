@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { selectToMove, emptyGate, onceAsync } from "../lib/migration.mjs";
+import { selectToMove, emptyGate, onceAsync, usedBucketKeys } from "../lib/migration.mjs";
 
 // Why this file exists: the plan is to move EVERY draw photo to Cloudinary and then empty
 // the Supabase `draw-images` bucket, leaving the Supabase project with only its database.
@@ -56,8 +56,8 @@ describe("emptyGate — may the Supabase bucket be emptied?", () => {
     bucket: [{ path: "op/a.webp", size: 100 }, { path: "op/orphan.webp", size: 50 }],
     backup: new Map([["op/a.webp", good(100)], ["op/orphan.webp", good(50)]]),
     stillOnSupabase: [],
-    onCloud: new Map([["op/a", ["draws.1"]]]),
-    cloudOk: new Map([["op/a", true]]),
+    onCloud: new Map([["op/a.webp", ["draws.1"]]]),
+    cloudOk: new Map([["op/a.webp", true]]),
   });
 
   test("everything backed up, moved and verified → every object is deletable", () => {
@@ -96,7 +96,7 @@ describe("emptyGate — may the Supabase bucket be emptied?", () => {
 
   test("a referenced key whose Cloudinary copy did not verify refuses the run", () => {
     const g = base();
-    g.cloudOk.set("op/a", "size 99 != 100");
+    g.cloudOk.set("op/a.webp", "size 99 != 100");
     const r = emptyGate(g);
     expect(r.refuse).toBe(true);
     expect(r.reasons.join("\n")).toMatch(/size 99/);
@@ -104,7 +104,32 @@ describe("emptyGate — may the Supabase bucket be emptied?", () => {
 
   test("a referenced key never checked on Cloudinary refuses the run", () => {
     const g = base();
-    g.cloudOk.delete("op/a");
+    g.cloudOk.delete("op/a.webp");
+    expect(emptyGate(g).refuse).toBe(true);
+  });
+
+  // 2026-10-09: Supabase held 7 twins (same name, .avif + .webp). Cloudinary's public_id has
+  // no extension, so each pair is ONE asset; rows were pointed at the .webp. Matching "in use"
+  // by public_id made the unused .avif look referenced and compared the .webp against the
+  // .avif's size, refusing forever. "In use" must mean: a row's URL names this exact key.
+  test("a twin no row uses (same name, other extension) is an orphan, not a refusal", () => {
+    const g = base();
+    g.bucket.push({ path: "op/t.avif", size: 86 }, { path: "op/t.webp", size: 111 });
+    g.backup.set("op/t.avif", good(86)); g.backup.set("op/t.webp", good(111));
+    g.onCloud.set("op/t.webp", ["draws.9"]);
+    g.cloudOk.set("op/t.webp", true);
+    const r = emptyGate(g);
+    expect(r.refuse).toBe(false);
+    expect(r.deletable).toContain("op/t.avif");
+    expect(r.deletable).toContain("op/t.webp");
+  });
+
+  test("the twin a row DOES use must still verify on Cloudinary", () => {
+    const g = base();
+    g.bucket.push({ path: "op/t.avif", size: 86 }, { path: "op/t.webp", size: 111 });
+    g.backup.set("op/t.avif", good(86)); g.backup.set("op/t.webp", good(111));
+    g.onCloud.set("op/t.webp", ["draws.9"]);
+    g.cloudOk.set("op/t.webp", "size 86 != 111");
     expect(emptyGate(g).refuse).toBe(true);
   });
 
@@ -122,10 +147,10 @@ describe("emptyGate — may the Supabase bucket be emptied?", () => {
     const g = base();
     g.bucket = [{ path: "op/x.jpg", size: 10 }];
     g.backup = new Map([["op/x.jpg", good(10)]]);
-    g.onCloud = new Map([["op/x", ["draws.5"]]]);
+    g.onCloud = usedBucketKeys({ rowKeys: new Map([["op/x.png", ["draws.5"]]]), bucket: g.bucket });
     g.cloudOk = new Map();
     expect(emptyGate(g).refuse).toBe(true); // referenced, not verified → refuse
-    g.cloudOk.set("op/x", true);
+    g.cloudOk.set("op/x.jpg", true);
     expect(emptyGate(g).deletable).toEqual(["op/x.jpg"]);
   });
 
@@ -154,5 +179,29 @@ describe("onceAsync", () => {
     await expect(load()).rejects.toThrow("boom");
     expect(await load()).toBe("ok");
     expect(calls).toBe(2);
+  });
+});
+
+describe("usedBucketKeys — which bucket objects do the rows' Cloudinary URLs use?", () => {
+  const bucket = [{ path: "op/a.webp" }, { path: "op/x.jpg" }, { path: "op/t.avif" }, { path: "op/t.webp" }, { path: "op/u.avif" }, { path: "op/u.webp" }];
+  const used = (pairs) => usedBucketKeys({ rowKeys: new Map(pairs), bucket });
+
+  test("an exact key match is that object", () => {
+    expect([...used([["op/a.webp", ["draws.1"]]]).keys()]).toEqual(["op/a.webp"]);
+  });
+  test("a different extension with ONE same-name object maps to it (op/x.png → op/x.jpg)", () => {
+    expect(used([["op/x.png", ["draws.5"]]]).get("op/x.jpg")).toEqual(["draws.5"]);
+  });
+  test("twins with an exact match: ONLY the named twin is in use", () => {
+    expect([...used([["op/t.webp", ["draws.9"]]]).keys()]).toEqual(["op/t.webp"]);
+  });
+  test("twins with NO exact match: every twin counts as used (cautious)", () => {
+    expect([...used([["op/u.png", ["draws.3"]]]).keys()].sort()).toEqual(["op/u.avif", "op/u.webp"]);
+  });
+  test("a key matching nothing in the bucket uses nothing", () => {
+    expect(used([["op/zzz.webp", ["draws.4"]]]).size).toBe(0);
+  });
+  test("refs from several rows accumulate on the same object", () => {
+    expect(used([["op/a.webp", ["draws.1"]], ["op/a.png", ["draws.2"]]]).get("op/a.webp")).toEqual(["draws.1", "draws.2"]);
   });
 });

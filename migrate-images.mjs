@@ -29,7 +29,7 @@ import { homedir } from "node:os";
 import { mkdir, readdir, appendFile } from "node:fs/promises";
 import { join, dirname, resolve, sep } from "node:path";
 import { listBucketDeep, PUBLIC_PREFIX, IMAGE_PROVIDER, cloudinaryConfig, cloudinaryPublicBase, cloudinaryUpload, cloudinaryInventory, publicIdOf, r2Client, r2PublicBase, UPLOAD_CACHE_CONTROL, objectPathFromUrl } from "./lib/storage.mjs";
-import { selectToMove, emptyGate, onceAsync } from "./lib/migration.mjs";
+import { selectToMove, emptyGate, onceAsync, usedBucketKeys, bucketKeyResolver } from "./lib/migration.mjs";
 
 const URL_ = process.env.SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -334,25 +334,37 @@ if (PHASE === "empty-check") {
   });
   // Every row URL on the provider, per asset: each must GET as a whole, cacheable image of the
   // size the Supabase original had.
-  const urlsById = new Map();
-  for (const u of [...draws.map((d) => d.image_url), ...operators.map((o) => o.logo_url)]) {
+  // Keyed by the EXACT bucket key a row's URL names (extension included), never by public_id:
+  // twins like op/t.avif + op/t.webp are one Cloudinary asset but only one of them is in use.
+  const rowKeys = new Map();   // key a row URL names → [row refs]
+  const urlsOf = new Map();    // key a row URL names → Set(urls)
+  for (const [ref, u] of [...draws.map((d) => [`draws.${d.id}`, d.image_url]), ...operators.map((o) => [`operators.${o.id}`, o.logo_url])]) {
     const k = u && dest.base ? objectPathFromUrl(u, dest.base) : null;
     if (!k) continue;
-    const id = publicIdOf(k);
-    if (!urlsById.has(id)) urlsById.set(id, new Set());
-    urlsById.get(id).add(u);
+    if (!rowKeys.has(k)) { rowKeys.set(k, []); urlsOf.set(k, new Set()); }
+    rowKeys.get(k).push(ref);
+    urlsOf.get(k).add(u);
+  }
+  const usedOnCloud = usedBucketKeys({ rowKeys, bucket });
+  // The row URLs that resolve to each used bucket object (same rule as usedBucketKeys).
+  const resolve = bucketKeyResolver(bucket);
+  const urlsByKey = new Map();
+  for (const [k, urls] of urlsOf) {
+    for (const p of resolve(k)) {
+      if (!urlsByKey.has(p)) urlsByKey.set(p, new Set());
+      for (const u of urls) urlsByKey.get(p).add(u);
+    }
   }
   const cloudOk = new Map();
-  await pool(referenced.filter((o) => onCloud.has(publicIdOf(o.path))), async ({ path, size }) => {
-    const id = publicIdOf(path);
-    for (const u of urlsById.get(id) || []) {
+  await pool(bucket.filter((o) => usedOnCloud.has(o.path)), async ({ path, size }) => {
+    for (const u of urlsByKey.get(path) || []) {
       const v = await checkServed(u, size);
-      if (v !== true) { cloudOk.set(id, `${u.slice(-60)} → ${v}`); return; }
+      if (v !== true) { cloudOk.set(path, `${u.slice(-60)} → ${v}`); return; }
     }
-    if (!cloudOk.has(id)) cloudOk.set(id, true);
+    cloudOk.set(path, true);
   });
   const stillOnSupabase = [...move.values()].flat();
-  const gate = emptyGate({ bucket, backup, stillOnSupabase, onCloud, cloudOk });
+  const gate = emptyGate({ bucket, backup, stillOnSupabase, onCloud: usedOnCloud, cloudOk });
 
   if (gate.refuse) {
     console.error(`✗ NOT safe to empty — ${gate.reasons.length} problem(s):`);
