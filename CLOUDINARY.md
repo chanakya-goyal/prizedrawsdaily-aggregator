@@ -27,7 +27,7 @@ the habit. The fix:
 - the Supabase `draw-images` bucket is then **emptied**, so the project holds only its
   database — a fresh storage counter, not a bucket frozen at 97% and one stray write from
   a 402;
-- photos of draws over for more than `RETENTION_DAYS` (**180**) are let go every day
+- photos of draws that are over are let go every day (`RETENTION_DAYS`, **0** since 2026-10-10: a photo lives only while its draw is live)
   (`image-retention.mjs`), so Cloudinary tracks the inventory instead of the all-time total;
 - `storage-watch.mjs` alarms at 70% instead of us finding out from a 402.
 
@@ -151,7 +151,7 @@ all → delete), or approve adding the delete step to this script.
 - **Supabase holds only the database.** Its storage counter starts again from the
   carousel's few MB.
 - **Retention, daily, after the ended-sweep.** A photo whose draws have *all* been over for
-  180 days is set to `null` on its rows (the site renders the category cover and falls back
+  `RETENTION_DAYS` (0 since 2026-10-10) is set to `null` on its rows (the site renders the category cover and falls back
   to the site og:image) and only then deleted from Cloudinary. A key still used by a live
   draw or a logo is never touched. Migrated photos are not re-dated: a draw that ended a
   year ago has its photo let go on the first retention run after the move — intended.

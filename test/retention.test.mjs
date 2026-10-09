@@ -27,12 +27,23 @@ describe("isExpired", () => {
     expect(isExpired({ status: "ended", draw_date: ago(29) }, opts)).toBe(false);
   });
 
-  test("the default window is 180 days — photos are not removed early", () => {
-    // With everything on Cloudinary, storage is ~1 credit/GB of 25 free a month. The owner
-    // wants ended draws to keep their photos for months, so the default is generous.
-    expect(DEFAULT_RETENTION_DAYS).toBe(180);
-    expect(isExpired({ status: "ended", draw_date: ago(179) }, { now })).toBe(false);
-    expect(isExpired({ status: "ended", draw_date: ago(181) }, { now })).toBe(true);
+  test("the default window is 0 days: a photo lives only while its draw is live", () => {
+    // Owner's decision 2026-10-10 (lib/retention.mjs has the evidence). Each kept photo is
+    // one of the Pages free plan's 20,000 files.
+    expect(DEFAULT_RETENTION_DAYS).toBe(0);
+    expect(isExpired({ status: "ended", draw_date: ago(1) }, { now })).toBe(true);
+  });
+
+  test("with 0 days, an ended draw whose date is still ahead keeps its photo until that date", () => {
+    // A draw can close early (sold out). The age is still measured from draw_date, so its
+    // photo goes once the date passes, never before.
+    expect(isExpired({ status: "ended", draw_date: ago(-2) }, { now })).toBe(false);
+  });
+
+  test("with 0 days, a LIVE draw still never loses its photo, however past its date", () => {
+    // DECISIONS.md: a past draw_date alone never ends a draw. Only status decides.
+    expect(isExpired({ status: "active", draw_date: ago(30) }, { now })).toBe(false);
+    expect(isExpired({ status: "draft", draw_date: ago(30) }, { now })).toBe(false);
   });
 
   test("an ACTIVE draw is never expired, however old its date", () => {

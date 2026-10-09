@@ -13,7 +13,7 @@
 // A row the scrape changed since we read it is left alone, and so is its key.
 //
 //   DRY_RUN=true (default)   report only
-//   RETENTION_DAYS=180       how long after a draw ends its photo is kept
+//   RETENTION_DAYS=0         how long after a draw ends its photo is kept (0 = only while live)
 //   RETENTION_MAX=500        cap on rows per run — a selection bug is bounded to this
 //
 // Refuses to run live unless IMAGE_PROVIDER=cloudinary: it only ever touches Cloudinary

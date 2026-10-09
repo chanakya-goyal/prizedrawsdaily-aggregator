@@ -60,19 +60,23 @@ opens once the site holds over **15,000** photos.
 
 ## Capacity
 
-Each public draw keeps one file for its live time (median ~6 days) plus `RETENTION_DAYS`
-(180) after it ends: about 188 days. 19,500 ÷ 188 ≈ **100 new public draws a day**,
-sustained. Intake on 2026-09-27…10-08 was ~110 a day, so the warning will fire some time
-in early 2027. Two ways to raise the ceiling:
+Each public draw keeps one file for its live time (median ~6 days, mean ~8) plus
+`RETENTION_DAYS` after it ends. Since 2026-10-10 that is **0** (the owner's decision: a photo
+lives only while its draw is live), so 19,500 ÷ 8 ≈ **2,400 new public draws a day**,
+sustained. Intake on 2026-09-27…10-08 was ~110 a day.
 
-| | public draws/day |
+| `RETENTION_DAYS` | public draws/day |
 |---|---|
-| `RETENTION_DAYS=120` | ~150 |
-| `RETENTION_DAYS=90` | ~200 |
-| a second Pages project (photos split by operator) | ~200 at 180 days |
+| 0 (now) | ~2,400 |
+| 7 | ~1,300 |
+| 30 | ~510 |
+| 180 (until 2026-10-10) | ~100 |
 
-**Retention** (`image-retention.mjs`, 180 days after a draw ends) nulls expired rows on Pages
-too. The next deploy leaves those photos out.
+A second Pages project (photos split by operator) doubles any of these.
+
+**Retention** (`image-retention.mjs`, daily, `RETENTION_DAYS=0`) nulls the photo of every draw
+that has ended, on Pages too; the next deploy leaves those photos out. The draw page stays,
+showing its category cover. It removes at most `RETENTION_MAX` (500) photos a day.
 
 ## Owner setup (once)
 
