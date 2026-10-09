@@ -35,8 +35,20 @@ owner has declined to add one. Backblaze B2 needs payment history before a bucke
 public. **Cloudinary's Free plan needs no card**: 25 credits shared between storage
 (1 credit = 1 GB), bandwidth (1 GB) and transformations (1,000), with transformations and
 bandwidth metered over a **rolling 30 days** (no reset on the 1st). We store ~1 GB and serve
-originals only — images.weserv.nl fetches each one once and caches it. Over the limit the
-account is warned, then eventually disabled (delivery included) rather than billed.
+originals only. Over the limit the account is warned, then eventually disabled (delivery
+included) rather than billed. Re-enabling it creates a new, empty environment, so the
+local backup is what makes that survivable.
+
+### Bandwidth: every cache miss downloads the whole original
+
+images.weserv.nl does **not** fetch a photo once. Each width × crop the site asks for is
+its own cache entry, Cloudflare caches it per data centre and evicts unpopular entries,
+and every miss downloads the full stored file from Cloudinary. Crawlers and social
+previews fetch `og:image` and the JSON-LD `image` straight from Cloudinary.
+Those two must stay there, because weserv's robots.txt (`Disallow: /*?*`) blocks Google from every
+proxied URL. Measured on the first day: ~111 MB in 6.5 hours (~0.4 GB/day) while the
+caches refilled. So the stored file is kept as small as the site can use: **w<=960, q=70**
+(`lib/compress.mjs`, since 2026-10-09; was 1280/q75, 33% bigger).
 
 ### Uploads are RAW (since 2026-10-09)
 
