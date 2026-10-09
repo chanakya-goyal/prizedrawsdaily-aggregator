@@ -1,5 +1,6 @@
 import { expect, test, describe } from "bun:test";
 import { isExpired, selectExpired, planRetention, DEFAULT_RETENTION_DAYS } from "../lib/retention.mjs";
+import { planCloudinaryDeletes } from "../lib/storage.mjs";
 
 // Why this file exists: the root cause of three storage incidents in two months was
 // "stored forever, deleted never" on a fixed-size free bucket — ~3,700 new draw photos a
@@ -12,7 +13,8 @@ const DAY = 86400_000;
 const now = Date.parse("2026-10-09T12:00:00Z");
 const ago = (d) => new Date(now - d * DAY).toISOString();
 const SB = "https://proj.supabase.co/storage/v1/object/public/draw-images/";
-const CDN = "https://res.cloudinary.com/pdd/image/upload/v1/";
+const CDN = "https://res.cloudinary.com/pdd/image/upload/v1/"; // the 8,760 migrated photos
+const RAW = "https://res.cloudinary.com/pdd/raw/upload/v1/"; // every upload since 2026-10-09
 
 describe("isExpired", () => {
   const opts = { now, days: 30 };
@@ -56,13 +58,13 @@ describe("isExpired", () => {
 });
 
 describe("selectExpired — what the provider lets go", () => {
-  const opts = { cloudBase: CDN, now, days: 30 };
+  const opts = { cloud: { cloudName: "pdd" }, now, days: 30 };
 
   test("an expired draw's Cloudinary image is selected", () => {
     const draws = [{ id: 1, status: "ended", draw_date: ago(45), image_url: `${CDN}op/old.webp` }];
     const { expire } = selectExpired({ draws, operators: [], ...opts });
-    expect([...expire.keys()]).toEqual(["op/old.webp"]);
-    expect(expire.get("op/old.webp")).toEqual([1]);
+    expect([...expire.keys()]).toEqual(["image:op/old"]);
+    expect(expire.get("image:op/old")).toEqual([1]);
   });
 
   test("a key still used by a live draw survives, even when an expired row shares it", () => {
@@ -77,9 +79,9 @@ describe("selectExpired — what the provider lets go", () => {
     expect(r.protectedRows).toBe(1);
   });
 
-  test("protection is by Cloudinary asset, not by extension", () => {
-    // op/d.jpg and op/d.webp are ONE Cloudinary asset; deleting it for the expired .jpg
-    // row would kill the live .webp row's image too.
+  test("protection is by Cloudinary asset, not by extension (image form)", () => {
+    // On the migrated IMAGE assets op/d.jpg and op/d.webp are ONE asset; deleting it for
+    // the expired .jpg row would kill the live .webp row's image too.
     const draws = [
       { id: 1, status: "ended", draw_date: ago(45), image_url: `${CDN}op/d.jpg` },
       { id: 2, status: "active", image_url: `${CDN}op/d.webp` },
@@ -87,10 +89,57 @@ describe("selectExpired — what the provider lets go", () => {
     expect(selectExpired({ draws, operators: [], ...opts }).expire.size).toBe(0);
   });
 
+  test("an expired draw's RAW image is selected, its public_id keeping the extension", () => {
+    const draws = [{ id: 1, status: "ended", draw_date: ago(45), image_url: `${RAW}op/old.webp` }];
+    const { expire, assets } = selectExpired({ draws, operators: [], ...opts });
+    expect([...expire.keys()]).toEqual(["raw:op/old.webp"]);
+    expect(assets.get("raw:op/old.webp")).toEqual({ resourceType: "raw", publicId: "op/old.webp", path: "op/old.webp" });
+  });
+
+  test("raw .jpg and raw .webp are TWO assets: the expired one goes, the live one stays", () => {
+    const draws = [
+      { id: 1, status: "ended", draw_date: ago(45), image_url: `${RAW}op/d.jpg` },
+      { id: 2, status: "active", image_url: `${RAW}op/d.webp` },
+    ];
+    const { expire, protectedRows } = selectExpired({ draws, operators: [], ...opts });
+    expect([...expire.keys()]).toEqual(["raw:op/d.jpg"]);
+    expect(protectedRows).toBe(0);
+  });
+
+  test("the same key as image and as raw are different assets — neither protects the other", () => {
+    // A migrated photo (image op/d) re-uploaded since the switch lands as raw op/d.webp.
+    // The two are separate stored files; each lives or goes with its own rows.
+    const draws = [
+      { id: 1, status: "ended", draw_date: ago(45), image_url: `${CDN}op/d.webp` },
+      { id: 2, status: "active", image_url: `${RAW}op/d.webp` },
+    ];
+    expect([...selectExpired({ draws, operators: [], ...opts }).expire.keys()]).toEqual(["image:op/d"]);
+  });
+
+  test("a mixed inventory deletes each expired asset through its OWN resource type", () => {
+    const draws = [
+      { id: 1, status: "ended", draw_date: ago(45), image_url: `${CDN}op/migrated.webp` },
+      { id: 2, status: "ended", draw_date: ago(45), image_url: `${RAW}op/new.webp` },
+      { id: 3, status: "ended", draw_date: ago(45), image_url: `${RAW}op/new.webp` },
+      { id: 4, status: "active", image_url: `${RAW}op/live.webp` },
+    ];
+    const { expire, assets } = selectExpired({ draws, operators: [], ...opts });
+    expect(Object.fromEntries(expire)).toEqual({ "image:op/migrated": [1], "raw:op/new.webp": [2, 3] });
+    // The raw asset's public_id keeps ".webp"; the image asset's does not. Sending either
+    // to the other endpoint answers "not_found" and the file is never removed.
+    expect(planCloudinaryDeletes([...expire.keys()].map((k) => assets.get(k)))).toEqual([
+      { resourceType: "image", publicIds: ["op/migrated"] },
+      { resourceType: "raw", publicIds: ["op/new.webp"] },
+    ]);
+  });
+
   test("an operator logo is never expired, and protects a draw that reuses it", () => {
     const draws = [{ id: 1, status: "ended", draw_date: ago(45), image_url: `${CDN}operator-logos/acme.webp` }];
     const operators = [{ id: "o1", logo_url: `${CDN}operator-logos/acme.webp` }];
     expect(selectExpired({ draws, operators, ...opts }).expire.size).toBe(0);
+    const rawDraws = [{ id: 2, status: "ended", draw_date: ago(45), image_url: `${RAW}operator-logos/acme.webp` }];
+    const rawOps = [{ id: "o1", logo_url: `${RAW}operator-logos/acme.webp` }];
+    expect(selectExpired({ draws: rawDraws, operators: rawOps, ...opts }).expire.size).toBe(0);
   });
 
   test("rows on Supabase or anywhere else are not this job's business", () => {
@@ -112,11 +161,11 @@ describe("planRetention — where each expired row points next", () => {
     // The Supabase bucket is emptied after the move. A row repointed there would load a
     // deleted object — and would block --phase=empty-check, which refuses while any
     // row still points at the bucket.
-    const expire = new Map([["op/a.webp", [1, 2]], ["op/b.webp", [3]]]);
+    const expire = new Map([["image:op/a", [1, 2]], ["raw:op/b.webp", [3]]]);
     expect(planRetention({ expire })).toEqual([
-      { id: 1, path: "op/a.webp", newUrl: null },
-      { id: 2, path: "op/a.webp", newUrl: null },
-      { id: 3, path: "op/b.webp", newUrl: null },
+      { id: 1, key: "image:op/a", newUrl: null },
+      { id: 2, key: "image:op/a", newUrl: null },
+      { id: 3, key: "raw:op/b.webp", newUrl: null },
     ]);
   });
 });

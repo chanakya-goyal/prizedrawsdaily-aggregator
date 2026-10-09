@@ -32,10 +32,28 @@ the habit. The fix:
 R2 is the better product (10 GB, egress free at any volume) and is already built
 (`R2.md`), but Cloudflare will not enable R2 without a payment method on file and the
 owner has declined to add one. Backblaze B2 needs payment history before a bucket can be
-public. **Cloudinary's Free plan needs no card**: 25 credits a month shared between
-storage (1 credit = 1 GB), bandwidth (1 GB) and transformations (1,000). We store ~1 GB
-and serve originals only — images.weserv.nl fetches each one once and caches it — so we
-use a few credits. When the limit is hit the account stops serving rather than billing.
+public. **Cloudinary's Free plan needs no card**: 25 credits shared between storage
+(1 credit = 1 GB), bandwidth (1 GB) and transformations (1,000), with transformations and
+bandwidth metered over a **rolling 30 days** (no reset on the 1st). We store ~1 GB and serve
+originals only — images.weserv.nl fetches each one once and caches it. Over the limit the
+account is warned, then eventually disabled (delivery included) rather than billed.
+
+### Uploads are RAW (since 2026-10-09)
+
+An **image** upload is metered as transformations even when nothing is transformed: the
+migration night counted **18,639 transformations (18.6 of the 25 credits) for ~8,870 uploads
+and 1 derived asset** — about 2 per upload, and on the meter for 30 days. So every upload is
+a **raw** upload (`cloudinaryUpload`), which costs no transformation credits and is served
+byte-for-byte with the same cache header and the right `image/*` content-type.
+
+| form | URL | public_id | holds |
+|---|---|---|---|
+| raw | `…/raw/upload/v1/op/d.webp` | `op/d.webp` (extension kept) | every upload since 2026-10-09 |
+| image | `…/image/upload/v1/op/d.webp` | `op/d` (extension = delivery format) | the 8,760 migrated photos |
+
+Code that maps a URL to an asset uses `cloudinaryAssetOf` (both forms). Deleting a raw asset
+through the image endpoint, or the reverse, answers `not_found` and removes nothing.
+`migrate-images.mjs` alone still uploads image assets, so its own bookkeeping stays true.
 
 **The database stays on Supabase.** Only the bytes move.
 
@@ -124,14 +142,15 @@ all → delete), or approve adding the delete step to this script.
 - **Storage watch, daily.** Alarms at 70% of Supabase storage, on any new object in
   `draw-images` after the switch (a writer was missed), when the provider is switched on
   with credentials that do not work (every new draw would silently hotlink), and at 70% of
-  Cloudinary's monthly credits.
+  Cloudinary's credits over the last 30 days. If that alarm fires, look at transformations
+  first: they should stay near zero now that uploads are raw.
 
 ## Rollback
 
 Before the bucket is emptied, nothing has been deleted: unset `IMAGE_PROVIDER` everywhere
 and PATCH migrated rows back to
 `https://<ref>.supabase.co/storage/v1/object/public/draw-images/<key>` — the key is
-everything after `/image/upload/v1/` in the Cloudinary URL. After emptying, the local
+everything after `/image/upload/v1/` (or `/raw/upload/v1/`) in the Cloudinary URL. After emptying, the local
 backup is the copy: re-upload from `~/pdd-backups/draw-images-<date>/` (manifest.jsonl
 lists every key, its sha256 and the rows that used it).
 

@@ -18,7 +18,7 @@
 //
 // Refuses to run live unless IMAGE_PROVIDER=cloudinary: it only ever touches Cloudinary
 // URLs, and on any other provider there is nothing for it to do.
-import { IMAGE_PROVIDER, cloudinaryConfig, cloudinaryPublicBase, deleteObjects } from "./lib/storage.mjs";
+import { IMAGE_PROVIDER, cloudinaryConfig, deleteObjects } from "./lib/storage.mjs";
 import { selectExpired, planRetention, DEFAULT_RETENTION_DAYS } from "./lib/retention.mjs";
 
 const URL_ = process.env.SUPABASE_URL;
@@ -54,7 +54,8 @@ async function readAll(table, select) {
 
 const draws = await readAll("draws", "id,status,draw_date,created_at,image_url");
 const operators = await readAll("operators", "id,logo_url");
-const { expire, protectedRows } = selectExpired({ draws, operators, cloudBase: cloudinaryPublicBase(cfg), days: DAYS });
+// Both Cloudinary forms: the migrated image assets and every raw upload since (lib/retention.mjs).
+const { expire, assets, protectedRows } = selectExpired({ draws, operators, cloud: cfg, days: DAYS });
 const plan = planRetention({ expire }).slice(0, MAX);
 
 console.log(`${DRY ? "DRY RUN" : "LIVE"} · keep window ${DAYS}d · cap ${MAX} rows`);
@@ -71,17 +72,18 @@ for (const p of plan) {
     method: "PATCH", headers: { ...H, Prefer: "return=representation" },
     body: JSON.stringify({ image_url: p.newUrl }),
   });
-  if (!r.ok) { failed++; blocked.add(p.path); continue; }
+  if (!r.ok) { failed++; blocked.add(p.key); continue; }
   const rows = await r.json().catch(() => []);
-  if (!rows.length) { raced++; blocked.add(p.path); continue; }
+  if (!rows.length) { raced++; blocked.add(p.key); continue; }
   repointed++;
 }
 
 // 2. Delete only keys whose every row in this run was repointed. A key whose rows were split
 //    by the cap is held back too — its remaining rows still point at it.
 const planned = new Map();
-for (const p of plan) planned.set(p.path, (planned.get(p.path) || 0) + 1);
-const deletable = [...planned].filter(([path, n]) => !blocked.has(path) && n === expire.get(path).length).map(([path]) => path);
+for (const p of plan) planned.set(p.key, (planned.get(p.key) || 0) + 1);
+const deletable = [...planned].filter(([key, n]) => !blocked.has(key) && n === expire.get(key).length).map(([key]) => assets.get(key));
+// Each asset carries its resource type: image for migrated photos, raw for everything since.
 const del = deletable.length ? await deleteObjects(deletable) : { deleted: 0, notFound: 0, failed: [] };
 
 console.log(`repointed ${repointed} · changed since read ${raced} · failed ${failed}`);

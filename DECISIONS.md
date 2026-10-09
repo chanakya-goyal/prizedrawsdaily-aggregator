@@ -234,8 +234,7 @@ only has to exist; without one the account just fills more slowly.
 months (Aug storage, Sep egress, Oct storage again: 1,004 MB of 1,024 MB on 2026-10-09 at
 ~14 MB/day) came from one habit: every ingest stores a photo and nothing removes one. On a
 fixed-size free bucket that fills in ~2 months regardless of anything else. A new
-organisation reset the counter and kept the habit — a third one would do the same, and
-Supabase's fair-use policy names "continually exceeding Free Plan quotas" as abuse.
+organisation reset the counter and kept the habit — a third one would do the same.
 
 **Rejected:**
 - *R2* — the better product, built and tested (`R2.md`, #52), but Cloudflare will not enable
@@ -249,15 +248,18 @@ Supabase's fair-use policy names "continually exceeding Free Plan quotas" as abu
   projects across all organisations**, the old dead project (`kkuuwksgyypicnblwubs`) still
   holds a slot and must not be deleted (~390 ended draws' only images, `pg_cron` job), and a
   new project means moving the whole database — every PostgREST/auth call site, every key,
-  the cowork routine — to fix what is only a storage problem. It also resets the same clock,
-  and Supabase's fair-use policy names "continually exceeding Free Plan quotas" as abuse.
+  the cowork routine — to fix what is only a storage problem. It also resets the same clock.
+  (The database DID later move to a new organisation, `pgsbumozdiqxvcdgjjdz`, but for a
+  different reason: the old org's egress grace period ends 2026-10-13, after which every API
+  402s. Photos still go to Cloudinary, never to the new project.)
 
 **Guards that make it stick:** `emptyGate` refuses — deleting nothing — while any row still
 points at Supabase or any referenced object lacks a byte-exact backup or a verified copy;
 `storage-watch.mjs` (70% Supabase storage; any new object in `draw-images` after the switch;
 "provider on, credentials broken"; 70% of Cloudinary credits); the workflows test that pins
 both sweeps to the same provider; and `sameObject()` so rehost cannot delete the webp it has
-just uploaded (on Cloudinary `x.jpg` and `x.webp` are one asset).
+just uploaded (on Cloudinary *image* assets `x.jpg` and `x.webp` are one asset — uploads are
+raw since the next decision, where they are two).
 
 **Not automated:** the bulk delete that empties the bucket. `--phase=empty-check` evaluates
 the gate read-only; the delete itself waits on the owner's explicit go-ahead.
@@ -265,3 +267,40 @@ the gate read-only; the delete itself waits on the owner's explicit go-ahead.
 **Reverses if:** a payment method goes on the Cloudflare account → move to R2 (10 GB, egress
 free; `migrate-images.mjs --to=r2`). Or Cloudinary usage sits above 70% of monthly credits
 for two consecutive months → shorten `RETENTION_DAYS` before anything else.
+
+---
+
+## 2026-10-09 · Every Cloudinary upload is a RAW upload.
+
+**Decided:** `cloudinaryUpload` posts to `/raw/upload` with the bucket key as the public_id,
+extension included, and new rows point at `https://res.cloudinary.com/<cloud>/raw/upload/v1/<key>`.
+The 8,760 photos migrated that night stay image assets on `/image/upload/v1/` (public_id
+without the extension). Every reader that maps a URL back to an asset goes through
+`cloudinaryAssetOf`, which knows both forms; `publicBases()` lists both; retention deletes
+each asset through its own resource type; `cloudinaryInventory()` lists both.
+
+**Why:** the first day on Cloudinary used 80% of the Free plan's 25 credits. The usage API on
+2026-10-09: **18,639 transformations (18.64 credits)** against ~8,870 uploads and **1 derived
+asset** — we never asked for a transformation, so the uploads themselves were metered, about
+**2 per image upload**. Cloudinary meters transformations and bandwidth over a **rolling 30
+days** (no reset on the 1st), so that one night stays on the meter until about 8 Nov. At
+~130–170 new photos a day, image uploads alone would add ~9 credits a month on top — over the
+limit within about two weeks, and an account left over its limit is eventually disabled,
+delivery included. A raw upload costs no transformation credits.
+
+**What raw gives up:** nothing we use. Cloudinary serves a raw file byte-for-byte; we never
+used its transformations (images.weserv.nl resizes). Probed 2026-10-09: a raw `.webp` serves
+`content-type: image/webp` with `public, no-transform, immutable, max-age=2592000` — the same
+cache header as the image assets — and weserv resizes it.
+
+**Guards:** `test/cloudinary.test.mjs` pins the `/raw/upload` endpoint and the
+extension-keeping public_id in the multipart body that goes over the wire, both URL forms in
+`publicBases`/`cloudinaryAssetOf`/`sameObject`, and per-type delete endpoints;
+`test/retention.test.mjs` pins a mixed inventory deleting each asset through its own type.
+`storage-watch.mjs` alarms at 70% of credits and now says "last 30 days", not "this month".
+
+**Not done:** re-uploading the 8,760 migrated image assets as raw. Their transformations are
+already counted; re-uploading would only add storage churn. They age out with retention.
+
+**Reverses if:** Cloudinary stops counting image uploads as transformations, or we need a
+Cloudinary-side transformation (an image asset is then the only option for that file).
