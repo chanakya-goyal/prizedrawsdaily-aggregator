@@ -29,7 +29,7 @@ the habit. The fix:
   a 402;
 - photos of draws that are over are let go every day (`RETENTION_DAYS`, **0** since 2026-10-10: a photo lives only while its draw is live)
   (`image-retention.mjs`), so Cloudinary tracks the inventory instead of the all-time total;
-- `storage-watch.mjs` alarms at 70% instead of us finding out from a 402.
+- the free-limit guardian (`quota-watch.mjs`) watches storage and credits with a forecast instead of us finding out from a 402; `cloudinary-sweep.mjs` deletes copies no live draw needs.
 
 ### Why Cloudinary, not R2
 

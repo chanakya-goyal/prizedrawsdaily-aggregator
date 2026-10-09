@@ -344,3 +344,33 @@ reads from a non-mutable row and fails if one falls outside the lean column list
 **Reverses if:** Supabase ships an egress figure in the Management API (read it directly), or
 pg_stat_statements stops recording the PostgREST preamble (the counter reads 0; the
 watch would then report no traffic, which the first week's calibration would expose).
+
+## 2026-10-10 · A photo lives only while its draw is live, and every free limit is guarded in one place.
+
+**Decided (owner):** draws stay in the database as text, and their pages stay. A dead draw's
+photo is neither kept nor served:
+- `RETENTION_DAYS=0`: `image-retention.mjs` nulls the row's photo once a draw has ended and
+  its date has passed. The page shows its category cover, and the next Pages deploy drops the file.
+- `cloudinary-sweep.mjs`, daily after retention, deletes Cloudinary files no live draw, draft or
+  logo needs (rules: `lib/sweep.mjs`).
+- The one-off clean-up on 2026-10-10 deleted 5,973 such files (762 MB) with 0 failures. Before
+  it ran, an independent check confirmed that no live row, draft or logo used any of them.
+
+**Also decided:** `quota-watch.mjs` replaces the separate storage and usage alarms. It reads
+every free limit, keeps one reading per day in `public.quota_snapshots`, and opens a single
+`quota-alarm` issue with a forecast (rules: `lib/quota.mjs`). The limits it reads:
+- Pages files
+- Cloudinary credits
+- Supabase database, file storage and data transfer
+- the Actions cache
+
+**Why:** every outage so far was a free limit filling with nobody looking. The old alarms
+watched one percentage each, so a limit filling fast from a low level stayed invisible until it
+was nearly full. Photos of dead draws were also most of what we stored: 5,770 of the 9,102
+Cloudinary files, and 5,768 of the 8,181 Pages files. Their pages earn ~2% of search clicks,
+on the prize name, not the photo. At 180 days' retention the Pages site could take ~100 new
+draws a day; at 0 it can take ~2,400.
+
+**Reverse when:** ended draw pages start earning clicks that depend on the photo, for example
+image search. Raise `RETENTION_DAYS`. Cloudinary still holds no copy of the deleted photos; the
+migrated ones are in the local backup.
