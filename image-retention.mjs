@@ -82,7 +82,8 @@ for (const p of plan) {
 //    by the cap is held back too — its remaining rows still point at it.
 const planned = new Map();
 for (const p of plan) planned.set(p.key, (planned.get(p.key) || 0) + 1);
-const deletable = [...planned].filter(([key, n]) => !blocked.has(key) && n === expire.get(key).length).map(([key]) => assets.get(key));
+// Pages keys have no asset (publish-images.mjs drops them from the site on its next run).
+const deletable = [...planned].filter(([key, n]) => !blocked.has(key) && n === expire.get(key).length).map(([key]) => assets.get(key)).filter(Boolean);
 // Each asset carries its resource type: image for migrated photos, raw for everything since.
 const del = deletable.length ? await deleteObjects(deletable) : { deleted: 0, notFound: 0, failed: [] };
 

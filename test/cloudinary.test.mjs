@@ -161,6 +161,7 @@ describe("Cloudinary as an image base", () => {
   const SB = PUBLIC_PREFIX(creds);
   const CDN = "https://res.cloudinary.com/pdd-images/image/upload/v1/";
   const RAW = "https://res.cloudinary.com/pdd-images/raw/upload/v1/";
+  const PAGES = "https://prizedrawsdaily-images.pages.dev/i/"; // lib/pages.mjs, served since 2026-10-10
 
   test("the public base new uploads land on is the RAW one, with the /v1/ placeholder", () => {
     // /v1/ is the placeholder Cloudinary's own SDKs use for folder paths (without a
@@ -185,12 +186,13 @@ describe("Cloudinary as an image base", () => {
     // rehost would re-download them on every pass and the tripwire's cache check would
     // go blind.
     withEnv({ CLOUDINARY_URL: "cloudinary://k:s@pdd-images" }, () => {
-      expect(publicBases(creds)).toEqual([SB, CDN, RAW]);
+      expect(publicBases(creds)).toEqual([SB, CDN, RAW, PAGES]);
     });
   });
 
-  test("publicBases is Supabase alone when no provider is configured", () => {
-    withEnv({}, () => expect(publicBases(creds)).toEqual([SB]));
+  test("publicBases is Supabase and the Pages site when no provider is configured", () => {
+    // Pages is always listed: it is where public photos are served (lib/pages.mjs).
+    withEnv({}, () => expect(publicBases(creds)).toEqual([SB, PAGES]));
   });
 
   test("a Cloudinary URL of either form resolves to the SAME key as the Supabase object", () => {

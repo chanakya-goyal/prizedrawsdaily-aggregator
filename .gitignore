@@ -63,3 +63,6 @@ audit-report.json
 # Pre-migration table snapshots. Recovery artefacts, taken locally before a DDL change —
 # real row data, no secrets, and no business being in the repository.
 migrations/backups/
+
+# staged Cloudflare Pages site (publish-images.mjs), cached by CI
+.pages-images/

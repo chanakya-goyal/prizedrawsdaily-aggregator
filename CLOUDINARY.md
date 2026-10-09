@@ -1,5 +1,9 @@
 # Moving draw images to Cloudinary
 
+> **Since 2026-10-10 public photos are SERVED from Cloudflare Pages ([`PAGES.md`](PAGES.md)).**
+> Cloudinary still receives every upload and keeps every copy. Delivering from it measured
+> ~0.7 GB/day, which would use up the free credits in about a week.
+
 ## Why
 
 The Supabase Free plan gives this project **1 GB of storage**, and every API — reads,

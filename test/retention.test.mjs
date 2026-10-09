@@ -154,6 +154,52 @@ describe("selectExpired — what the provider lets go", () => {
     const draws = [{ id: 1, status: "ended", draw_date: ago(5), image_url: `${CDN}op/recent.webp` }];
     expect(selectExpired({ draws, operators: [], ...opts }).expire.size).toBe(0);
   });
+
+  // Since 2026-10-10 public photos are served from the Pages site (lib/pages.mjs). Missing
+  // them here would let the site grow until it hit the free plan's 20,000-file ceiling.
+  const PAGES = "https://site.pages.dev/i/";
+  const popts = { ...opts, base: PAGES };
+
+  test("an expired draw served from Pages is selected, with nothing for deleteObjects", () => {
+    const draws = [{ id: 1, status: "ended", draw_date: ago(45), image_url: `${PAGES}op/old.webp` }];
+    const r = selectExpired({ draws, operators: [], ...popts });
+    expect([...r.expire.keys()]).toEqual(["pages:op/old.webp"]);
+    // publish-images.mjs drops it from the site once the row is null. No API delete.
+    expect(r.assets.size).toBe(0);
+  });
+
+  test("a Pages photo still used by a live draw or a logo survives", () => {
+    const draws = [
+      { id: 1, status: "ended", draw_date: ago(45), image_url: `${PAGES}op/shared.webp` },
+      { id: 2, status: "active", draw_date: ago(-3), image_url: `${PAGES}op/shared.webp` },
+      { id: 3, status: "ended", draw_date: ago(45), image_url: `${PAGES}operator-logos/op.webp` },
+    ];
+    const operators = [{ id: 9, logo_url: `${PAGES}operator-logos/op.webp` }];
+    const r = selectExpired({ draws, operators, ...popts });
+    expect(r.expire.size).toBe(0);
+    expect(r.protectedRows).toBe(2);
+  });
+
+  test("a Pages key and a Cloudinary key for the same path are different photos", () => {
+    // The Cloudinary copy left behind after a move is not what a Pages row shows: expiring
+    // the Pages row must not hand the Cloudinary asset of a live draft to deleteObjects.
+    const draws = [
+      { id: 1, status: "ended", draw_date: ago(45), image_url: `${PAGES}op/d.webp` },
+      { id: 2, status: "draft", draw_date: ago(-3), image_url: `${RAW}op/d.webp` },
+    ];
+    const r = selectExpired({ draws, operators: [], ...popts });
+    expect([...r.expire.keys()]).toEqual(["pages:op/d.webp"]);
+    expect(r.assets.size).toBe(0);
+  });
+
+  test("with no Cloudinary config, Pages rows still expire and nothing throws", () => {
+    const draws = [
+      { id: 1, status: "ended", draw_date: ago(45), image_url: `${PAGES}op/old.webp` },
+      { id: 2, status: "ended", draw_date: ago(45), image_url: `${RAW}op/x.webp` },
+    ];
+    const r = selectExpired({ draws, operators: [], cloud: null, base: PAGES, now, days: 30 });
+    expect([...r.expire.keys()]).toEqual(["pages:op/old.webp"]);
+  });
 });
 
 describe("planRetention — where each expired row points next", () => {

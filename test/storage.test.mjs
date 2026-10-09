@@ -193,15 +193,18 @@ describe("multi-provider image bases", () => {
   };
   const withR2 = (fn) => withOnly({ R2_PUBLIC_BASE: R2 }, fn);
 
-  test("publicBases lists Supabase alone when R2 is not configured", () => {
+  // The Pages site (lib/pages.mjs) is always listed last: it serves the public photos.
+  const PAGES = "https://prizedrawsdaily-images.pages.dev/i/";
+
+  test("publicBases lists Supabase and the Pages site when R2 is not configured", () => {
     withOnly({}, () => {
-      expect(publicBases(creds)).toEqual([PREFIX]);
+      expect(publicBases(creds)).toEqual([PREFIX, PAGES]);
     });
   });
 
   test("publicBases adds R2 once configured, Supabase still first", () => {
     withR2(() => {
-      expect(publicBases(creds)).toEqual([PREFIX, R2]);
+      expect(publicBases(creds)).toEqual([PREFIX, R2, PAGES]);
     });
   });
 
