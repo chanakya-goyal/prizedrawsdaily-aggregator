@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { selectToMove, emptyGate } from "../lib/migration.mjs";
+import { selectToMove, emptyGate, onceAsync } from "../lib/migration.mjs";
 
 // Why this file exists: the plan is to move EVERY draw photo to Cloudinary and then empty
 // the Supabase `draw-images` bucket, leaving the Supabase project with only its database.
@@ -133,5 +133,26 @@ describe("emptyGate — may the Supabase bucket be emptied?", () => {
     const r = emptyGate({ ...base(), bucket: [] });
     expect(r.refuse).toBe(false);
     expect(r.deletable).toEqual([]);
+  });
+});
+
+describe("onceAsync", () => {
+  // The first live verify (2026-10-09) reported 8 of 20 freshly-copied images MISSING. The
+  // lookup built its Cloudinary index lazily — `byId = new Map()` and THEN await the
+  // inventory — so the first pool-width of concurrent lookups saw an empty Map. Exactly 8.
+  test("concurrent callers share ONE load and all see the finished result", async () => {
+    let calls = 0;
+    const load = onceAsync(async () => { calls++; await Bun.sleep(20); return new Map([["k", 1]]); });
+    const results = await Promise.all(Array.from({ length: 8 }, () => load()));
+    expect(calls).toBe(1);
+    for (const m of results) expect(m.get("k")).toBe(1);
+  });
+
+  test("a failed load is not cached, so the next caller retries", async () => {
+    let calls = 0;
+    const load = onceAsync(async () => { calls++; if (calls === 1) throw new Error("boom"); return "ok"; });
+    await expect(load()).rejects.toThrow("boom");
+    expect(await load()).toBe("ok");
+    expect(calls).toBe(2);
   });
 });
