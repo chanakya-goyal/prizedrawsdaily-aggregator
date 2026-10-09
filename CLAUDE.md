@@ -13,6 +13,7 @@ Default to using Bun instead of Node.js.
 
 - **This file** — how the system works *today*.
 - **[`CLOUDINARY.md`](CLOUDINARY.md)** — where draw photos live (Cloudinary, no card needed), why they now have a 180-day-after-ending lifecycle, why the Supabase bucket is emptied, and the storage alarm. `R2.md` is the built-but-unused alternative.
+- **Supabase egress alarm** — `usage-watch.mjs` (daily, `usage-alarm` label) projects a month of database egress from the API request counter; it needs `sql/2026-10-09-usage-snapshots.sql` applied once in the SQL editor, and `lib/usage-watch.mjs` says how to recalibrate its bytes-per-request figure.
 - **[`DECISIONS.md`](DECISIONS.md)** — the standing laws this pipeline may not break (a past date never ends a draw; absence from a feed is not evidence; `total_entries` is required), each with what would reverse it. **Read before changing anything in `lib/verify.mjs` or `ended-sweep.mjs`.**
 - **[`../pdd-seo-tools/docs/LESSONS.md`](../pdd-seo-tools/docs/LESSONS.md)** — the fleet-wide mistakes log. Every entry names the mechanical check that now catches the trap.
 - `tripwire.md` is **generated** — edit `manager/tripwire.mjs`, not the file.

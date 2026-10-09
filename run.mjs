@@ -21,6 +21,7 @@ import { fetchWithRetry } from "./lib/fetcher.mjs";
 import { uniqueSlug } from "./lib/slug.mjs";
 import { CATEGORIES } from "./lib/parse.mjs";
 import { supabaseUrl } from "./lib/sb.mjs";
+import { loadExisting } from "./lib/existing.mjs";
 
 const SUPABASE_URL = supabaseUrl();
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -182,7 +183,9 @@ const opMap = Object.fromEntries(dbOps.map((o) => [o.slug, o.id]));
 // stored observation against today's fresh scrape (see lib/verify.mjs). `category_id` +
 // `category_source` come back for a second reason — they are the record of a judgment the
 // rules cannot reproduce, so every write path below has to read them before it overwrites.
-const existing = await sbGetAll("draws?select=id,entry_url,slug,status,title,ticket_price,total_entries,total_prize_value,draw_date,image_url,prize_description,category_id,category_source,created_at");
+// Full columns only for active/draft rows; ended rows come back lean (lib/existing.mjs says
+// why, and test/existing.test.mjs pins which fields routing reads from them).
+const existing = await loadExisting(sbGetAll);
 const byUrl = new Map(existing.filter((d) => d.entry_url).map((d) => [d.entry_url, d]));
 const takenSlugs = new Set(existing.map((d) => d.slug));
 // Canonical keys of every draw we already hold, so a capped operator still re-reads them.

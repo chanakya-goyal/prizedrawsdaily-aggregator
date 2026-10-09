@@ -251,3 +251,43 @@ jobs:
               gh issue close "$EXISTING"
             fi
           fi
+
+      # The quota that took the old project down in Sep and again in Oct 2026: Supabase EGRESS
+      # (5 GB/month Free; over it the org is restricted and every API returns 402). Supabase has
+      # no egress API, so this projects a month from the database's own API request counter
+      # (sql/2026-10-09-usage-snapshots.sql, applied once by hand) × a calibrated bytes/request.
+      # Exit 2 = past 50%: the issue opens but the run stays green. Exit 1 = past 80%: red.
+      # Exit 3 = no signal (not installed yet, or the read failed): leave any open issue alone.
+      # Rules: lib/usage-watch.mjs.
+      - name: Usage watch — alarm before Supabase egress runs out
+        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          bun usage-watch.mjs
+          CODE=$?
+          set -e
+          EXISTING=$(gh issue list --label usage-alarm --state open --json number -q '.[0].number' || true)
+          if [ "$CODE" = "1" ] || [ "$CODE" = "2" ]; then
+            if [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --body-file usage-watch.md
+            else
+              gh label create usage-alarm --color FBCA04 --description "Supabase egress projected past 50% of the free quota" 2>/dev/null || true
+              gh issue create --title "🟡 Supabase egress: projected past half of the free quota" \
+                --label usage-alarm --body-file usage-watch.md
+            fi
+            [ "$CODE" = "1" ] && exit 1
+            exit 0
+          elif [ "$CODE" = "0" ]; then
+            if [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --body "✅ Cleared by [run ${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) on $(date -u +%Y-%m-%d) — projected egress back under the line. Closing; a future breach opens a fresh issue."
+              gh issue close "$EXISTING"
+            fi
+          elif [ "$CODE" = "3" ]; then
+            echo "usage watch: no signal this run — an open alarm (if any) is left as it is"
+          else
+            exit "$CODE"
+          fi
