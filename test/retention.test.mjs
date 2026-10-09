@@ -27,12 +27,23 @@ describe("isExpired", () => {
     expect(isExpired({ status: "ended", draw_date: ago(29) }, opts)).toBe(false);
   });
 
-  test("the default window is 180 days — photos are not removed early", () => {
-    // With everything on Cloudinary, storage is ~1 credit/GB of 25 free a month. The owner
-    // wants ended draws to keep their photos for months, so the default is generous.
-    expect(DEFAULT_RETENTION_DAYS).toBe(180);
-    expect(isExpired({ status: "ended", draw_date: ago(179) }, { now })).toBe(false);
-    expect(isExpired({ status: "ended", draw_date: ago(181) }, { now })).toBe(true);
+  test("the default window is 0 days: a photo lives only while its draw is live", () => {
+    // Owner's decision 2026-10-10 (lib/retention.mjs has the evidence). Each kept photo is
+    // one of the Pages free plan's 20,000 files.
+    expect(DEFAULT_RETENTION_DAYS).toBe(0);
+    expect(isExpired({ status: "ended", draw_date: ago(1) }, { now })).toBe(true);
+  });
+
+  test("with 0 days, an ended draw whose date is still ahead keeps its photo until that date", () => {
+    // A draw can close early (sold out). The age is still measured from draw_date, so its
+    // photo goes once the date passes, never before.
+    expect(isExpired({ status: "ended", draw_date: ago(-2) }, { now })).toBe(false);
+  });
+
+  test("with 0 days, a LIVE draw still never loses its photo, however past its date", () => {
+    // DECISIONS.md: a past draw_date alone never ends a draw. Only status decides.
+    expect(isExpired({ status: "active", draw_date: ago(30) }, { now })).toBe(false);
+    expect(isExpired({ status: "draft", draw_date: ago(30) }, { now })).toBe(false);
   });
 
   test("an ACTIVE draw is never expired, however old its date", () => {
@@ -153,6 +164,52 @@ describe("selectExpired — what the provider lets go", () => {
   test("a recently-ended draw keeps its image", () => {
     const draws = [{ id: 1, status: "ended", draw_date: ago(5), image_url: `${CDN}op/recent.webp` }];
     expect(selectExpired({ draws, operators: [], ...opts }).expire.size).toBe(0);
+  });
+
+  // Since 2026-10-10 public photos are served from the Pages site (lib/pages.mjs). Missing
+  // them here would let the site grow until it hit the free plan's 20,000-file ceiling.
+  const PAGES = "https://site.pages.dev/i/";
+  const popts = { ...opts, base: PAGES };
+
+  test("an expired draw served from Pages is selected, with nothing for deleteObjects", () => {
+    const draws = [{ id: 1, status: "ended", draw_date: ago(45), image_url: `${PAGES}op/old.webp` }];
+    const r = selectExpired({ draws, operators: [], ...popts });
+    expect([...r.expire.keys()]).toEqual(["pages:op/old.webp"]);
+    // publish-images.mjs drops it from the site once the row is null. No API delete.
+    expect(r.assets.size).toBe(0);
+  });
+
+  test("a Pages photo still used by a live draw or a logo survives", () => {
+    const draws = [
+      { id: 1, status: "ended", draw_date: ago(45), image_url: `${PAGES}op/shared.webp` },
+      { id: 2, status: "active", draw_date: ago(-3), image_url: `${PAGES}op/shared.webp` },
+      { id: 3, status: "ended", draw_date: ago(45), image_url: `${PAGES}operator-logos/op.webp` },
+    ];
+    const operators = [{ id: 9, logo_url: `${PAGES}operator-logos/op.webp` }];
+    const r = selectExpired({ draws, operators, ...popts });
+    expect(r.expire.size).toBe(0);
+    expect(r.protectedRows).toBe(2);
+  });
+
+  test("a Pages key and a Cloudinary key for the same path are different photos", () => {
+    // The Cloudinary copy left behind after a move is not what a Pages row shows: expiring
+    // the Pages row must not hand the Cloudinary asset of a live draft to deleteObjects.
+    const draws = [
+      { id: 1, status: "ended", draw_date: ago(45), image_url: `${PAGES}op/d.webp` },
+      { id: 2, status: "draft", draw_date: ago(-3), image_url: `${RAW}op/d.webp` },
+    ];
+    const r = selectExpired({ draws, operators: [], ...popts });
+    expect([...r.expire.keys()]).toEqual(["pages:op/d.webp"]);
+    expect(r.assets.size).toBe(0);
+  });
+
+  test("with no Cloudinary config, Pages rows still expire and nothing throws", () => {
+    const draws = [
+      { id: 1, status: "ended", draw_date: ago(45), image_url: `${PAGES}op/old.webp` },
+      { id: 2, status: "ended", draw_date: ago(45), image_url: `${RAW}op/x.webp` },
+    ];
+    const r = selectExpired({ draws, operators: [], cloud: null, base: PAGES, now, days: 30 });
+    expect([...r.expire.keys()]).toEqual(["pages:op/old.webp"]);
   });
 });
 

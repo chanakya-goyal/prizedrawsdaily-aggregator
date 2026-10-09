@@ -13,7 +13,7 @@
 // A row the scrape changed since we read it is left alone, and so is its key.
 //
 //   DRY_RUN=true (default)   report only
-//   RETENTION_DAYS=180       how long after a draw ends its photo is kept
+//   RETENTION_DAYS=0         how long after a draw ends its photo is kept (0 = only while live)
 //   RETENTION_MAX=500        cap on rows per run — a selection bug is bounded to this
 //
 // Refuses to run live unless IMAGE_PROVIDER=cloudinary: it only ever touches Cloudinary
@@ -82,7 +82,8 @@ for (const p of plan) {
 //    by the cap is held back too — its remaining rows still point at it.
 const planned = new Map();
 for (const p of plan) planned.set(p.key, (planned.get(p.key) || 0) + 1);
-const deletable = [...planned].filter(([key, n]) => !blocked.has(key) && n === expire.get(key).length).map(([key]) => assets.get(key));
+// Pages keys have no asset (publish-images.mjs drops them from the site on its next run).
+const deletable = [...planned].filter(([key, n]) => !blocked.has(key) && n === expire.get(key).length).map(([key]) => assets.get(key)).filter(Boolean);
 // Each asset carries its resource type: image for migrated photos, raw for everything since.
 const del = deletable.length ? await deleteObjects(deletable) : { deleted: 0, notFound: 0, failed: [] };
 

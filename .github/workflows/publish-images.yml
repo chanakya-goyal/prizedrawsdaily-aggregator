@@ -1,0 +1,88 @@
+name: Publish images to Cloudflare Pages
+
+# Copies every public draw photo onto the Pages site and points the rows at the copies
+# (publish-images.mjs, PAGES.md). Runs after each scrape, so a newly published draw loads
+# from Cloudinary for a few hours at most. Cloudinary meters bandwidth; Pages does not.
+on:
+  workflow_run:
+    workflows:
+      - "Aggregator — JSON sweep (api/woo/shopify)"
+      - "Daily aggregator — RENDER sweep (browser) + auto-expire"
+    types: [completed]
+  schedule:
+    - cron: "30 22 * * *" # a daily run even if the scrape workflows stop
+  workflow_dispatch:
+
+# Each deploy REPLACES the site with the set its run read from the database. Two at once
+# could publish an older set over a newer one, so they queue instead.
+concurrency:
+  group: publish-images
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      # The staged photos (~1 GB) from the last run. A miss is fine: the script then fetches
+      # them from the Pages site itself, which has no meter.
+      - name: Restore the staged site
+        uses: actions/cache/restore@v4
+        with:
+          path: .pages-images/public/i
+          key: pages-images-${{ github.run_id }}
+          restore-keys: pages-images-
+
+      - name: Publish
+        id: publish
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -o pipefail
+          bun publish-images.mjs 2>&1 | tee publish-images.log
+
+      # Staged files are verified bytes whether or not the deploy succeeded.
+      - name: Save the staged site
+        if: always() && steps.publish.outputs.save_cache == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .pages-images/public/i
+          key: pages-images-${{ github.run_id }}
+
+      # Same open/comment/close pattern as the storage alarm, under its own label. A failed
+      # run leaves every row where it was (still loading), so this is a warning, not an outage.
+      - name: Alarm on failure
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ steps.publish.outcome }}
+          NEAR_LIMIT: ${{ steps.publish.outputs.near_limit }}
+        run: |
+          EXISTING=$(gh issue list --label pages-alarm --state open --json number -q '.[0].number' || true)
+          if [ "$OUTCOME" = "failure" ] || [ "$NEAR_LIMIT" = "true" ]; then
+            { echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"; echo; echo '```'; tail -40 publish-images.log 2>/dev/null; echo '```'; } > body.md
+            if [ -n "$EXISTING" ]; then gh issue comment "$EXISTING" --body-file body.md
+            else
+              gh label create pages-alarm --color D93F0B --description "photo copy to Cloudflare Pages failed" 2>/dev/null || true
+              gh issue create --title "🟠 Cloudflare Pages photos: copy failed or site nearly full" --label pages-alarm --body-file body.md
+            fi
+          elif [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "✅ Cleared by run ${GITHUB_RUN_ID} on $(date -u +%Y-%m-%d). Closing."
+            gh issue close "$EXISTING"
+          fi
