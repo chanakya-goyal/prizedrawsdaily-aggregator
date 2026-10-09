@@ -291,7 +291,11 @@ async function uncacheableImages(limit = 12) {
       const maxAge = Number(cc.match(/max-age=(\d+)/)?.[1] || 0);
       if (!maxAge || /no-cache|no-store/.test(cc)) {
         uncacheable++;
-        if (sample.length < 3) sample.push(`${url.slice(prefix.length).slice(0, 48)} -> "${cc || "(none)"}"`);
+        // Was `url.slice(prefix.length)` with no `prefix` in scope: the first uncacheable
+        // image threw a ReferenceError, the catch below returned null, and this alarm read
+        // as "no signal" at exactly the moment it had found the problem it exists to report.
+        const base = bases.find((b) => url.startsWith(b)) || "";
+        if (sample.length < 3) sample.push(`${url.slice(base.length).slice(0, 48)} -> "${cc || "(none)"}"`);
       }
     }
     return { checked: ours.length, uncacheable, sample };

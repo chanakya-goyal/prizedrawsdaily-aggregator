@@ -83,6 +83,29 @@ describe("split aggregator workflows", () => {
     }
   });
 
+  test("both sweeps write images to the SAME provider", () => {
+    // The Aug→Oct 2026 storage incidents: the free Supabase bucket filled because nothing
+    // ever left it. Switching providers only helps if EVERY writer switches — one sweep left
+    // on the default keeps filling the bucket the other has abandoned, ~3x a day.
+    for (const [name, y] of [["render", RENDER], ["json", JSON_SWEEP]]) {
+      const scrape = y.slice(y.indexOf("run: bun run.mjs"));
+      const env = scrape.slice(0, scrape.indexOf("\n      - name:") >>> 0);
+      expect(env, `${name} scrape step`).toContain("IMAGE_PROVIDER: ${{ secrets.IMAGE_PROVIDER }}");
+      expect(env, `${name} scrape step`).toContain("CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}");
+    }
+  });
+
+  test("image retention runs AFTER the ended-sweep, and the storage alarm runs every day", () => {
+    // Retention judges "ended > N days"; run before the sweep it misses everything that
+    // closed today. The storage watch is the only thing that sees the bucket filling.
+    const sweep = RENDER.indexOf("run: bun ended-sweep.mjs");
+    const retention = RENDER.indexOf("run: bun image-retention.mjs");
+    expect(sweep).toBeGreaterThan(-1);
+    expect(retention).toBeGreaterThan(sweep);
+    expect(RENDER).toContain("bun storage-watch.mjs");
+    expect(RENDER).toMatch(/--label storage-alarm/);
+  });
+
   test("every ENABLED operator is actually claimed by one of the sweeps", async () => {
     // The assertion above compares the two workflows to a hardcoded list, which cannot notice an
     // operator added with a method neither sweep runs — it would simply never be scraped again,

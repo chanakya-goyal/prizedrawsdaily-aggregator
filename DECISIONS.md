@@ -208,3 +208,60 @@ entirely.
   immediately after an upload reports a false failure — `servedCacheControl()` polls for this
   reason. The object's stored metadata is correct the instant the upload returns; only the
   edge lags.
+
+---
+
+## 2026-10-09 · Draw photos live on Cloudinary, the Supabase bucket is emptied, and photos have a lifecycle.
+
+**Decided:** new photos are written to Cloudinary (`IMAGE_PROVIDER=cloudinary`). **Every**
+photo and logo on the live Supabase bucket is copied there, any status, with a byte-exact
+local backup taken from the same download (`migrate-images.mjs`). Once every row points at
+Cloudinary and every copy verifies, the Supabase `draw-images` bucket is **emptied**, so the
+Supabase project holds only its database (gate: `lib/migration.mjs` `emptyGate`). Every day,
+after the ended-sweep, a photo whose draws have **all** been over for `RETENTION_DAYS` (180)
+is set to null (the category cover) and then deleted from Cloudinary.
+
+**Why empty the bucket rather than freeze it:** a frozen bucket at 97% of its quota is one
+stray write — a missed cowork routine, the admin importer, a manual upload — from a 402 on
+every API, site included. An empty one restarts the storage counter from the carousel's few
+MB, and the plain 70% storage alarm means something again.
+
+**Why 180 days:** on Cloudinary storage is ~1 credit/GB of 25 free a month, so there is no
+pressure to remove photos early and ended draws should keep them for months. The lifecycle
+only has to exist; without one the account just fills more slowly.
+
+**Root cause it answers — stored forever, deleted never.** Three quota incidents in two
+months (Aug storage, Sep egress, Oct storage again: 1,004 MB of 1,024 MB on 2026-10-09 at
+~14 MB/day) came from one habit: every ingest stores a photo and nothing removes one. On a
+fixed-size free bucket that fills in ~2 months regardless of anything else. A new
+organisation reset the counter and kept the habit — a third one would do the same, and
+Supabase's fair-use policy names "continually exceeding Free Plan quotas" as abuse.
+
+**Rejected:**
+- *R2* — the better product, built and tested (`R2.md`, #52), but Cloudflare will not enable
+  it without a payment method and the owner declined to add one.
+- *Backblaze B2* — 10 GB free, but a first **public** bucket requires payment history or a
+  card fee.
+- *Moving only the "necessary" photos and freezing the rest on Supabase* — the first version
+  of this PR. Rejected by the owner on review: it leaves the 97%-full bucket as a standing
+  hazard (above).
+- *A new Supabase organisation/project for a fresh quota* — the Free plan caps **two free
+  projects across all organisations**, the old dead project (`kkuuwksgyypicnblwubs`) still
+  holds a slot and must not be deleted (~390 ended draws' only images, `pg_cron` job), and a
+  new project means moving the whole database — every PostgREST/auth call site, every key,
+  the cowork routine — to fix what is only a storage problem. It also resets the same clock,
+  and Supabase's fair-use policy names "continually exceeding Free Plan quotas" as abuse.
+
+**Guards that make it stick:** `emptyGate` refuses — deleting nothing — while any row still
+points at Supabase or any referenced object lacks a byte-exact backup or a verified copy;
+`storage-watch.mjs` (70% Supabase storage; any new object in `draw-images` after the switch;
+"provider on, credentials broken"; 70% of Cloudinary credits); the workflows test that pins
+both sweeps to the same provider; and `sameObject()` so rehost cannot delete the webp it has
+just uploaded (on Cloudinary `x.jpg` and `x.webp` are one asset).
+
+**Not automated:** the bulk delete that empties the bucket. `--phase=empty-check` evaluates
+the gate read-only; the delete itself waits on the owner's explicit go-ahead.
+
+**Reverses if:** a payment method goes on the Cloudflare account → move to R2 (10 GB, egress
+free; `migrate-images.mjs --to=r2`). Or Cloudinary usage sits above 70% of monthly credits
+for two consecutive months → shorten `RETENTION_DAYS` before anything else.

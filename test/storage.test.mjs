@@ -177,21 +177,26 @@ describe("multi-provider image bases", () => {
   // deletes the bucket that is also the rollback copy.
   const R2 = "https://img.prizedrawsdaily.co.uk/";
 
-  const withR2 = (fn) => {
-    const prev = process.env.R2_PUBLIC_BASE;
-    process.env.R2_PUBLIC_BASE = R2;
+  // Bun auto-loads .env into tests, so a developer's real CLOUDINARY_* / R2_* values
+  // would leak into these exact-list assertions. Every provider var is cleared first.
+  const PROVIDER_ENV = ["R2_PUBLIC_BASE", "CLOUDINARY_URL", "CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"];
+  const withOnly = (vars, fn) => {
+    const saved = Object.fromEntries(PROVIDER_ENV.map((k) => [k, process.env[k]]));
+    for (const k of PROVIDER_ENV) delete process.env[k];
+    Object.assign(process.env, vars);
     try { return fn(); } finally {
-      if (prev === undefined) delete process.env.R2_PUBLIC_BASE;
-      else process.env.R2_PUBLIC_BASE = prev;
+      for (const k of PROVIDER_ENV) {
+        if (saved[k] === undefined) delete process.env[k];
+        else process.env[k] = saved[k];
+      }
     }
   };
+  const withR2 = (fn) => withOnly({ R2_PUBLIC_BASE: R2 }, fn);
 
   test("publicBases lists Supabase alone when R2 is not configured", () => {
-    const prev = process.env.R2_PUBLIC_BASE;
-    delete process.env.R2_PUBLIC_BASE;
-    try {
+    withOnly({}, () => {
       expect(publicBases(creds)).toEqual([PREFIX]);
-    } finally { if (prev !== undefined) process.env.R2_PUBLIC_BASE = prev; }
+    });
   });
 
   test("publicBases adds R2 once configured, Supabase still first", () => {
@@ -203,10 +208,9 @@ describe("multi-provider image bases", () => {
   test("a missing trailing slash on R2_PUBLIC_BASE is repaired", () => {
     // Without this, every R2 path would come back with a leading slash and never
     // match a bucket key.
-    const prev = process.env.R2_PUBLIC_BASE;
-    process.env.R2_PUBLIC_BASE = "https://img.prizedrawsdaily.co.uk";
-    try { expect(r2PublicBase()).toBe(R2); }
-    finally { if (prev === undefined) delete process.env.R2_PUBLIC_BASE; else process.env.R2_PUBLIC_BASE = prev; }
+    withOnly({ R2_PUBLIC_BASE: "https://img.prizedrawsdaily.co.uk" }, () => {
+      expect(r2PublicBase()).toBe(R2);
+    });
   });
 
   test("objectPathFromUrl resolves a path against ANY of several bases", () => {

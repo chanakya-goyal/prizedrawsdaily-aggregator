@@ -73,6 +73,10 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Where re-hosted draw photos are written — MUST match aggregate.yml, or one sweep
+          # keeps filling the bucket the other has left (test/workflows.test.mjs enforces it).
+          IMAGE_PROVIDER: ${{ secrets.IMAGE_PROVIDER }}
+          CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
           FLARESOLVERR_URL: http://localhost:8191/v1
           DRY_RUN: "false"
           METHODS: "api,woo,shopify" # everything that is a JSON endpoint; render has its own workflow

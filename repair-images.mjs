@@ -38,6 +38,10 @@ const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (
 const H = { apikey: KEY, Authorization: `Bearer ${KEY}` };
 
 // ── find the rows still pointing at the dead project ──────────────────
+// "Broken" means ONLY `image_url` on DEAD_REF. Keep it that way: image-retention.mjs sets an
+// expired draw's image_url to null or to the live Supabase archive on purpose, and widening
+// this filter to "null" or "not on the active provider" would re-download every photo
+// retention let go — refilling storage, the exact incident retention exists to end.
 async function listBroken() {
   const out = [];
   const PAGE = 1000;

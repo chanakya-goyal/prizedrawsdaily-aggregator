@@ -3,7 +3,9 @@
 Paste the section below the line as the task for your scheduled cowork (Claude) routine.
 
 **Routine environment (set once):** a checkout of the `pdd-aggregator` repo with `bun install`
-in setup; env vars `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`; **Full** network access;
+in setup; env vars `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, plus `IMAGE_PROVIDER` +
+`CLOUDINARY_URL` once images have moved (CLOUDINARY.md — without them this routine keeps
+writing photos to the full Supabase bucket); **Full** network access;
 daily schedule (after the 07:00 UTC GitHub Action, which now scrapes **and publishes**).
 
 **What changed from v3:** step 2b is new — the no-guess publishing v3 shipped left every

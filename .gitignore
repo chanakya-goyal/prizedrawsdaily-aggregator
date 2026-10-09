@@ -41,6 +41,7 @@ carousel/*.local.*
 discovery/queue.json
 discovery/QUEUE.md
 tripwire.md
+storage-watch.md
 
 # manager/patrol local run output (regenerated each run; not source of truth)
 patrol-worklist.json
