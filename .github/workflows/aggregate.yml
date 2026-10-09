@@ -136,7 +136,9 @@ jobs:
           IMAGE_PROVIDER: ${{ secrets.IMAGE_PROVIDER }}
           CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
           DRY_RUN: "false"
-          RETENTION_DAYS: "30"
+          # 180, not 30: on Cloudinary storage is ~1 credit/GB of 25 free a month, and ended
+          # draws should keep their photos for months. The lifecycle only has to exist.
+          RETENTION_DAYS: "180"
           RETENTION_MAX: "500"
 
       - name: Render-liveness tally (report mode — counts, does not drop)

@@ -4,8 +4,7 @@
 //
 // WHY: the free Supabase bucket filled in Aug 2026 and again in Oct 2026, and both times the
 // first signal was the dashboard or a 402 on every API. Nothing in the pipeline was watching
-// the one number that takes the whole site down. The rules (and why a frozen bucket is
-// judged on new writes, not on percentage) live in lib/storage-watch.mjs.
+// the one number that takes the whole site down. The rules live in lib/storage-watch.mjs.
 //
 //   bun storage-watch.mjs                 # print + write storage-watch.md, exit 1 on alarm
 //   STORAGE_ALARM_AT=0.7                  # threshold (default 70%)

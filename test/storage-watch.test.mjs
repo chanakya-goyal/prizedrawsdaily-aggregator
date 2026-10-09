@@ -3,38 +3,45 @@ import { assessStorage } from "../lib/storage-watch.mjs";
 
 // Why this file exists: the bucket hit its ceiling in Aug 2026 and again in Oct 2026, and
 // both times the first anyone knew was the dashboard or a 402. This alarm is meant to fire
-// weeks earlier. It also has to be able to stay QUIET: after the move, Supabase is frozen
-// near its cap on purpose, and an alarm that is red forever is one everybody learns to
-// ignore (tripwire.mjs learned that the hard way with issue #21).
+// weeks earlier — and to go quiet again once the problem is gone, because an alarm that is
+// always on is one everybody learns to ignore (tripwire.mjs learned that with issue #21).
+// After the move the Supabase bucket is EMPTIED, so the plain percentage rule works again.
 
 const GiB = 1024 ** 3;
-const sb = (over) => ({ bytes: 0.5 * GiB, limitBytes: GiB, writeTarget: true, recentWrites: 0, ...over });
+const sb = (over) => ({ bytes: 0.1 * GiB, limitBytes: GiB, writeTarget: true, recentWrites: 0, ...over });
 
 describe("assessStorage", () => {
-  test("Supabase as the write target alarms at 70% full", () => {
+  test("Supabase alarms at 70% full", () => {
     expect(assessStorage({ supabase: sb({ bytes: 0.69 * GiB }) }).alarm).toBe(false);
     expect(assessStorage({ supabase: sb({ bytes: 0.70 * GiB }) }).alarm).toBe(true);
   });
 
-  test("a FROZEN Supabase bucket near its cap is quiet while nothing writes to it", () => {
-    const r = assessStorage({ supabase: sb({ writeTarget: false, bytes: 0.97 * GiB, recentWrites: 0 }) });
-    expect(r.alarm).toBe(false);
+  test("…whether or not it is still the write target — a full project is a 402 on every API", () => {
+    // During the transition the bucket sits at ~98% until it is emptied. That IS the risk,
+    // so it stays red until --phase=empty-supabase has run.
+    const r = assessStorage({ supabase: sb({ writeTarget: false, bytes: 0.97 * GiB }) });
+    expect(r.alarm).toBe(true);
+    expect(r.lines.join("\n")).toMatch(/empty-supabase/);
   });
 
-  test("…but any new object in the frozen bucket alarms: a writer still points at Supabase", () => {
+  test("an emptied bucket with nothing new in it is quiet", () => {
+    expect(assessStorage({ supabase: sb({ writeTarget: false, bytes: 0.01 * GiB }) }).alarm).toBe(false);
+  });
+
+  test("any new object in draw-images after the switch alarms: a writer still points at Supabase", () => {
     // The scheduled cowork routine keeps its OWN copy of the env, outside every repo. If
-    // it was missed during the switch it keeps writing to the full bucket, silently.
-    const r = assessStorage({ supabase: sb({ writeTarget: false, bytes: 0.97 * GiB, recentWrites: 3 }) });
+    // it was missed during the switch it keeps writing to Supabase, silently.
+    const r = assessStorage({ supabase: sb({ writeTarget: false, recentWrites: 3 }) });
     expect(r.alarm).toBe(true);
     expect(r.lines.join("\n")).toMatch(/still writ/i);
   });
 
-  test("a frozen bucket that is actually over its limit alarms regardless", () => {
-    expect(assessStorage({ supabase: sb({ writeTarget: false, bytes: 1.01 * GiB }) }).alarm).toBe(true);
+  test("new objects are expected while Supabase IS the write target", () => {
+    expect(assessStorage({ supabase: sb({ writeTarget: true, recentWrites: 300 }) }).alarm).toBe(false);
   });
 
   test("Cloudinary alarms at 70% of its monthly credits", () => {
-    const base = { supabase: sb({ writeTarget: false, bytes: 0.9 * GiB }) };
+    const base = { supabase: sb({ writeTarget: false }) };
     expect(assessStorage({ ...base, cloudinary: { usedPercent: 69.9 } }).alarm).toBe(false);
     expect(assessStorage({ ...base, cloudinary: { usedPercent: 70 } }).alarm).toBe(true);
   });

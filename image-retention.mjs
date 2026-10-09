@@ -7,24 +7,23 @@
 // LIVE inventory instead of the all-time total, and stays roughly flat.
 //
 // For each expired row (lib/retention.mjs decides, pinned by test/retention.test.mjs):
-//   1. repoint image_url to its Supabase original if one exists (Supabase is a frozen archive,
-//      never emptied), else to null — the site renders the category cover for null;
+//   1. set image_url to null — the site renders the category cover (CoverFallback). Never
+//      back to Supabase: that bucket is emptied after the move;
 //   2. ONLY after every row using a key has been repointed, delete that key from the provider.
 // A row the scrape changed since we read it is left alone, and so is its key.
 //
 //   DRY_RUN=true (default)   report only
-//   RETENTION_DAYS=30        how long after a draw ends its photo is kept
+//   RETENTION_DAYS=180       how long after a draw ends its photo is kept
 //   RETENTION_MAX=500        cap on rows per run — a selection bug is bounded to this
 //
 // Refuses to run live unless IMAGE_PROVIDER=cloudinary: it only ever touches Cloudinary
 // URLs, and on any other provider there is nothing for it to do.
-import { listAllObjects, PUBLIC_PREFIX, IMAGE_PROVIDER, cloudinaryConfig, cloudinaryPublicBase, deleteObjects } from "./lib/storage.mjs";
-import { selectExpired, planRetention } from "./lib/retention.mjs";
+import { IMAGE_PROVIDER, cloudinaryConfig, cloudinaryPublicBase, deleteObjects } from "./lib/storage.mjs";
+import { selectExpired, planRetention, DEFAULT_RETENTION_DAYS } from "./lib/retention.mjs";
 
 const URL_ = process.env.SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const BUCKET = process.env.BUCKET || "draw-images";
-const DAYS = Number(process.env.RETENTION_DAYS || 30);
+const DAYS = Number(process.env.RETENTION_DAYS || DEFAULT_RETENTION_DAYS);
 const MAX = Number(process.env.RETENTION_MAX || 500);
 const ON_CLOUDINARY = IMAGE_PROVIDER === "cloudinary";
 const DRY = process.env.DRY_RUN !== "false" || !ON_CLOUDINARY;
@@ -53,17 +52,13 @@ async function readAll(table, select) {
   }
 }
 
-const creds = { supabaseUrl: URL_, serviceKey: KEY, bucket: BUCKET };
-const SB_PREFIX = PUBLIC_PREFIX(creds);
 const draws = await readAll("draws", "id,status,draw_date,created_at,image_url");
 const operators = await readAll("operators", "id,logo_url");
 const { expire, protectedRows } = selectExpired({ draws, operators, cloudBase: cloudinaryPublicBase(cfg), days: DAYS });
-const supabaseKeys = new Set((await listAllObjects(creds)).map((f) => f.path));
-const plan = planRetention({ expire, supabaseKeys, sbPrefix: SB_PREFIX }).slice(0, MAX);
+const plan = planRetention({ expire }).slice(0, MAX);
 
-const toArchive = plan.filter((p) => p.newUrl).length;
 console.log(`${DRY ? "DRY RUN" : "LIVE"} · keep window ${DAYS}d · cap ${MAX} rows`);
-console.log(`  ${expire.size} key(s) expired · ${plan.length} row(s) this run (${toArchive} back to the Supabase archive, ${plan.length - toArchive} to the category cover) · ${protectedRows} expired row(s) protected by a live row or logo`);
+console.log(`  ${expire.size} key(s) expired · ${plan.length} row(s) this run → category cover · ${protectedRows} expired row(s) protected by a live row or logo`);
 if (DRY) { console.log("\nRe-run with DRY_RUN=false (and IMAGE_PROVIDER=cloudinary) to apply."); process.exit(0); }
 
 // 1. Repoint rows. The `image_url=eq.<what we read>` filter makes a row the scrape has

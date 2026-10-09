@@ -1,19 +1,18 @@
 import { expect, test, describe } from "bun:test";
-import { isExpired, selectNecessary, selectExpired, planRetention } from "../lib/retention.mjs";
+import { isExpired, selectExpired, planRetention, DEFAULT_RETENTION_DAYS } from "../lib/retention.mjs";
 
 // Why this file exists: the root cause of three storage incidents in two months was
 // "stored forever, deleted never" on a fixed-size free bucket — ~3,700 new draw photos a
-// month and nothing ever removed. These functions decide which photos move to the new
-// provider and which ones it later lets go. Both decisions destroy something if wrong:
-// too eager and a LIVE draw loses its photo; too timid and the new bucket fills exactly
-// like the old one. So the boundaries are pinned here, not left to a reading of the code.
+// month and nothing ever removed. These functions decide which photos the image provider
+// later lets go. Both directions of a mistake destroy something: too eager and a LIVE draw
+// loses its photo; too timid and the storage fills exactly like the old bucket. So the
+// boundaries are pinned here, not left to a reading of the code.
 
 const DAY = 86400_000;
 const now = Date.parse("2026-10-09T12:00:00Z");
 const ago = (d) => new Date(now - d * DAY).toISOString();
 const SB = "https://proj.supabase.co/storage/v1/object/public/draw-images/";
 const CDN = "https://res.cloudinary.com/pdd/image/upload/v1/";
-const DEAD = "https://kkuuwksgyypicnblwubs.supabase.co/storage/v1/object/public/draw-images/";
 
 describe("isExpired", () => {
   const opts = { now, days: 30 };
@@ -24,6 +23,14 @@ describe("isExpired", () => {
 
   test("an ended draw inside the window is not", () => {
     expect(isExpired({ status: "ended", draw_date: ago(29) }, opts)).toBe(false);
+  });
+
+  test("the default window is 180 days — photos are not removed early", () => {
+    // With everything on Cloudinary, storage is ~1 credit/GB of 25 free a month. The owner
+    // wants ended draws to keep their photos for months, so the default is generous.
+    expect(DEFAULT_RETENTION_DAYS).toBe(180);
+    expect(isExpired({ status: "ended", draw_date: ago(179) }, { now })).toBe(false);
+    expect(isExpired({ status: "ended", draw_date: ago(181) }, { now })).toBe(true);
   });
 
   test("an ACTIVE draw is never expired, however old its date", () => {
@@ -48,59 +55,7 @@ describe("isExpired", () => {
   });
 });
 
-describe("selectNecessary — what moves to the new provider", () => {
-  const opts = { sbPrefix: SB, now, days: 30 };
-
-  test("live, draft and recently-ended draws move; long-ended ones stay on Supabase", () => {
-    const draws = [
-      { id: 1, status: "active", draw_date: ago(-5), image_url: `${SB}op/live.webp` },
-      { id: 2, status: "draft", draw_date: ago(-9), image_url: `${SB}op/draft.webp` },
-      { id: 3, status: "ended", draw_date: ago(10), image_url: `${SB}op/recent.webp` },
-      { id: 4, status: "ended", draw_date: ago(60), image_url: `${SB}op/old.webp` },
-    ];
-    const { paths } = selectNecessary({ draws, operators: [], ...opts });
-    expect([...paths.keys()].sort()).toEqual(["op/draft.webp", "op/live.webp", "op/recent.webp"]);
-  });
-
-  test("every operator logo moves", () => {
-    const { paths } = selectNecessary({
-      draws: [],
-      operators: [{ id: "o1", logo_url: `${SB}operator-logos/acme.webp` }],
-      ...opts,
-    });
-    expect(paths.get("operator-logos/acme.webp").logos).toEqual(["o1"]);
-  });
-
-  test("dead-project, hotlinked, empty and already-moved URLs are not ours to copy", () => {
-    const draws = [
-      { id: 1, status: "active", image_url: `${DEAD}op/x.webp` },
-      { id: 2, status: "active", image_url: "https://operator.co.uk/img.jpg" },
-      { id: 3, status: "active", image_url: null },
-      { id: 4, status: "active", image_url: `${CDN}op/moved.webp` },
-    ];
-    const r = selectNecessary({ draws, operators: [], ...opts });
-    expect(r.paths.size).toBe(0);
-    expect(r.skipped).toEqual({ dead: 1, foreign: 1, empty: 1, expired: 0, alreadyMoved: 1 });
-  });
-
-  test("one image shared by several draws is copied once and repoints every row", () => {
-    const draws = [
-      { id: 1, status: "active", image_url: `${SB}op/shared.webp` },
-      { id: 2, status: "active", image_url: `${SB}op/shared.webp` },
-    ];
-    const { paths } = selectNecessary({ draws, operators: [], ...opts });
-    expect(paths.size).toBe(1);
-    expect(paths.get("op/shared.webp").draws).toEqual([1, 2]);
-  });
-
-  test("a weserv-wrapped Supabase URL is still recognised", () => {
-    const wrapped = `https://images.weserv.nl/?url=${encodeURIComponent(`${SB}op/w.webp`)}&w=960`;
-    const { paths } = selectNecessary({ draws: [{ id: 1, status: "active", image_url: wrapped }], operators: [], ...opts });
-    expect([...paths.keys()]).toEqual(["op/w.webp"]);
-  });
-});
-
-describe("selectExpired — what the new provider lets go", () => {
+describe("selectExpired — what the provider lets go", () => {
   const opts = { cloudBase: CDN, now, days: 30 };
 
   test("an expired draw's Cloudinary image is selected", () => {
@@ -153,18 +108,15 @@ describe("selectExpired — what the new provider lets go", () => {
 });
 
 describe("planRetention — where each expired row points next", () => {
-  test("back to the Supabase copy when one exists, otherwise to null (the category cover)", () => {
-    const expire = new Map([["op/had-archive.webp", [1, 2]], ["op/born-on-cdn.webp", [3]]]);
-    const plan = planRetention({ expire, supabaseKeys: new Set(["op/had-archive.webp"]), sbPrefix: SB });
-    expect(plan).toEqual([
-      { id: 1, path: "op/had-archive.webp", newUrl: `${SB}op/had-archive.webp` },
-      { id: 2, path: "op/had-archive.webp", newUrl: `${SB}op/had-archive.webp` },
-      { id: 3, path: "op/born-on-cdn.webp", newUrl: null },
+  test("every expired row goes to null (the category cover), never back to Supabase", () => {
+    // The Supabase bucket is emptied after the move. A row repointed there would load a
+    // deleted object — and would block --phase=empty-supabase, which refuses while any
+    // row still points at the bucket.
+    const expire = new Map([["op/a.webp", [1, 2]], ["op/b.webp", [3]]]);
+    expect(planRetention({ expire })).toEqual([
+      { id: 1, path: "op/a.webp", newUrl: null },
+      { id: 2, path: "op/a.webp", newUrl: null },
+      { id: 3, path: "op/b.webp", newUrl: null },
     ]);
-  });
-
-  test("the Supabase URL is encoded the way putObject writes it", () => {
-    const plan = planRetention({ expire: new Map([["op/win a car.webp", [1]]]), supabaseKeys: new Set(["op/win a car.webp"]), sbPrefix: SB });
-    expect(plan[0].newUrl).toBe(`${SB}op/win%20a%20car.webp`);
   });
 });
