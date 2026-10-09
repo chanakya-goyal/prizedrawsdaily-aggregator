@@ -18,10 +18,10 @@ describe("assessStorage", () => {
 
   test("…whether or not it is still the write target — a full project is a 402 on every API", () => {
     // During the transition the bucket sits at ~98% until it is emptied. That IS the risk,
-    // so it stays red until --phase=empty-supabase has run.
+    // so it stays red until the bucket has been emptied.
     const r = assessStorage({ supabase: sb({ writeTarget: false, bytes: 0.97 * GiB }) });
     expect(r.alarm).toBe(true);
-    expect(r.lines.join("\n")).toMatch(/empty-supabase/);
+    expect(r.lines.join("\n")).toMatch(/empty-check/);
   });
 
   test("an emptied bucket with nothing new in it is quiet", () => {

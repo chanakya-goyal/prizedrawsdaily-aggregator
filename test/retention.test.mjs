@@ -110,7 +110,7 @@ describe("selectExpired — what the provider lets go", () => {
 describe("planRetention — where each expired row points next", () => {
   test("every expired row goes to null (the category cover), never back to Supabase", () => {
     // The Supabase bucket is emptied after the move. A row repointed there would load a
-    // deleted object — and would block --phase=empty-supabase, which refuses while any
+    // deleted object — and would block --phase=empty-check, which refuses while any
     // row still points at the bucket.
     const expire = new Map([["op/a.webp", [1, 2]], ["op/b.webp", [3]]]);
     expect(planRetention({ expire })).toEqual([
