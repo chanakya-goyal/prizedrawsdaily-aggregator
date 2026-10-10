@@ -76,6 +76,9 @@ describe("the deck says what the data says", () => {
     expect(closesParts("2026-09-21T21:00:00+01:00", NOW)).toEqual(["today"]);
     expect(closesParts("2026-09-22T21:00:00+01:00", NOW)).toEqual(["tomorrow"]);
     expect(closesParts("2026-09-23T21:00:00+01:00", NOW)).toEqual(["wed", "23 sep"]);
+    // 23:30 UTC on 30 Sep is already 1 Oct in London (BST) — the London calendar decides
+    expect(closesParts("2026-09-30T23:30:00Z", NOW)).toEqual(["thu", "1 oct"]);
+    expect(closesParts("2026-12-25T12:00:00Z", NOW)).toEqual(["fri", "25 dec"]);
     for (const p of deck.prizes) expect(p.closes.join(" ")).not.toMatch(/\d{1,2}(:\d\d)?\s*[ap]m/i);
   });
   test("price-first and title-first alternate, and pence prices are said out loud", () => {

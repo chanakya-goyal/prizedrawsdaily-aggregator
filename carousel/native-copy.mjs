@@ -88,16 +88,22 @@ export function cashLine(ex) {
 }
 
 // London calendar day only. "today"/"tomorrow", else ["wed", "23 sep"].
+// Day and month names come from fixed lists, not the locale: ICU builds disagree ("23 Sep" on one
+// runtime, "23 Sept" on another — CI caught it), and a card must read the same wherever it renders.
+const DOW = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+const MON = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const londonYmd = (x) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: LDN, year: "numeric", month: "numeric", day: "numeric" })
+    .formatToParts(x).map((o) => [o.type, Number(o.value)]));
+  return [p.year, p.month, p.day];
+};
 export function closesParts(iso, now = new Date()) {
-  const d = new Date(iso);
-  const day = (x) => x.toLocaleDateString("en-CA", { timeZone: LDN });
-  const diff = Math.round((new Date(day(d)) - new Date(day(now))) / 86400000);
+  const [y, m, d] = londonYmd(new Date(iso));
+  const [ny, nm, nd] = londonYmd(now);
+  const diff = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(ny, nm - 1, nd)) / 86400000);
   if (diff <= 0) return ["today"];
   if (diff === 1) return ["tomorrow"];
-  return [
-    d.toLocaleDateString("en-GB", { timeZone: LDN, weekday: "short" }).toLowerCase(),
-    d.toLocaleDateString("en-GB", { timeZone: LDN, day: "numeric", month: "short" }).toLowerCase(),
-  ];
+  return [DOW[new Date(Date.UTC(y, m - 1, d)).getUTCDay()], `${d} ${MON[m - 1]}`];
 }
 
 const operatorOf = (d) => String(d.operators?.name || "").trim() || null;
