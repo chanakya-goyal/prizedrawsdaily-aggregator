@@ -251,6 +251,11 @@ jobs:
           IMAGE_PROVIDER: ${{ secrets.IMAGE_PROVIDER }}
           CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
           GH_TOKEN: ${{ github.token }}
+          # Calibrated 2026-10-10 against the dashboard (Usage → Egress): 192.45 MB of PostgREST
+          # egress on 9–10 Oct over ~59.7k counted requests = ~3.2 KB each. That window holds the
+          # migration day (~4.3 KB/request); 10 Oct alone ran ~2.2 KB, so this errs high.
+          # Recalibrate from a clean 7-day window after 17 Oct (lib/usage-watch.mjs says how).
+          USAGE_BYTES_PER_REQUEST: "3200"
         run: |
           set +e
           bun quota-watch.mjs
