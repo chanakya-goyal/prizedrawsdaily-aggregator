@@ -340,7 +340,7 @@ const [modalDay, modalCount] = [...dayTally.entries()].sort((a, b) => b[1] - a[1
 
 const headlineFacts = {
   drawsRendered: N, fromPrice: fromPrice || "n/a",
-  cashAlt: cashAlt(countDraw.grand_prize, countDraw.prize_description),
+  cashAlt: cashAlt(countDraw.grand_prize, countDraw.title),
   price: priceLabel(countDraw.ticket_price),
   day: modalDay, closingCount: modalCount,
 };
@@ -415,7 +415,7 @@ const facts = sel.draws.map((d, i) => ({
   // exactly how a banned phrasing reaches a caption (§10.6a L1).
   odds: capOf(d) ? oddsCopy.conditional(capOf(d)) : null,
   closes: closesLabel(d.draw_date),
-  cashAlt: cashAlt(d.grand_prize, d.prize_description),
+  cashAlt: cashAlt(d.grand_prize, d.title),
   operator: d.operators?.name || null,
 }));
 const missing = drawSlides.filter((s) => !s.photo);

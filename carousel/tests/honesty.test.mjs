@@ -4,7 +4,8 @@ import { stripBrand } from "../compliance.mjs";
 
 // 2026-07-02 incident: Discovery draw = 2M entries × 5p = £100k ticket revenue,
 // but its own cash alternative proves the prize is worth £40k. Per-draw cap.
-const D = (tpv, grand, desc) => ({ total_prize_value: tpv, grand_prize: grand || "", prize_description: desc || "" });
+// third arg = the operator's title: cashAlt reads grand_prize then title, never our own prize_description
+const D = (tpv, grand, title) => ({ total_prize_value: tpv, grand_prize: grand || "", title: title || "" });
 
 test("value line suppressed below the per-category bar (collectibles £15k incident guard)", () => {
   expect(valueLine([D(1000)], "collectibles")).toBe("");          // real prizes ~£1k → NO claim
