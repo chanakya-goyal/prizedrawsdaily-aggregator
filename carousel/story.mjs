@@ -21,7 +21,7 @@ import { tokenCss } from "./tokens.mjs";
 import { sceneFor, sceneBack } from "./scene.mjs";
 import * as oddsCopy from "./odds-copy.mjs";
 import { cleanTitle, closesLabel, priceLabel } from "./format.mjs";
-import { workDir } from "./config.mjs";
+import { workDir, GLOBAL } from "./config.mjs";
 import { mkdir } from "node:fs/promises";
 
 const FONT_CSS = await fontFaceCss();
@@ -258,6 +258,39 @@ if (import.meta.main) {
     return riskOf(a) <= riskOf(b) ? a : b;
   });
   console.log(`  story draw: ${draw.slug} (closes ${String(draw.draw_date).slice(0, 10)}, image class ${["low","medium","high"][riskOf(draw)]})`);
+
+  // ── the native Story (global.template = "native") ──────────────────────────────────────────
+  // Same draw choice as above; the frame is the deck's prize slide re-laid for 9:16 with every
+  // word inside Meta's safe box. Its words come from native-copy.mjs and pass the same gate.
+  if (GLOBAL.template === "native") {
+    const { nativeDeck, deckStrings } = await import("./native-copy.mjs");
+    const { renderNativeStory } = await import("./native.mjs");
+    const compliance = await import("./compliance.mjs");
+    // the QA'd fetched pick when there is one (what the deck showed), else the stored image
+    const photoOf = async (d) => {
+      const pick = Bun.file(`${DIR}/.fetched/${d.slug}/pick.txt`);
+      if (await pick.exists()) {
+        const f = Bun.file(`${DIR}/.fetched/${d.slug}/${(await pick.text()).trim()}`);
+        if (await f.exists()) return `data:image/jpeg;base64,${Buffer.from(await f.arrayBuffer()).toString("base64")}`;
+      }
+      return d.image_url || null;
+    };
+    const photo = await photoOf(draw);
+    const mini = nativeDeck({ sel, draws: [draw], photoOf: () => photo });
+    const hits = deckStrings(mini).filter(([i]) => i === 1).flatMap(([, , text, surface]) =>
+      [...compliance.checkUnit(text, { surface, bannedPhrases: GLOBAL.bannedPhrases }),
+       ...(surface === "asset" ? compliance.checkQuestionUnit(text, compliance.factsTable({ drawsRendered: 1 })) : [])]);
+    if (hits.some((h) => h.class === compliance.CLASS.A)) {
+      console.error(`✗ story: class A in its words — ${hits.map((h) => h.predicate).join(", ")}`);
+      process.exit(1);
+    }
+    const decor = (await Promise.all(sel.draws.filter((d) => d !== draw).sort((a, b) => riskOf(a) - riskOf(b)).slice(0, 2).map(photoOf))).filter(Boolean);
+    const png = await renderNativeStory({ ...mini.prizes[0], decor });
+    await mkdir(`${DIR}/out`, { recursive: true });
+    await Bun.write(`${DIR}/out/story.png`, png);
+    console.log(`✓ story.png (native) → ${(png.length / 1024).toFixed(0)}KB  (${draw.slug.slice(0, 44)})`);
+    process.exit(0);
+  }
   const facts = await Bun.file(`${DIR}/out/facts.json`).json().catch(() => null);
   const checked = sel.draws.map((d) => d.figures_checked_at).filter(Boolean).sort();
   const stamp = checked.length
