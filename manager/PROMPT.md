@@ -69,6 +69,11 @@ whatever happens, always produce the step-5 report.
   no emojis or hashtags; say entry is 18+ where entry is mentioned. No two descriptions in a run
   may be near-duplicates, and anything reading like the template frames ("Win X in this UK prize
   draw. Tickets start from…") counts as lazy → rewrite.
+  DrawHouse brands (raffle-town, toffeesdraws, kopitedraws, the-baby-show-prizes): when a
+  description ends "Tickets are pooled across the DrawHouse network of brands, so the N-ticket cap
+  is the total for this draw…", a rewrite MUST keep that sentence verbatim — the cap is shared
+  with other brands and the odds read wrong without it (owner, 2026-10-11). Never name a football
+  club for toffeesdraws/kopitedraws; the brands carry no "not affiliated" disclaimer.
 
 ## STEPS
 

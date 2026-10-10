@@ -8,6 +8,7 @@ import { mapRaffle, unitPrice, listUrl } from "../lib/adapters/raffle-engine.mjs
 import { mapCompetition as mapHydra, imageUrl, isLive } from "../lib/adapters/hydra.mjs";
 import { parseDataPage, arrayOf, mapCompetition as mapInertia } from "../lib/adapters/inertia.mjs";
 import { parseNextData, collectCompetitions, mapCompetition as mapClick } from "../lib/adapters/click.mjs";
+import { mapGame as mapDrawhouse, affiliateIdOf, brandEdition, drawPool, poolSentence } from "../lib/adapters/drawhouse.mjs";
 import { gate } from "../gate.mjs";
 import { gotoSettled } from "../lib/render-nav.mjs";
 
@@ -290,6 +291,82 @@ describe("click adapter (Click Competitions)", () => {
       expect(d.total_entries).toBeGreaterThan(499);
       expect(d.title.length).toBeGreaterThan(3);
     }
+  });
+});
+
+describe("drawhouse adapter (Raffle Town / ToffeesDraws / KopiteDraws / The Baby Show Prizes)", () => {
+  const api = "https://api.prod.raffletown.co.uk/v3/pub/gs/charityraffles/lobbygames";
+  const rt = { slug: "raffle-town", name: "Raffle Town", base: "https://www.raffletown.co.uk", listApi: `${api}?affiliateId=20&state=INPROGRESS` };
+  const td = { slug: "toffeesdraws", name: "ToffeesDraws", base: "https://toffeesdraws.com", listApi: `${api}?affiliateId=33&state=INPROGRESS` };
+  const games = async (f) => (await Bun.file(`test/fixtures/api/drawhouse.${f}.lobbygames.json`).json()).data.lobbyGames;
+  const byId = (gs, id) => gs.find((g) => g.id === id);
+
+  test("affiliateIdOf reads the brand from listApi", () => {
+    expect(affiliateIdOf(rt)).toBe(20);
+    expect(affiliateIdOf(td)).toBe(33);
+    expect(affiliateIdOf({ listApi: "not a url" })).toBe(null);
+  });
+
+  test("a paid draw maps to a valid shape with the operator-published cap, price and UTC draw time", async () => {
+    const d = mapDrawhouse(byId(await games("raffle-town"), 69), rt, 20);
+    expectDrawShape(d);
+    expect(d.title).toBe("Trolly Dash");
+    expect(d.grand_prize).toBe("£100 Supermarket Shop Voucher");
+    expect(d.ticket_price).toBe(0.2);
+    expect(d.total_entries).toBe(1100);
+    // True UTC instant passed through untouched (normalizeUkDate would re-stamp it as UK time).
+    expect(d.draw_date).toBe("2026-10-28T21:00:00.000Z");
+    expect(d.entry_url).toBe("https://www.raffletown.co.uk/prize-draw/trolly-dash");
+    expect(d.image_url).toMatch(/^https:\/\/ik\.imagekit\.io\//);
+  });
+
+  test("a pool shared across brands says so in the description; an unshared one does not", async () => {
+    const gs = await games("raffle-town");
+    const shared = mapDrawhouse(byId(gs, 69), rt, 20);
+    expect(shared.description).toContain("pooled across the DrawHouse network");
+    expect(shared.description).toContain("1,100-ticket cap is the total for this draw, with one winner");
+    // The £1000 Free Draw's pool carries only Raffle Town's edition — no sharing claim.
+    const solo = mapDrawhouse(byId(gs, 74), rt, 20);
+    expect(solo.description).toBe(null);
+    expect(poolSentence(2500, { totalAvailable: 3 })).toContain("2,500-ticket cap is the total for this draw, with 3 winners");
+  });
+
+  test("instant-win-only games and code-only games are skipped", async () => {
+    const gs = await games("raffle-town");
+    expect(drawPool(byId(gs, 43))).toBe(null);
+    expect(mapDrawhouse(byId(gs, 43), rt, 20)).toBe(null);
+    expect(mapDrawhouse(byId(gs, 9069), rt, 20)).toBe(null);
+  });
+
+  test("the free draw is mapped honestly at £0 — rejecting it is the gate's job", async () => {
+    const d = mapDrawhouse(byId(await games("raffle-town"), 74), rt, 20);
+    expect(d.ticket_price).toBe(0);
+    expect(d.total_entries).toBe(200000);
+    expect(d.grand_prize).toBe("£1000 Cash");
+    // Fixed "now" a few days before the fixture's draws so only the price rule can fire.
+    const g = gate(d, new Date("2026-10-20T12:00:00Z"));
+    expect(g.pass).toBe(false);
+    expect(g.reasons.join(" ")).toMatch(/price/i);
+  });
+
+  test("each brand gets ITS edition: same game 69, the fan site's own prize, name and URL", async () => {
+    const g = byId(await games("toffeesdraws"), 69);
+    expect(brandEdition(g, 33)?.affiliateId).toBe(33);
+    expect(brandEdition(g, 20)).toBe(null);
+    const d = mapDrawhouse(g, td, 33);
+    expect(d.title).toBe("Win a Personalised Home Shirt for 20p");
+    expect(d.grand_prize).toBe("Personalised Home Shirt");
+    expect(d.entry_url).toBe("https://toffeesdraws.com/prize-draw/win-a-personalised-home-shirt-for-20p-3");
+    expect(d.total_entries).toBe(1100);
+    expect(mapDrawhouse(g, td, 20)).toBe(null); // no Raffle Town edition in the Toffees feed
+  });
+
+  test("the generic internal pool label never becomes the prize", async () => {
+    const g = structuredClone(byId(await games("toffeesdraws"), 70));
+    for (const p of g.prizePools) p.editions = [];
+    const d = mapDrawhouse(g, td, 33);
+    expect(d.grand_prize).not.toMatch(/physical prize/i);
+    expect(d.grand_prize).toBe(d.title);
   });
 });
 
