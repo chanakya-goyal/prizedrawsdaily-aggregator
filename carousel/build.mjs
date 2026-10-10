@@ -270,6 +270,20 @@ function classBFailures(d) {
   }
 }
 
+// ---- the native deck (global.template = "native", 2026-10-11 redesign) ----------------------
+// Everything above — photo choice, normalisation, the collage swap, the class-B drops — is shared.
+// The native deck owns its words, its gate pass and its render from here; the newsprint deck
+// below is kept intact behind the switch.
+if (GLOBAL.template === "native") {
+  const { buildNative } = await import("./native-build.mjs");
+  const res = await buildNative({
+    sel, DIR, browser, sheet, drawsPlanned, backupsBefore, ledgerB, posterRisk,
+    photoOf: (d) => (CARD === "cutout" ? cutBySlug[d.slug] : photoData[d.slug]) || d.image_url || null,
+  });
+  await browser.close();
+  process.exit(res.ok ? 0 : 1);
+}
+
 // ---- deck assembly -------------------------------------------------------------------
 // Ten slides: cover, count, one per remaining draw, closing. Every count on the frame is
 // derived from what ACTUALLY RENDERED, never from config.drawsPerDeck — on a degraded run a
