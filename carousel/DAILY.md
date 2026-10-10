@@ -32,7 +32,21 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
 4. **Build everything** — `bun carousel/build.mjs` (7 carousel slides + `out/BRIEFING.md` + `out/CAPTION_FALLBACK.txt`
    + `out/alt.json`), `bun carousel/reel.mjs` (today's arm — see below) → `out/reel.mp4` + `out/cover.jpg` +
    `out/reel-keyframes.png` + `out/reel-meta.json`. The Reel is a broadcast insert now: one
-   photograph per draw, full bleed, with chrome that EXPANDS to state the cap, HOLDS, then COLLAPSES.
+   photograph per draw on a PLATE, with chrome that EXPANDS over it to state the cap, HOLDS, then COLLAPSES.
+
+   **The Reel's image gate (added 19 Sep).** `reel.mjs` reads the `out/images.json` sheet `build.mjs`
+   just wrote and refuses any draw whose image `normalise.mjs` classified `high` — the same classifier
+   and the same threshold the carousel already uses to swap collage artwork off the deck. Until then the
+   Reel consulted **no** image class at all, which on 18 Sep put three poster tiles on a 1080×1920 frame.
+   The frames were unreadable for a second reason, now also fixed: the photograph was full-bleed
+   `object-fit:cover`, and covering 9:16 from the square-or-wider artwork operators publish keeps only the
+   middle ~56% of its width. It is `contain` on a plate now and crops nothing. **Run `build.mjs` first** —
+   without its sheet every image counts as unmeasured (treated as `medium`, exactly as `story.mjs` treats it)
+   and the gate cannot fire. If every draw is gated out, the Reel prints `NO REEL TODAY`, **deletes any
+   earlier run's `reel.mp4`/`cover.jpg`/`reel-meta.json`** so `publish.mjs` cannot ship them under today's
+   caption, and exits 0 — that is the carousel-only day in step 8, not a failure. `reel-meta.json` records
+   `imageGate` (the sheet used, the classes allowed, every rendered draw's class and everything dropped) so a
+   short reel and a gated one are never confused after the fact.
    A `loop` stage runs before the 97-second capture and refuses any reel whose frame at t=0 differs
    from the frame at t=duration — the duration is chosen as a whole multiple of the category scene's
    own loop so it closes by construction, and `bun carousel/story.mjs` (the soonest-closing draw) →

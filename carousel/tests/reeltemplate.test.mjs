@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { buildReelTimeline, pickDuration, planSegments, CHROME, CHROME_COLLAPSED, CHROME_EXPANDED, SAFE, L_NOTCH, loopClosureFrames } from "../reel-template.mjs";
+import { buildReelTimeline, pickDuration, planSegments, CHROME, CHROME_COLLAPSED, CHROME_EXPANDED, SAFE, L_NOTCH, PLATE, REEL_IMAGE_CLASSES, loopClosureFrames } from "../reel-template.mjs";
 import { sceneFor } from "../scene.mjs";
 
 // The old Reel was a dark, orange, particle-and-glow montage with a price stamp, a flip clock
@@ -31,6 +31,12 @@ const keyframes = (html, kind) => {
   return out;
 };
 const shorthands = (html) => [...html.matchAll(/animation:((?:[^";}]|\([^)]*\))+)/g)].map((m) => m[1].trim());
+const cssRule = (html, selector) => {
+  const i = html.indexOf(selector);
+  return i < 0 ? "" : html.slice(i, html.indexOf("}", i) + 1);
+};
+const withClasses = (imageClass, draws = [mk(1), mk(2), mk(3)]) =>
+  buildReelTimeline({ sel: { slug: "car-draws", draws }, heroes: {}, imageClass, audioMeta: { bpm: 112, firstBeatOffsetMs: 202 } });
 
 describe("chrome geometry is the spec's, to the pixel", () => {
   test("collapsed is the rail plus the band; expanded adds the card", () => {
@@ -163,5 +169,85 @@ describe("refusals", () => {
     const tl = build("car-draws", [mk(1), mk(2), mk(3), mk(4), mk(5), mk(6), mk(7), mk(8)]);
     expect(tl.drawsUsed).toBeLessThanOrEqual(5);
     expect(tl.drawsUsed).toBeGreaterThanOrEqual(3);
+  });
+});
+
+
+describe("the photograph is placed, and never cropped", () => {
+  // THE DEFECT THIS LOCKS OUT. The photograph was `inset:0` with object-fit:cover on a
+  // 1080x1920 frame. Operator artwork here is square or wider — one deck measured 1254x1254,
+  // 1000x1000, 1200x1200, 3542x2334, 4000x1848 — and covering 9:16 from a 1:1 source keeps only
+  // the middle 56% of the image's width. What shipped was a giant fragment of a letterform.
+  test("the plate is derived from the chrome, not typed", () => {
+    expect(PLATE.y).toBe(CHROME.rail.y + CHROME.rail.h);        // starts under the rail
+    expect(PLATE.y + PLATE.h).toBe(CHROME.band.y);              // ends on the card's floor
+    expect(PLATE.y + PLATE.h).toBe(CHROME.card.y + CHROME.card.h);
+    expect(PLATE).toEqual({ x: 0, y: 385, w: 1080, h: 622 });
+  });
+  test("the plate lies inside Meta's safe box", () => {
+    expect(PLATE.y).toBeGreaterThanOrEqual(SAFE.y);
+    expect(PLATE.y + PLATE.h).toBeLessThanOrEqual(SAFE.y + SAFE.h);
+    expect(PLATE.y + PLATE.h).toBeLessThanOrEqual(L_NOTCH.y);
+  });
+  test("the image is contained, and the word cover appears in no shot rule", () => {
+    const html = build().html;
+    expect(cssRule(html, ".shot img{")).toContain("object-fit:contain");
+    expect(cssRule(html, ".shot img{")).not.toContain("cover");
+    expect(cssRule(html, ".shot{")).not.toContain("inset:0");   // it is a plate, not a full bleed
+  });
+  test("every shot carries the plate's rect", () => {
+    const html = build().html;
+    const shots = [...html.matchAll(/<div class="shot" style="([^"]+)"/g)].map((m) => m[1]);
+    expect(shots.length).toBe(build().drawsUsed);
+    for (const st of shots) {
+      expect(st, st).toContain(`top:${PLATE.y}px`);
+      expect(st, st).toContain(`height:${PLATE.h}px`);
+    }
+  });
+  test("the letterbox ground is the carousel's white well, not the old ink backdrop", () => {
+    expect(cssRule(build().html, ".shot{")).toContain("var(--surface)");
+  });
+});
+
+describe("the image class decides what may reach the frame", () => {
+  // Same classifier and same threshold build.mjs already applies to the carousel. The reel
+  // consulted nothing, and on 18 Sep that put three poster tiles on a 1080x1920 frame.
+  test("low and medium reach it; high never does", () => {
+    expect([...REEL_IMAGE_CLASSES].sort()).toEqual(["low", "medium"]);
+  });
+  test("a high-risk draw is dropped and named", () => {
+    const tl = withClasses({ d1: "low", d2: "high", d3: "medium" });
+    expect(tl.drawsUsed).toBe(2);
+    expect(tl.dropped).toEqual([{ slug: "d2", imageClass: "high" }]);
+  });
+  test("an unmeasured image is treated as medium, exactly as story.mjs treats it", () => {
+    // Not knowing is not the same as knowing it is bad; refusing on absence would empty the
+    // deck on any run where build.mjs's sheet is stale.
+    const tl = withClasses({ d1: "low" });
+    expect(tl.drawsUsed).toBe(3);
+    expect(tl.dropped).toEqual([]);
+  });
+  test("no sheet at all changes nothing — the gate is opt-in on evidence", () => {
+    expect(withClasses(null).drawsUsed).toBe(build().drawsUsed);
+  });
+  test("a deck of nothing but poster art is refused, with the classes named", () => {
+    expect(() => withClasses({ d1: "high", d2: "high", d3: "high" }))
+      .toThrow(/dropped on image class.*d1=high/s);
+  });
+});
+
+describe("the prize name gets two lines without moving the chrome", () => {
+  // It shipped as one nowrap line, ellipsised, over a 950px measure at 56px uppercase — about
+  // 27 glyphs. The deck it shipped on carried a 48-character and a 66-character prize name.
+  test("it is clamped to two lines, not truncated to one", () => {
+    const rule = cssRule(build().html, ".prize{");
+    expect(rule).toContain("-webkit-line-clamp:2");
+    expect(rule).not.toContain("white-space:nowrap");
+  });
+  test("the rows still add up to the card, so the chrome table is untouched", () => {
+    const html = build().html;
+    const h = (sel) => Number(cssRule(html, sel).match(/height:(\d+)px/)[1]);
+    expect(h(".rowB{") + h(".rowC{")).toBe(CHROME.card.h);
+    expect(CHROME.card.h).toBe(346);
   });
 });
