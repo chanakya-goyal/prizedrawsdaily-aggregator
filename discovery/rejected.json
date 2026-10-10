@@ -43,5 +43,140 @@
     "domain": "golfdailydraw.co.uk",
     "reason": "FlareSolverr pilot 2026-09-03: reachable, 12 pages scraped, all dateless instant-win/auto-draw golf comps (required-date gate). TP 5.0/391.",
     "date": "2026-09-03"
+  },
+  {
+    "domain": "acecompetitions.co.uk",
+    "reason": "Re-check 2026-10-11: Trustpilot recency recovered (4.5/1,478, 3 reviews in 30 days) but homepage + Woo Store API now return a firewall 403 to plain fetch — only reachable via FlareSolverr; retry there",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "competitionfox.com",
+    "reason": "Trustpilot 4.9/6,307 + DCMS signatory, but 24 of 30 live caps are 15–400 'AUTO WIN' micro-comps (below the 500-entry floor) and the Store API marks products not purchasable (2026-10-11)",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "letswin.co.uk",
+    "reason": "Trustpilot 4.3/1,361 but 9 of 10 live caps are 15–149 — below the 500-entry floor (2026-10-11)",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "247competitions.com",
+    "reason": "Trustpilot 4.7/1,376 but the newest review is from Dec 2021 — no live review base (2026-10-11)",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "thegiveawaygroup.com",
+    "reason": "Trustpilot 5.0/536 but no reviews since Jan 2026 — weak recency (2026-10-11); re-check in a quarter",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "luckyturbo.co.uk",
+    "reason": "Trustpilot 4.1 from only 32 reviews — too small a review base (2026-10-11)",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "cameracompetitions.co.uk",
+    "reason": "Trustpilot 4.8/856 + DCMS signatory, but blocks plain fetch (bot wall/Cloudflare, 2026-10-11) — an access restriction, not a trading signal; retry via FlareSolverr/topup",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "highlandprizegiveaways.co.uk",
+    "reason": "Trustpilot 4.8/2,320 but blocks plain fetch (bot wall/Cloudflare, 2026-10-11) — retry via FlareSolverr/topup",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "lockdowncompetitions.co.uk",
+    "reason": "DCMS signatory but blocks plain fetch (bot wall/Cloudflare, 2026-10-11) — retry via FlareSolverr/topup",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "vintagecomps.com",
+    "reason": "DCMS signatory but blocks plain fetch (bot wall/Cloudflare, 2026-10-11) — retry via FlareSolverr/topup",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "southcoast-competitions.co.uk",
+    "reason": "Trustpilot 4.9/727 but blocks plain fetch (bot wall/Cloudflare, 2026-10-11) — retry via FlareSolverr/topup",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "kingofcomps.co.uk",
+    "reason": "Blocks plain fetch (bot wall/Cloudflare, 2026-10-11) — retry via FlareSolverr/topup",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "rafflee.co.uk",
+    "reason": "Blocks plain fetch (bot wall/Cloudflare, 2026-10-11) — retry via FlareSolverr/topup",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "oddsup.co.uk",
+    "reason": "Blocks plain fetch (bot wall/Cloudflare, 2026-10-11) — retry via FlareSolverr/topup",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "winamillion.com",
+    "reason": "HTTP 451 — explicit geo-block (2026-10-11); only a UK egress would unlock it",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "mrwishcompetitions.co.uk",
+    "reason": "Trustpilot 4.9/560 but JS-only storefront and the Woo Store API returns 403 (2026-10-11) — needs the render path",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "daymade.co.uk",
+    "reason": "Trustpilot 4.4/4,033 but appears to be a daily-draw membership model rather than capped per-ticket raffles (unconfirmed, 2026-10-11) — verify before re-adding",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "lawrenceofkemnay-competition.co.uk",
+    "reason": "Domain now redirects to an unrelated beauty site (2026-10-11)",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "acecarcomps.com",
+    "reason": "Returns HTTP 503 to every check (2026-10-11) — an access restriction, not proof it stopped trading",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "diamondwinners.co.uk",
+    "reason": "Good caps but only 41 Trustpilot reviews — too small a review base (2026-10-11)",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "heavencompetitions.co.uk",
+    "reason": "Good caps but only 81 Trustpilot reviews — too small a review base (2026-10-11)",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "koalacompetitions.com",
+    "reason": "Good caps but only 10 Trustpilot reviews (2026-10-11)",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "luckylizards.co.uk",
+    "reason": "Good caps but only 47 Trustpilot reviews (2026-10-11)",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "nerdcomps.com",
+    "reason": "Good caps but only 6 Trustpilot reviews (2026-10-11)",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "blacklabelcompetitions.com",
+    "reason": "Good caps but only 5 Trustpilot reviews (2026-10-11)",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "tommyfrenchcompetitions.com",
+    "reason": "DEFERRED, not rejected on quality: Trustpilot 4.8/820 + DCMS signatory, but a JS-only custom site with no API found (2026-10-11) — needs a render config",
+    "date": "2026-10-11"
+  },
+  {
+    "domain": "palladiumcompetitions.com",
+    "reason": "SERIOUS harm (2026-10-11 due diligence): 10+ Trustpilot reviewers Apr 2025–Oct 2026 report unpaid or late winnings (3 between 27 Sep and 9 Oct), no company reply to any negative review; Trustpilot 3.9/1,173. Scrapes fine (28 gate-passing draws) — rejected on conduct, not access",
+    "date": "2026-10-11"
   }
 ]

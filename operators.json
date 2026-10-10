@@ -779,5 +779,74 @@
   "apiStyle": "drawhouse",
   "listApi": "https://api.prod.raffletown.co.uk/v3/pub/gs/charityraffles/lobbygames?affiliateId=27&state=INPROGRESS",
   "note": "DrawHouse white-label event brand (Network Fantasy Holdings Ltd). At add (2026-10-11) it ran ONLY instant-win games, so it yields 0 draws by design; kept enabled so a real draw flows the day it launches."
+ },
+ {
+  "name": "Dreams 2 Reality",
+  "slug": "dreams-2-reality",
+  "base": "https://www.dreams2reality.co.uk",
+  "method": "woo"
+ },
+ {
+  "name": "Hittin It Big",
+  "slug": "hittin-it-big",
+  "base": "https://hittinitbig.com",
+  "method": "woo"
+ },
+ {
+  "name": "Apex 66",
+  "slug": "apex-66",
+  "base": "https://www.apex66.co.uk",
+  "method": "woo"
+ },
+ {
+  "name": "Gigahertz Giveaways",
+  "slug": "gigahertz-giveaways",
+  "base": "https://gigahertzgiveaways.co.uk",
+  "method": "woo"
+ },
+ {
+  "name": "Paragon Competitions",
+  "slug": "paragon-competitions",
+  "base": "https://www.paragoncompetitions.co.uk",
+  "method": "woo"
+ },
+ {
+  "name": "Clover Competitions",
+  "slug": "clover-competitions",
+  "base": "https://www.clovercompetitions.co.uk",
+  "method": "woo"
+ },
+ {
+  "name": "Trinity Club Competitions",
+  "slug": "trinity-club-competitions",
+  "base": "https://www.trinityclubcompetitions.co.uk",
+  "method": "woo"
+ },
+ {
+  "name": "The Guitar Marketplace",
+  "slug": "the-guitar-marketplace",
+  "base": "https://theguitarmarketplace.com",
+  "method": "woo"
+ },
+ {
+  "name": "RaffledUp",
+  "slug": "raffledup",
+  "base": "https://www.raffledup.com",
+  "method": "woo"
+ },
+ {
+  "name": "Urban Draw",
+  "slug": "urban-draw",
+  "base": "https://www.urbandraw.co.uk",
+  "method": "woo"
+ },
+ {
+  "name": "Vortex Competitions",
+  "slug": "vortex-competitions",
+  "base": "https://vortexcompetitions.com",
+  "method": "api",
+  "apiStyle": "inertia",
+  "listing": "https://vortexcompetitions.com/competitions",
+  "note": "Laravel + Inertia (compengine.io whitelabel, same platform as dream-big-competitions) — page state JSON in #app data-page. TP 4.6/1,779 at add (2026-10-11)."
  }
 ]
