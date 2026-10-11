@@ -60,6 +60,11 @@ Also check the cover photo-dump and the end slide's corner photos — they reuse
 - Wrong draw: in `$PDD_DIR/selection.json`, move it from `draws` to the end of `backups` and move the first
   backup whose photo you have checked into its place. Then `bun carousel/fetchimg.mjs` if that backup has no
   `.fetched/<slug>/` folder.
+- A draw the BUILD dropped (its first photo read as a collage) can come back once you pick a clean candidate:
+  `build.mjs` rewrites `selection.json` and removes dropped draws from the backups too, but
+  `$PDD_DIR/selection.plan.json` is plan.mjs's untouched copy — take the draw object from there.
+- **Do not re-run `plan.mjs` to recover a draw**: it archives the work dir, built frames included. Re-plan only
+  to switch category (below).
 - Rebuild with `bun carousel/build.mjs` and look at every frame again.
 - If after 2 rounds you cannot get at least 4 clean prize frames, try ONE other category:
   `ONLY_CATEGORY=<slug> bun carousel/plan.mjs`, then steps 1–3 again. If that fails too: STATUS: SKIPPED.
@@ -68,6 +73,9 @@ Also check the cover photo-dump and the end slide's corner photos — they reuse
 The template lines already pass the wording gate. You MAY write `$PDD_DIR/COPY.json` with fresher flavour lines
 (schema at the bottom of `out/BRIEFING.md`) and rebuild; a line the gate refuses is logged and the template line
 kept. Keep it light UK register, no "you", no figures except that slide's own price. Skip this step if unsure.
+
+Steps 6 and 7 come AFTER your last rebuild: the Story's corner photos and the fallback caption are made from
+the deck as it stands, so a Story or caption made before a swap shows draws you rejected.
 
 ## 6. Story
 ```
