@@ -9,6 +9,18 @@ A premium daily **Reel + carousel + story** for **@prizedrawsdaily**, cross-post
 The Reel is now the main event (it's the only format that has ever reached anyone on this account — see the
 design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md`). Carousel and story ride along.
 
+## 🤖 AUTOPILOT (from 2026-10-11) — the daily post runs itself
+
+`carousel/autopilot/run.sh` runs every day at **16:15 Mac time** (launchd `uk.prizedrawsdaily.autopost`) and hands
+headless Claude **`carousel/AUTOPILOT.md`** — the same steps as this runbook, with the visual check and the skip
+rules, ending in `out/REPORT.md`. Reports land as comments on the pinned **"Autopost log"** issue; a skipped or
+failed day (or no post for 36h, checked from GitHub at 20:00 UTC by `autopost-watchdog.yml`) opens an
+**`autopost`** issue. Install / refresh: `bash ~/pdd-aggregator/carousel/autopilot/install.sh`.
+Pause: `touch ~/.pdd-autopost-off` · resume: `rm ~/.pdd-autopost-off` · dry run:
+`bash ~/pdd-autopost/carousel/autopilot/run.sh --dry-run` · logs: `~/Library/Logs/pdd-autopost/`.
+Saying "publish today" in a session still works — check the log issue first so you do not post twice
+(`publish.mjs` refuses a second carousel on the same day anyway).
+
 ## ⭐ NATIVE TEMPLATE — read this first (from 2026-10-11; `global.template = "native"`)
 
 The owner rejected the newsprint deck (masthead, ticket-cap hero, dot grid, terms on every frame) as too
