@@ -1,4 +1,4 @@
-// The 9:16 Reel — a broadcast insert over a full-bleed photograph.
+// The 9:16 Reel — a broadcast insert over a photograph on a plate.
 //
 // WHAT THIS REPLACED, AND WHY
 // The old template was a dark, orange, particle-and-glow montage with a price stamp, a flip
@@ -7,12 +7,17 @@
 // CTA and the handle were all in territory Instagram's own UI can cover. It also built its CSS
 // by regex-scraping styles.css, which meant per-category structure could never reach it.
 //
-// THE GRAMMAR NOW: one photograph per draw, full bleed, with persistent chrome over it that
-// EXPANDS to state the numbers, HOLDS, then COLLAPSES to give the photograph back. The rail and
-// the conditions band never move; only the insert card does. That is the shape the research
-// calls a broadcast insert, and it is the only one that keeps a dominant photograph — which
-// matters because Instagram makes reels "less visible" when they are "majority text" or carry
-// borders, and a dominant photograph is the defence.
+// THE GRAMMAR NOW: one photograph per draw on a PLATE inside Meta's safe box, with persistent
+// chrome that EXPANDS over its lower half to state the numbers, HOLDS, then COLLAPSES to give
+// the photograph back. The rail and the conditions band never move; only the insert card does.
+//
+// The plate replaced a full bleed on 19 Sep, and the reason is worth keeping: "full bleed" on
+// 9:16 meant object-fit:cover, and covering 9:16 from the square-or-wider artwork operators
+// actually publish keeps only the middle ~56% of the image's width. Whole frames of the 18 Sep
+// reel were a single giant letterform, legible as neither a prize nor a picture. A plate with
+// object-fit:contain crops nothing. The territory the photograph gave up — outside the safe box,
+// where Instagram's own UI sits — is standing chrome now, which is where a picture was never
+// going to be seen whole anyway.
 //
 // THE LOOP IS CLOSED BY CONSTRUCTION, not by luck. Frame 0 and the final frame must be the same
 // picture, because a seamless loop is measured as replays rather than as a new viewer: Views
@@ -47,6 +52,34 @@ export const CHROME = {
 // 116 + 346 + 145 = 607px. The photograph keeps the rest, which is the whole point.
 export const CHROME_COLLAPSED = CHROME.rail.h + CHROME.band.h;
 export const CHROME_EXPANDED = CHROME_COLLAPSED + CHROME.card.h;
+
+// THE PHOTOGRAPH'S PLATE — derived from the chrome, never typed. It starts under the rail and
+// ends on the card's floor, so it is exactly the region the insert rises through: chrome covers
+// the picture to state the numbers, then collapses and gives it back. That is the grammar this
+// template was always described as having; the photograph just never had an edge before.
+//
+// WHY A PLATE INSTEAD OF A FULL BLEED, and this is the whole defect:
+// the photograph used to be `inset:0` with `object-fit:cover` on a 1080x1920 frame. Operator
+// artwork on this inventory is square or wider — one day's deck measured 1254x1254, 1000x1000,
+// 1200x1200, 3542x2334, 4000x1848 — and covering 9:16 from a 1:1 source keeps only the middle
+// 56% of the image's width. What reached the frame was a giant fragment of a letterform,
+// legible as neither a prize nor a picture, and no amount of spacing, beat or music work could
+// have touched it. `contain` inside a plate crops NOTHING. It is the same trade the carousel's
+// well already makes — contain shows the WHOLE product and letterboxes it — and the Reel was
+// the one surface in the system still cropping.
+export const PLATE = {
+  x: 0,
+  y: CHROME.rail.y + CHROME.rail.h,
+  w: 1080,
+  h: CHROME.band.y - (CHROME.rail.y + CHROME.rail.h),
+};
+
+// The image classes a photograph may carry to reach the frame. `high` is normalise.mjs's
+// "reads as a collage or a poster" verdict, and build.mjs already refuses it on the carousel
+// (RANK … < 2 continue). The Reel consulted no class at all, which is how three poster tiles
+// reached a 1080x1920 frame on 18 Sep. Same inventory, same classifier, same threshold — the
+// Reel simply was not asking.
+export const REEL_IMAGE_CLASSES = new Set(["low", "medium"]);
 
 // The seek runtime, unchanged. It pauses every animation and sets currentTime, which is what
 // makes a CSS timeline frame-addressable and therefore deterministic.
@@ -109,13 +142,20 @@ export function planSegments({ durationMs, drawCount, grid = [] }) {
 const REEL_CSS = `
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:1080px;height:1920px;overflow:hidden}
-body{background:var(--ink);color:var(--ink);font-family:var(--font-text),system-ui,sans-serif;
+body{background:var(--ground);color:var(--ink);font-family:var(--font-text),system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
-.reel{position:relative;width:1080px;height:1920px;overflow:hidden}
+.reel{position:relative;width:1080px;height:1920px;overflow:hidden;background:var(--ground)}
 
-/* The photograph is FULL BLEED and sits under everything. It is the thing that pays. */
-.shot{position:absolute;inset:0;opacity:0}
-.shot img{width:100%;height:100%;object-fit:cover;display:block}
+/* The photograph sits on a PLATE inside the safe box, on its own white ground, and is never
+   cropped: object-fit contain letterboxes onto that white exactly as the carousel well does. */
+.shot{position:absolute;left:0;width:1080px;background:var(--surface);opacity:0;
+  box-shadow:inset 0 0 0 1px var(--hairline)}
+.shot img{width:100%;height:100%;object-fit:contain;display:block}
+
+/* The frame OUTSIDE Meta's safe box: standing chrome, never the photograph. This is the
+   territory Instagram's own UI occupies, so a picture placed here is a picture nobody sees
+   whole. Left as bare ground it was 1,037px of blank frame — 54% of the canvas. */
+.field{position:absolute;left:0;width:1080px;background:var(--rail)}
 
 /* Scene lanes. #scene-back is ABOVE the photograph here and clipped to its lanes, so it is
    chrome texture rather than a backdrop. */
@@ -133,11 +173,11 @@ body{background:var(--ink);color:var(--ink);font-family:var(--font-text),system-
    revealed rather than flown in. Anchoring it by its bottom edge is what makes that true. */
 .card{position:absolute;left:0;width:1080px;background:var(--ground);overflow:hidden;height:0}
 .card-inner{position:absolute;left:0;bottom:0;width:1080px;height:346px;padding:0 65px}
-.rowB{height:90px;display:flex;align-items:center}
+.rowB{height:104px;display:flex;align-items:center}
 .prize{font-family:var(--font-display);font-weight:700;font-size:var(--fs-lead);
-  line-height:60px;color:var(--ink);text-transform:uppercase;white-space:nowrap;
-  overflow:hidden;text-overflow:ellipsis;width:950px}
-.rowC{height:256px;padding:8px 0}
+  line-height:52px;color:var(--ink);text-transform:uppercase;width:950px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rowC{height:242px;padding:6px 0}
 .eyebrow{font-weight:600;font-size:var(--fs-label);line-height:var(--lh-label);height:50px;
   letter-spacing:var(--tr-label);text-transform:uppercase;color:var(--ink-meta)}
 .figure{font-family:var(--font-figure);font-weight:700;font-size:var(--fs-figure);
@@ -200,9 +240,24 @@ function trackCss(segs, durationMs) {
 
 // ---------------------------------------------------------------- build
 
-export function buildReelTimeline({ sel, slides, heroes = {}, arm = "A", audioMeta = null, nowIso = null, closeIso = null }) {
-  const draws = (sel?.draws || []).filter((d) => Number(d.total_entries) > 0 && (heroes[d.slug] || d.image_url));
-  if (!draws.length) throw new Error("buildReelTimeline: no draw carries both a ticket cap and a photograph — refusing to render a reel with nothing to state");
+export function buildReelTimeline({ sel, slides, heroes = {}, imageClass = null, arm = "A", audioMeta = null, nowIso = null, closeIso = null }) {
+  // An UNMEASURED image is treated as `medium`, exactly as story.mjs treats it: not knowing is
+  // not the same as knowing it is bad, and refusing on absence would empty the deck on any run
+  // where build.mjs's sheet is stale. What is refused is a MEASURED `high`.
+  const classOf = (slug) => imageClass?.[slug] ?? "medium";
+  const dropped = [];
+  const draws = (sel?.draws || []).filter((d) => {
+    if (!(Number(d.total_entries) > 0)) return false;
+    if (!(heroes[d.slug] || d.image_url)) return false;
+    if (!REEL_IMAGE_CLASSES.has(classOf(d.slug))) {
+      dropped.push({ slug: d.slug, imageClass: classOf(d.slug) });
+      return false;
+    }
+    return true;
+  });
+  if (!draws.length) throw new Error("buildReelTimeline: no draw carries both a ticket cap and a photograph the frame can show"
+    + (dropped.length ? ` — ${dropped.length} dropped on image class (${dropped.map((d) => `${d.slug.slice(0, 28)}=${d.imageClass}`).join(", ")})` : "")
+    + " — refusing to render a reel with nothing to state");
 
   const scene = sceneFor(sel.slug);
   const durationMs = pickDuration({ loopMs: scene.loopMs, targetMs: 15000 });
@@ -233,15 +288,15 @@ export function buildReelTimeline({ sel, slides, heroes = {}, arm = "A", audioMe
     });
 
     const anim = (name, ease = "linear") => `${name}-${i} ${durationMs}ms ${ease} 0ms both`;
-    shots.push(`<div class="shot" style="animation:${anim("shot")}"><img src="${hero}"></div>`);
+    shots.push(`<div class="shot" style="top:${PLATE.y}px;height:${PLATE.h}px;animation:${anim("shot")}"><img src="${hero}"></div>`);
     cards.push(`<div class="card" style="top:${CHROME.card.y}px;animation:${anim("card", "cubic-bezier(.2,.8,.2,1)")}">
       <div class="card-inner">
         <div class="rowB"><div class="prize" data-pdd-claim="prize-name">${esc(nbh(title))}</div></div>
         <div class="rowC">
           <div class="eyebrow">${oddsCopy.eyebrow()}</div>
-          <div style="height:10px"></div>
+          <div style="height:8px"></div>
           <div class="figure">${oddsCopy.capFigure(cap)}</div>
-          <div style="height:10px"></div>
+          <div style="height:8px"></div>
           <div class="cond">${esc(oddsCopy.conditional(cap))}</div>
         </div>
       </div></div>`);
@@ -268,6 +323,8 @@ export function buildReelTimeline({ sel, slides, heroes = {}, arm = "A", audioMe
 </head><body data-pdd-role="reel-card">
 <!-- reel dur=${durationMs} scene=${scene.id} loop=${scene.loopMs} cuts=[${cutTimesMs}] fps=${FPS} arm=${arm} -->
 <div class="reel">
+  <div class="field" style="top:0;height:${SAFE.y}px"></div>
+  <div class="field" style="top:${SAFE.y + SAFE.h}px;height:${1920 - (SAFE.y + SAFE.h)}px"></div>
   ${shots.join("\n  ")}
   <div class="scene-host">${sceneBack(scene, "reel-9x16", { draw: used[0], animate: true })}</div>
   <div class="rail" style="top:${CHROME.rail.y}px;height:${CHROME.rail.h}px">
@@ -280,7 +337,7 @@ export function buildReelTimeline({ sel, slides, heroes = {}, arm = "A", audioMe
 
   // stampText travels out so the cover can render the SAME read-at stamp as the video. Two
   // surfaces deriving it separately is how they end up disagreeing about when we looked.
-  return { html, durationMs, cutTimesMs, stampTimesMs, coverText, stampText, sceneId: scene.id, drawsUsed: used.length };
+  return { html, durationMs, cutTimesMs, stampTimesMs, coverText, stampText, sceneId: scene.id, drawsUsed: used.length, dropped };
 }
 
 // The frame budget the build asserts against. Exported so a test can check the arithmetic

@@ -98,3 +98,9 @@ describe("deck size", () => {
     expect(drawsPerDeck()).toBeGreaterThanOrEqual(4);
   });
 });
+
+// The native deck (2026-10-11) is cover + 5 prizes + end slide = 7 frames. The newsprint deck is
+// kept behind the switch, so the switch itself must name a template that exists.
+test("global.template names a template build.mjs knows", () => {
+  expect(["native", "newsprint", undefined]).toContain(GLOBAL.template);
+});

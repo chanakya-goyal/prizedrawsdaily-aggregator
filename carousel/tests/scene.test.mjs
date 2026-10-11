@@ -69,12 +69,48 @@ describe("motion is closed by construction", () => {
   });
 });
 
+describe("the reel's outer lanes", () => {
+  // The reel used to fill the territory outside Meta's safe box with the photograph, stretched
+  // edge to edge under object-fit:cover. The photograph now has a plate inside the box, so
+  // these two lanes carry ground and its scene texture instead of an unreadable crop.
+  const reel = LANES["reel-9x16"];
+  test("they cover exactly the territory outside the safe box", () => {
+    const above = reel.find((l) => l.y === 0);
+    const below = reel.find((l) => l.y === 1152);
+    expect(above).toBeTruthy();
+    expect(below).toBeTruthy();
+    expect(above.y + above.h).toBe(269);          // the safe box's top edge
+    expect(below.y).toBe(269 + 883);              // and its bottom
+    expect(below.y + below.h).toBe(1920);         // down to the frame
+  });
+  test("exactly one lane animates, and it is the insert card — never the brand rail", () => {
+    // This used to be INFERRED from ground === "paper", so adding any paper lane silently
+    // started animating it. A moving brand mark reads as an error, so the lane declares it.
+    const anim = reel.filter((l) => l.anim === true);
+    expect(anim.length).toBe(1);
+    expect(anim[0]).toMatchObject({ y: 661, h: 346 });
+    expect(reel.find((l) => l.ground === "rail").anim).toBeUndefined();
+  });
+  test("the outer lanes carry standing chrome, not dead ground", () => {
+    // Left as paper they were 1,037px of blank frame — 54% of it. The Story frames its subject
+    // with these exact rects on rail ground; the Reel now does the same, so the two 9:16
+    // surfaces read as one product.
+    expect(reel.filter((l) => l.ground === "rail").length).toBe(3);
+    expect(reel.filter((l) => l.ground === "paper").length).toBe(1);
+    const story = LANES["story-9x16"];
+    for (const outer of [{ y: 0, h: 269 }, { y: 1152, h: 768 }]) {
+      expect(reel.find((l) => l.y === outer.y && l.h === outer.h).ground).toBe("rail");
+      expect(story.find((l) => l.y === outer.y && l.h === outer.h).ground).toBe("rail");
+    }
+  });
+});
+
 describe("surfaces and lanes", () => {
   test("the reel cover carries the rail lane only", () => {
     // buildCoverHtml renders no insert card, so declaring a card lane made the loop assertion
     // read as vacuous rather than as passing.
     expect(LANES["reel-cover-9x16"].length).toBe(1);
-    expect(LANES["reel-9x16"].length).toBe(2);
+    expect(LANES["reel-9x16"].length).toBe(4);
   });
   test("the four 4:5 roles each get a region and nothing else does", () => {
     for (const r of ["cover", "count", "draw", "closing"]) expect(sceneRegion(r)).not.toBeNull();

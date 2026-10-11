@@ -331,9 +331,19 @@ export const SURFACES = {
 // design document was wrong after at least one of those moves.
 export const LANES = {
   "reel-cover-9x16": [{ x: 0, y: 269, w: 1080, h: 116, ground: "rail" }],
+  // The two OUTER lanes are the territory Meta's own UI sits in — above the safe box and below
+  // it, where the caption, the handle and the action rail go. The reel used to fill them with
+  // the photograph stretched edge to edge; the photograph now has a plate INSIDE the safe box
+  // (reel-template.mjs PLATE), so these carry standing chrome instead of a crop nobody could
+  // read. They are the SAME two rects the Story declares, with the same rail ground, on
+  // purpose: two 9:16 surfaces that frame their subject differently read as two products.
+  // Left as paper they were 1,037px of dead ground — 54% of the frame — which is how the first
+  // attempt at this fix looked, and why it was not the fix.
   "reel-9x16": [
-    { x: 0, y: 269, w: 1080, h: 116, ground: "rail" },   // R — brand rail, static always
-    { x: 0, y: 661, w: 1080, h: 346, ground: "paper" },  // C — insert card, the only animated lane
+    { x: 0, y: 0,    w: 1080, h: 269, ground: "rail"  },              // above the safe box
+    { x: 0, y: 269,  w: 1080, h: 116, ground: "rail"  },              // R — brand rail, static always
+    { x: 0, y: 661,  w: 1080, h: 346, ground: "paper", anim: true },  // C — insert card, the only animated lane
+    { x: 0, y: 1152, w: 1080, h: 768, ground: "rail"  },              // below it — caption and action rail
   ],
   "story-9x16": [
     { x: 0, y: 0,    w: 1080, h: 269, ground: "rail" },
@@ -410,7 +420,7 @@ export function sceneBack(scene, surface, { role, draw, animate = false } = {}) 
   // Only Lane C animates on the Reel. The brand rail is static ALWAYS, on every surface: a
   // moving brand mark reads as an error, and the rail is where the mark lives.
   const html = boxes.map((box, i) => {
-    const animated = animate && surface === "reel-9x16" && box.ground === "paper";
+    const animated = animate && surface === "reel-9x16" && box.anim === true;
     return `<div class="sc-box sc-${scene.id}${animated ? " sc-anim" : ""}" `
       + `style="left:${box.x}px;top:${box.y}px;width:${box.w}px;height:${box.h}px">`
       + scene.back({ ...box, variant, index: i }) + `</div>`;

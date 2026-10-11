@@ -28,14 +28,76 @@ export const cleanTitle = (t = "") => {
   return s || String(t).trim();
 };
 
-export function cashAlt(...texts) {
+// Cash attached to a NON-cash prize, split by what the operator actually offers:
+//   alternative — "X or £30,000 cash", "X | £2,000 CASH ALT": cash INSTEAD of the prize
+//   bonus       — "X + £2,000 cash", "X & £2,000 or £45,000": cash ON TOP of the prize
+// Ambiguous wording returns null rather than a guess: a draw whose main prize IS cash, cash that
+// replaces a sub-item ("+ your choice of tools or £3,500"), and instant-win pools, end prizes and
+// jackpots that are not paid to the main winner. taxFree only when the operator says it of that amount.
+const MONEY_RE = /£\s?(\d[\d,]*(?:\.\d+)?)\s*(k\b)?/gi;
+const NOT_THE_WINNERS = /^(?:tax[-\s]?free\s+)?(?:cash\s+)?(?:instant|instants|end\s+prize|main\s+prize|top\s+prize|prize\s+fund|jackpot|credit|site\s+credit|worth|tickets?|entries|bundle|find\s*&)/i;
+const toAmount = (n, k) => Math.round(Number(n.replaceAll(",", "")) * (k ? 1000 : 1));
+
+function parseCash(text) {
+  const s = String(text).replace(/\s+/g, " ").trim();
+  const none = { alternative: null, bonus: null };
+  // The main prize is cash ("Win £1,000 Tax Free Cash", "💰£2,000 Cash", "Treasure Hunters – £5,000 Cash"):
+  // nothing to attach. Leading emoji/punctuation and "Win (this/a)" are skipped first.
+  const lead = s.replace(/^[^\p{L}\p{N}£]+/u, "").replace(/^win\s+(?:this\s+|a\s+|an\s+)?/i, "");
+  if (/^£/.test(lead) || /^[^£]{0,40}?\s[–—-]\s£/.test(lead)) return none;
+  let alternative = null, bonus = null;
+  for (const m of s.matchAll(MONEY_RE)) {
+    const before = s.slice(0, m.index);
+    const after = s.slice(m.index + m[0].trimEnd().length);
+    // the words that belong to THIS amount stop at the next connector
+    const own = after.split(/(?:^|\s)(?:or|\+|&|and)\s|(?:^|\s)[-–—|]\s/i)[0];
+    if (/\bx\s*$/i.test(before) || NOT_THE_WINNERS.test(own.trim())) continue;
+    const amount = toAmount(m[1], m[2]);
+    const taxFree = /tax[-\s]?free/i.test(own);
+    const isCashWord = /^(?:tax[-\s]?free\s*)?(?:cash\b|$|[!.]|tax[-\s]?free)/i.test(own.trim());
+    const connector = (before.match(/(?:^|\s)(or|\+|&|and|plus|\|)\s*$/i) || [])[1]?.toLowerCase();
+    if (!alternative && /^(?:tax[-\s]?free\s+)?cash\s+alt(?:ernative)?\b/i.test(own.trim())) {
+      alternative = { amount, taxFree };
+    } else if (!alternative && connector === "or" && isCashWord) {
+      // "+ your choice of tools or £3,500": the cash replaces what follows the last "+", not the prize
+      const lastPlus = before.lastIndexOf("+");
+      const alternated = lastPlus >= 0 ? before.slice(lastPlus + 1) : "";
+      if (/choice/i.test(before) || /\p{L}{3,}/u.test(alternated.replace(/£\s?[\d,]+k?|\bor\b|\bcash\b/gi, ""))) continue;
+      alternative = { amount, taxFree };
+    } else if (!bonus && ["+", "&", "and", "plus"].includes(connector)
+               && (isCashWord || /^\s*or\s+£/i.test(after))) {
+      bonus = { amount, taxFree };
+    }
+  }
+  return { alternative, bonus };
+}
+
+// Operator text in priority order (grand_prize, then title); each field is filled by the first
+// source that states it. Our own prize_description is NOT a source — it is a paraphrase.
+export function cashExtras(...texts) {
+  const out = { alternative: null, bonus: null };
   for (const t of texts) {
     if (!t) continue;
-    const m = String(t).match(/£\s?([\d,]{3,})\s*(?:tax[-\s]?free\s*)?(?:cash|alternative)/i)
-          || String(t).match(/\bor\s*£\s?([\d,]{3,})/i);
-    if (m) return `£${m[1]} TAX-FREE CASH`;
+    const r = parseCash(t);
+    out.alternative ??= r.alternative;
+    out.bonus ??= r.bonus;
   }
-  return null;
+  return out;
+}
+
+// Legacy string consumers (honesty.mjs ceiling, odds-copy absurd-comparison, the briefing):
+// the ALTERNATIVE only — a bonus is not an honest ceiling on what the prize is worth.
+export function cashAlt(...texts) {
+  const a = cashExtras(...texts).alternative;
+  return a ? `£${a.amount.toLocaleString("en-GB")} ${a.taxFree ? "TAX-FREE CASH" : "CASH"}` : null;
+}
+
+// Bubble-sized money: £30k, £22.5k, £1.25m, £400.
+export function shortMoney(n) {
+  const trim = (x) => String(Number(x.toFixed(2)));
+  if (n >= 1e6) return `£${trim(n / 1e6)}m`;
+  if (n >= 1000) return `£${trim(n / 1000)}k`;
+  return `£${n}`;
 }
 
 export function closesLabel(iso, now = new Date()) {
@@ -59,7 +121,7 @@ export function toDrawSlide(d, n) {
     type: "draw", n,
     price: priceLabel(d.ticket_price),
     title: cleanTitle(d.title),
-    cashAlt: cashAlt(d.grand_prize, d.prize_description),
+    cashAlt: cashAlt(d.grand_prize, d.title),
     closes: closesLabel(d.draw_date),
     image: d.image_url,
     slug: d.slug,

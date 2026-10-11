@@ -9,6 +9,45 @@ A premium daily **Reel + carousel + story** for **@prizedrawsdaily**, cross-post
 The Reel is now the main event (it's the only format that has ever reached anyone on this account — see the
 design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md`). Carousel and story ride along.
 
+## ⭐ NATIVE TEMPLATE — read this first (from 2026-10-11; `global.template = "native"`)
+
+The owner rejected the newsprint deck (masthead, ticket-cap hero, dot grid, terms on every frame) as too
+professional for people scrolling Instagram. The deck now looks like a person posted it. Spec:
+`docs/superpowers/specs/2026-10-11-native-ig-redesign.md`. Where this block and the steps below disagree,
+**this block wins**.
+
+- **7 frames**: `01-cover` (photo-dump of the 3 cleanest photos + "5 motors up for grabs this week" + a FROM
+  sticker), `02`–`06` one prize each, `07-closing` (site link sticker + "save this for later 📌" + one small-print
+  line). `drawsPerDeck` is 5. Each prize frame: photo, price on an IG "Strong" sticker, a slang bubble, cash
+  bubble only when the operator states one, a countdown card with the closing DAY, and a "via {operator}" pill.
+  `prizedrawsdaily.co.uk` runs faintly behind every frame, with a © mark on each photo.
+- **Words** come from `native-copy.mjs` and are gate-clean as shipped. Optional: write fresher flavour lines to
+  `COPY.json` in the work dir (schema at the bottom of `out/BRIEFING.md`) and re-run `build.mjs`. A line the gate
+  refuses is logged and the template line kept.
+- **Caption**: the short native shape (CAPTION_FALLBACK.txt already follows it). If you write `CAPTION.txt`, keep
+  the operator on every prize line. Run `bun carousel/caption-check.mjs`; it must print `✓ captions clean`.
+  `publish.mjs` now runs the same check and **refuses to publish on class A**.
+- **Story**: `bun carousel/story.mjs` renders the native Story still (`out/story.png`). In the Composio story call
+  pass it as **`image_url`** (it is a PNG, not a video).
+- **Reel: SKIP `reel.mjs` until the native reel ships.** It still renders the newsprint look, and posting it
+  beside the native carousel mixes two brands. Mark it: `bun carousel/state-mark.mjs reel skipped`.
+- **No typographic fallback any more**: a prize frame with no photograph is refused, not drawn as a text card.
+
+### The visual check code cannot do (do it on EVERY frame before publishing)
+The gates catch overflowing text, overlapping stickers, broken images and banned words. They cannot see what a
+photo shows. Look at each frame and swap or drop a draw when:
+1. **The photo is not the prize in the headline.** On 11 Oct "License To Win" (LLF Games, a £250k instant-win
+   pool in car-draws) carried a "£5,000 TAX-FREE CASH" poster, and the collage classifier scored that poster
+   **low** (clean). TWD's "BMW X3M" once showed a Rolex. This is the Page-suspension class of error.
+2. **The prize is not in the category** (a forestry package on a car deck, golf balls as "luxury").
+3. **The photo is mostly operator artwork**: headline text, "WIN 1000s OF TICKETS", multibuy banners. Try another
+   candidate first (`.fetched/{slug}/pick.txt`); accept light branding only when no candidate is cleaner.
+4. **Anything is cut off, unreadable or blank.**
+
+To swap a photo: edit `.fetched/{slug}/pick.txt`. To drop a draw: move it out of `selection.json`'s `draws`,
+move a backup in, then re-run `build.mjs` (it clears old frames itself). If you cannot get 4 clean draws,
+**post nothing today** and say why; a short day beats a wrong prize.
+
 ## What happens (Claude drives this when you say "publish today")
 
 1. **Pull insights** — per `carousel/INSIGHTS.md` (the 3 Composio calls → `bun carousel/insights.mjs ingest …` →
@@ -32,7 +71,21 @@ design spec, `docs/superpowers/specs/2026-07-02-carousel-growth-engine-design.md
 4. **Build everything** — `bun carousel/build.mjs` (7 carousel slides + `out/BRIEFING.md` + `out/CAPTION_FALLBACK.txt`
    + `out/alt.json`), `bun carousel/reel.mjs` (today's arm — see below) → `out/reel.mp4` + `out/cover.jpg` +
    `out/reel-keyframes.png` + `out/reel-meta.json`. The Reel is a broadcast insert now: one
-   photograph per draw, full bleed, with chrome that EXPANDS to state the cap, HOLDS, then COLLAPSES.
+   photograph per draw on a PLATE, with chrome that EXPANDS over it to state the cap, HOLDS, then COLLAPSES.
+
+   **The Reel's image gate (added 19 Sep).** `reel.mjs` reads the `out/images.json` sheet `build.mjs`
+   just wrote and refuses any draw whose image `normalise.mjs` classified `high` — the same classifier
+   and the same threshold the carousel already uses to swap collage artwork off the deck. Until then the
+   Reel consulted **no** image class at all, which on 18 Sep put three poster tiles on a 1080×1920 frame.
+   The frames were unreadable for a second reason, now also fixed: the photograph was full-bleed
+   `object-fit:cover`, and covering 9:16 from the square-or-wider artwork operators publish keeps only the
+   middle ~56% of its width. It is `contain` on a plate now and crops nothing. **Run `build.mjs` first** —
+   without its sheet every image counts as unmeasured (treated as `medium`, exactly as `story.mjs` treats it)
+   and the gate cannot fire. If every draw is gated out, the Reel prints `NO REEL TODAY`, **deletes any
+   earlier run's `reel.mp4`/`cover.jpg`/`reel-meta.json`** so `publish.mjs` cannot ship them under today's
+   caption, and exits 0 — that is the carousel-only day in step 8, not a failure. `reel-meta.json` records
+   `imageGate` (the sheet used, the classes allowed, every rendered draw's class and everything dropped) so a
+   short reel and a gated one are never confused after the fact.
    A `loop` stage runs before the 97-second capture and refuses any reel whose frame at t=0 differs
    from the frame at t=duration — the duration is chosen as a whole multiple of the category scene's
    own loop so it closes by construction, and `bun carousel/story.mjs` (the soonest-closing draw) →

@@ -15,6 +15,7 @@ import { withRetry } from "./util.mjs";
 import { upsertPost, todayLondon, getPost, recentMetrics } from "./state.mjs";
 import { uploadHeaders } from "../lib/storage.mjs";
 import { supabaseUrl } from "../lib/sb.mjs";
+import { checkCaptionFiles, findingsText } from "./caption-check.mjs";
 
 const DIR = workDir();
 const OUT = `${DIR}/out`;
@@ -47,6 +48,17 @@ if (existing?.status === "published") {
 const caption = (await Bun.file(`${OUT}/CAPTION.txt`).text().catch(() => "")).trim()
   || (await Bun.file(`${OUT}/CAPTION_FALLBACK.txt`).text().catch(() => "")).trim();
 if (!caption) { console.error("✗ no caption (CAPTION.txt or CAPTION_FALLBACK.txt)"); process.exit(1); }
+
+// The wording gate on the captions someone wrote AFTER the build (CAPTION.txt, FB_CAPTION.txt).
+// Before anything is uploaded, so a refused caption leaves no assets_uploaded row to burn its draws.
+{
+  const { findings, classA } = await checkCaptionFiles(DIR);
+  if (classA) {
+    console.error(`✗ COMPLIANCE class A in a caption — refusing to publish:\n${findingsText(findings)}`);
+    process.exit(1);
+  }
+  if (findings.length) console.log(`⚠ caption findings (non-blocking):\n${findingsText(findings)}`);
+}
 
 // ordered slide PNGs (01-…, 02-…, …)
 const pngs = (await readdir(OUT)).filter((f) => /^\d\d-.*\.png$/.test(f)).sort();

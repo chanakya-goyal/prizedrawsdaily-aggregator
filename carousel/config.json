@@ -37,7 +37,8 @@
       "deadline",
       "absurd-comparison"
     ],
-    "drawsPerDeck": 8
+    "drawsPerDeck": 5,
+    "template": "native"
   },
   "categories": {
     "car-draws": {

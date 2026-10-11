@@ -4,9 +4,10 @@
 import { catCfg } from "./config.mjs";
 import { cashAlt } from "./format.mjs";
 
-// Parse "£40,000 TAX-FREE CASH" → 40000. cashAlt() already normalises the string.
+// Parse "£40,000 TAX-FREE CASH" / "£40,000 CASH" → 40000. cashAlt() is the ALTERNATIVE only: a bonus
+// ("+ £2,000 cash") is not a ceiling on what the prize is worth.
 const cashAltValue = (d) => {
-  const s = cashAlt(d.grand_prize, d.prize_description);
+  const s = cashAlt(d.grand_prize, d.title);
   const m = s && s.match(/£([\d,]+)/);
   return m ? Number(m[1].replaceAll(",", "")) : null;
 };

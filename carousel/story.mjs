@@ -21,7 +21,7 @@ import { tokenCss } from "./tokens.mjs";
 import { sceneFor, sceneBack } from "./scene.mjs";
 import * as oddsCopy from "./odds-copy.mjs";
 import { cleanTitle, closesLabel, priceLabel } from "./format.mjs";
-import { workDir } from "./config.mjs";
+import { workDir, GLOBAL } from "./config.mjs";
 import { mkdir } from "node:fs/promises";
 
 const FONT_CSS = await fontFaceCss();
@@ -230,8 +230,67 @@ export async function renderStory(args, { browser: borrowed = null } = {}) {
 if (import.meta.main) {
   const DIR = workDir();
   const sel = JSON.parse(await Bun.file(`${DIR}/selection.json`).text());
-  // One draw, the soonest-closing. Ties keep the original order.
-  const draw = sel.draws.reduce((a, b) => (new Date(a.draw_date) <= new Date(b.draw_date) ? a : b));
+  // One draw, the soonest-closing — and when the dates TIE, the one with the cleanest photograph.
+  //
+  // The tiebreak is not a nicety. On a deck where every draw closes on the same day (common: this
+  // category's operators all close Monday) the date comparison decides nothing and the Story took
+  // whatever reduce landed on. On 18 Sep that handed the single Story slot to a poster-style
+  // collage while the one draw in the deck rated `low` was passed over — and the Story gives a
+  // photograph a 273px band, the largest single image PDD publishes.
+  //
+  // build.mjs already measured this into out/images.json (§9.6's image class). Reading it here
+  // rather than re-measuring keeps one source for the judgement; when the file is absent the
+  // tiebreak simply degrades to the old original-order behaviour.
+  const RANK = { low: 0, medium: 1, high: 2 };
+  const sheet = await Bun.file(`${DIR}/out/images.json`).json().catch(() => []);
+  const riskOf = (d) => {
+    const row = (Array.isArray(sheet) ? sheet : []).find((r) => r.slug === d.slug);
+    return RANK[row?.poster] ?? 1;                       // unmeasured sits between low and high
+  };
+  // The tie is on the London calendar DAY, not the timestamp. That is the granularity the frame
+  // actually prints — "CLOSES MON 21 SEP", never a clock, because a rendered closing time asserts
+  // a response deadline (CAP 8.22, DMCC Act 2024). Comparing timestamps instead would let a
+  // three-hour difference nobody can see outrank a photograph difference everybody can.
+  const closeDay = (d) => new Date(d.draw_date).toLocaleDateString("en-CA", { timeZone: "Europe/London" });
+  const draw = sel.draws.reduce((a, b) => {
+    const ca = closeDay(a), cb = closeDay(b);
+    if (ca !== cb) return ca <= cb ? a : b;
+    return riskOf(a) <= riskOf(b) ? a : b;
+  });
+  console.log(`  story draw: ${draw.slug} (closes ${String(draw.draw_date).slice(0, 10)}, image class ${["low","medium","high"][riskOf(draw)]})`);
+
+  // ── the native Story (global.template = "native") ──────────────────────────────────────────
+  // Same draw choice as above; the frame is the deck's prize slide re-laid for 9:16 with every
+  // word inside Meta's safe box. Its words come from native-copy.mjs and pass the same gate.
+  if (GLOBAL.template === "native") {
+    const { nativeDeck, deckStrings } = await import("./native-copy.mjs");
+    const { renderNativeStory } = await import("./native.mjs");
+    const compliance = await import("./compliance.mjs");
+    // the QA'd fetched pick when there is one (what the deck showed), else the stored image
+    const photoOf = async (d) => {
+      const pick = Bun.file(`${DIR}/.fetched/${d.slug}/pick.txt`);
+      if (await pick.exists()) {
+        const f = Bun.file(`${DIR}/.fetched/${d.slug}/${(await pick.text()).trim()}`);
+        if (await f.exists()) return `data:image/jpeg;base64,${Buffer.from(await f.arrayBuffer()).toString("base64")}`;
+      }
+      return d.image_url || null;
+    };
+    const photo = await photoOf(draw);
+    const mini = nativeDeck({ sel, draws: [draw], photoOf: () => photo });
+    const hits = deckStrings(mini).filter(([i]) => i === 1).flatMap(([, , text, surface]) =>
+      [...compliance.checkUnit(text, { surface, bannedPhrases: GLOBAL.bannedPhrases }),
+       ...(surface === "asset" ? compliance.checkQuestionUnit(text, compliance.factsTable({ drawsRendered: 1 })) : [])]);
+    if (hits.some((h) => h.class === compliance.CLASS.A)) {
+      console.error(`✗ story: class A in its words — ${hits.map((h) => h.predicate).join(", ")}`);
+      process.exit(1);
+    }
+    const decor = (await Promise.all(sel.draws.filter((d) => d !== draw).sort((a, b) => riskOf(a) - riskOf(b)).slice(0, 2).map(photoOf))).filter(Boolean);
+    const png = await renderNativeStory({ ...mini.prizes[0], decor });
+    await mkdir(`${DIR}/out`, { recursive: true });
+    await Bun.write(`${DIR}/out/story.png`, png);
+    console.log(`✓ story.png (native) → ${(png.length / 1024).toFixed(0)}KB  (${draw.slug.slice(0, 44)})`);
+    process.exit(0);
+  }
   const facts = await Bun.file(`${DIR}/out/facts.json`).json().catch(() => null);
   const checked = sel.draws.map((d) => d.figures_checked_at).filter(Boolean).sort();
   const stamp = checked.length

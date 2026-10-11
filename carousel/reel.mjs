@@ -13,7 +13,7 @@
 //   4) --shot    keyframes composite → out/reel-keyframes.png (browser, own process)
 // Intermediates live in ${PDD_DIR}/.reelwork/; deliverables in ${PDD_DIR}/out/.
 import { workDir, catCfg } from "./config.mjs";
-import { readdir, mkdir } from "node:fs/promises";
+import { readdir, mkdir, rm } from "node:fs/promises";
 
 const FPS = 30, FRAME_MS = 1000 / FPS;
 const esc = (s = "") => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -60,6 +60,11 @@ async function captureChild(jobPath) {
 // ---------------------------------------------------------------- cover card
 // THE COVER IS THE REEL'S OPENING FRAME, not a poster of its own.
 //
+// It carries the same plate treatment as the timeline: the photograph is CONTAINED in a rect
+// derived from the chrome, never object-fit:cover over the whole 1080x1920. This is the
+// thumbnail, so the crop cost more here than anywhere — it was showing a fragment of an
+// operator's letterform as the face of the post.
+//
 // It is the Reel's thumbnail, and a cover that looks like a different piece of work makes the
 // thumbnail disagree with the video it fronts — which is why the scene system treats it as its
 // own surface rather than an afterthought. So it carries the same photograph, the same rail,
@@ -72,7 +77,10 @@ async function buildCoverHtml({ coverText, hero, sel, stampText }) {
   const { fontFaceCss } = await import("./fonts.mjs");
   const { tokenCss } = await import("./tokens.mjs");
   const { sceneFor, sceneBack } = await import("./scene.mjs");
-  const { CHROME } = await import("./reel-template.mjs");
+  const { CHROME, SAFE } = await import("./reel-template.mjs");
+  // Derived, never typed: under the hero block, down to the conditions band.
+  const HERO_H = 370;
+  const COVER_PLATE = { y: CHROME.rail.y + CHROME.rail.h + HERO_H, h: CHROME.band.y - (CHROME.rail.y + CHROME.rail.h + HERO_H) };
   const oddsCopy = await import("./odds-copy.mjs");
   const { closesLabel, priceLabel, cleanTitle } = await import("./format.mjs");
   const fontCss = await fontFaceCss();
@@ -91,9 +99,15 @@ async function buildCoverHtml({ coverText, hero, sel, stampText }) {
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:1080px;height:1920px;overflow:hidden}
 body{background:var(--ink);font-family:var(--font-text),system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-.cover{position:absolute;inset:0;overflow:hidden}
-.shot{position:absolute;inset:0}
-.shot img{width:100%;height:100%;object-fit:cover;display:block}
+.cover{position:absolute;inset:0;overflow:hidden;background:var(--ground)}
+/* The cover's photograph had the SAME full-bleed object-fit:cover defect as the timeline's,
+   and this is the thumbnail, so it cost more here. It now sits in the band left between the
+   hero block and the conditions band, uncropped. The hero block is given an EXPLICIT height
+   so that band is a derived rect rather than whatever the type happened to measure. */
+.shot{position:absolute;left:0;width:1080px;background:var(--surface);
+  box-shadow:inset 0 0 0 1px var(--hairline)}
+.shot img{width:100%;height:100%;object-fit:contain;display:block}
+.field{position:absolute;left:0;width:1080px;background:var(--rail)}
 .scene-host{position:absolute;inset:0;pointer-events:none}
 .rail{position:absolute;left:0;width:1080px;background:var(--rail);display:flex;align-items:center;
   justify-content:space-between;padding:0 65px}
@@ -106,7 +120,7 @@ body{background:var(--ink);font-family:var(--font-text),system-ui,sans-serif;-we
    dark-template trick for exactly this, and it fails the moment the photograph is light, which
    on this inventory is most of the time. The chrome in this system is opaque everywhere else
    for the same reason, so the cover has no business being the exception. */
-.hero{position:absolute;left:0;width:1080px;background:var(--rail);padding:24px 65px 30px}
+.hero{position:absolute;left:0;width:1080px;height:370px;background:var(--rail);padding:24px 65px 30px}
 .hero .eyebrow{font-weight:600;font-size:var(--fs-label);letter-spacing:var(--tr-label);text-transform:uppercase;
   color:var(--rail-accent)}
 .hero .fig{font-family:var(--font-figure);font-weight:700;font-size:200px;line-height:200px;color:var(--rail-ink);
@@ -120,7 +134,9 @@ body{background:var(--ink);font-family:var(--font-text),system-ui,sans-serif;-we
 .band .l2,.band .l3{font-weight:400;color:var(--rail-meta)}
 </style></head><body data-pdd-role="reel-open">
 <div class="cover">
-  ${hero ? `<div class="shot"><img src="${hero}"></div>` : ""}
+  <div class="field" style="top:0;height:${SAFE.y}px"></div>
+  <div class="field" style="top:${SAFE.y + SAFE.h}px;height:${1920 - (SAFE.y + SAFE.h)}px"></div>
+  ${hero ? `<div class="shot" style="top:${COVER_PLATE.y}px;height:${COVER_PLATE.h}px"><img src="${hero}"></div>` : ""}
   <div class="scene-host">${sceneBack(scene, "reel-cover-9x16", { draw: d })}</div>
   <div class="rail" style="top:${CHROME.rail.y}px;height:${CHROME.rail.h}px">
     <span class="wordmark">PRIZEDRAWSDAILY</span>${stampText ? `<span class="stamp">${esc(stampText)}</span>` : ""}
@@ -180,7 +196,7 @@ body { background:#111; color:#eee; font:600 15px system-ui; padding:14px; displ
 // ---------------------------------------------------------------- orchestration
 async function main() {
   const { minDimOk } = await import("./imgcheck.mjs");
-  const { buildReelTimeline } = await import("./reel-template.mjs");
+  const { buildReelTimeline, REEL_IMAGE_CLASSES } = await import("./reel-template.mjs");
   const { pickAudio } = await import("./beat.mjs");
   const { encodeVideo, assertVideoContract } = await import("./encode.mjs");
 
@@ -250,8 +266,22 @@ async function main() {
     if (await minDimOk(auto, 500)) { heroes[d.slug] = await toDataUrl(auto); srcKind[d.slug] = "auto-fetched"; }
     else console.log(`  ⚠ ${d.slug}: auto-fetched pick is under 500px — rejected (typographic scene)`);
   }
+  // THE IMAGE CLASS. §5.6's classifier (normalise.mjs posterRisk) already ran — build.mjs writes
+  // out/images.json in the same step of the daily routine (DAILY.md step 4) and uses it to swap
+  // collage artwork off the carousel. The Reel consulted NOTHING, and on 18 Sep that put three
+  // poster tiles on a 1080x1920 frame. Reading the sheet the carousel already produced keeps ONE
+  // classifier for the whole system instead of a second opinion on this surface, and it is the
+  // same source story.mjs reads to break its tie.
+  const sheetPath = `${OUT}/images.json`;
+  const sheet = await Bun.file(sheetPath).json().catch(() => null);
+  if (!Array.isArray(sheet))
+    console.log(`  ⚠ no ${sheetPath} — every image counts as UNMEASURED this run. build.mjs writes it; run it first.`);
+  const imageClass = Object.fromEntries((Array.isArray(sheet) ? sheet : [])
+    .filter((r) => r.ok && r.poster).map((r) => [r.slug, r.poster]));
+
   console.log(`Photos: ${Object.keys(heroes).length}/${sel.draws.length}`);
-  sel.draws.forEach((d, i) => console.log(`  ${i + 1}. ${d.slug.slice(0, 44).padEnd(46)} ${srcKind[d.slug] || "— typographic"}`));
+  sel.draws.forEach((d, i) => console.log(
+    `  ${i + 1}. ${d.slug.slice(0, 44).padEnd(46)} ${(srcKind[d.slug] || "— typographic").padEnd(14)} image=${imageClass[d.slug] ?? "unmeasured"}`));
 
   // ---- audio + timeline. trimToOnsetMs MUST be the manifest firstBeatOffsetMs (loudnorm
   // amplifies silent intros deep into tracks); nowIso is passed for ALL arms (determinism),
@@ -265,7 +295,27 @@ async function main() {
   const closeIso = sel.draws[0]?.draw_date ?? sel.draws.map((d) => d.draw_date).filter(Boolean).sort()[0] ?? null;
   // No slides array: buildReelTimeline reads sel.draws directly, so mapping them through the
   // old draw-slide shape first was doing work nothing consumed.
-  const tl = buildReelTimeline({ sel, heroes, arm, audioMeta, nowIso, closeIso });
+  let tl;
+  try {
+    tl = buildReelTimeline({ sel, heroes, imageClass, arm, audioMeta, nowIso, closeIso });
+  } catch (e) {
+    if (!/nothing to state/.test(e.message)) throw e;
+    // A refusal here is a RESULT, not a crash: DAILY.md step 8 already has a carousel-only day,
+    // and publish.mjs writes no reel/fb_video row when out/reel.mp4 is absent. What it must not
+    // do is leave an EARLIER run's reel.mp4 on disk, because publish.mjs would then host and
+    // post yesterday's video under today's caption.
+    console.log(`\n■ NO REEL TODAY — ${e.message}`);
+    const stale = [];
+    for (const f of ["reel.mp4", "cover.jpg", "reel-meta.json", "reel-keyframes.png"]) {
+      const h = Bun.file(`${OUT}/${f}`);
+      if (await h.exists()) { await rm(`${OUT}/${f}`); stale.push(f); }
+    }
+    if (stale.length) console.log(`  removed an earlier run's ${stale.join(", ")} so publish.mjs cannot ship it under today's caption`);
+    console.log("  carousel-only day — this is DAILY.md step 8's documented path, not a failure.");
+    return;
+  }
+  if (tl.dropped.length)
+    console.log(`  ⚠ ${tl.dropped.length} draw(s) dropped on image class: ${tl.dropped.map((d) => `${d.slug.slice(0, 34)}=${d.imageClass}`).join(", ")}`);
   // No theme. Per-category identity is STRUCTURE now and comes from the scene module, so what
   // is worth logging is which scene resolved and whether its loop divides the reel.
   console.log(`Arm ${arm} · scene ${tl.sceneId} · ${tl.durationMs}ms · ${tl.drawsUsed} draws · cuts [${tl.cutTimesMs}] · inserts [${tl.stampTimesMs}] · audio ${audioMeta.file} (${audioMeta.mood}) · cover "${tl.coverText}"`);
@@ -354,6 +404,14 @@ async function main() {
     // An arm picked by hand and scored as a rotation draw is a corrupted experiment, so the
     // PROVENANCE of the choice is stored beside the choice.
     armSource: envArm ? "env_override" : "rotation",
+    // §5.6 on this surface. Recorded because a SHORT reel and a reel that simply had fewer
+    // draws are indistinguishable after the fact, and the difference is whether the gate fired.
+    imageGate: {
+      sheet: Array.isArray(sheet) ? "images.json" : "absent (all unmeasured)",
+      allowed: [...REEL_IMAGE_CLASSES],
+      rendered: sel.draws.map((d) => ({ slug: d.slug, imageClass: imageClass[d.slug] ?? "unmeasured" })),
+      dropped: tl.dropped,
+    },
     // True by construction, not by assumption: the loop closure was asserted byte-identical at
     // the wrap point above, and a run where it did not close never reaches this write. It is
     // recorded so the watch figures always carry the inflation caveat — a seamless loop inflates
