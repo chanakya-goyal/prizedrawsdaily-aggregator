@@ -69,12 +69,19 @@ for (let i = 0; i < sel.draws.length; i++) {
     else console.log(`  ⚠ ${d.slug}: auto-fetched pick is under 500px — rejected (typographic fallback). Repick in .fetched/${d.slug}/pick.txt`);
   }
 }
+// Backups too. A backup promoted below (collage swap or class B) used to render its STORED image_url
+// on the build that promoted it, whatever pick.txt said — the 11 Oct dry run caught a Disneyland
+// draw shipping the operator's poster until a second rebuild. Its QA'd pick is resolved up front now.
+for (const b of sel.backups || []) {
+  const auto = await fetchedPath(b.slug);
+  if (auto && await minDimOk(auto, 500)) { srcPath[b.slug] = auto; srcKind[b.slug] = "auto-fetched (backup)"; }
+}
 const haveSlugs = sel.draws.filter((d) => srcPath[d.slug]).map((d) => d.slug);
 console.log(`Card style: ${CARD}  |  Photos: ${haveSlugs.length}/${sel.draws.length}`);
 sel.draws.forEach((d, i) => console.log(`  ${i + 1}. ${d.slug.slice(0, 44).padEnd(46)} ${srcKind[d.slug] || "— typographic card"}`));
 
 const photoData = {};
-for (const s of haveSlugs) photoData[s] = await toDataUrl(srcPath[s]);
+for (const s of Object.keys(srcPath)) photoData[s] = await toDataUrl(srcPath[s]);
 
 // ---- asset normalisation and the collage gate (spec §9, §5.6) --------------------------
 // Every photograph that reaches a slide goes through one normaliser first: one master size, a
