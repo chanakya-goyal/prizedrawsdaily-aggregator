@@ -1,0 +1,246 @@
+{
+ "errorCode": 0,
+ "data": {
+  "lobbyGames": [
+   {
+    "id": 69,
+    "name": "Win a Personalised Home Shirt for 20p",
+    "state": "INPROGRESS",
+    "currentRoundId": 0,
+    "sportName": "Raffles",
+    "title": "Draw Only £100 Prize 28/10",
+    "gameTypeId": 22,
+    "gameTypeName": "CHARITY RAFFLES:GS",
+    "fieldsSummary": {
+     "isFreeToPlay": "false",
+     "requiresCode": "false",
+     "hasCashPrize": "true",
+     "awardsXP": "false",
+     "numberOfLives": "1",
+     "maxTickets": "1100",
+     "rakedPot": "0",
+     "entriesCount": "0",
+     "ticketPrice": "0.2",
+     "earlyPrice": "",
+     "rebuyPrice": "",
+     "allowRebuy": "",
+     "alertState": "NONE",
+     "alertMessage": "",
+     "previewShow": "false",
+     "previewImageUrl": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/EVE%20Tile%203x1%20-%20home%20shirt.png?updatedAt=1788252393803",
+     "imageUrl": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/EVE%20Tile%201x1%20-%20home%20shirt.png?updatedAt=1788252381804",
+     "raffleEntryType": "DRAW_ONLY",
+     "revealMechanic": "SCAN",
+     "maxTicketsPerPlayer": "1100",
+     "defaultCheckoutTicketCount": "10",
+     "scheduledDrawTime": "2026-10-28T21:00:00.000Z"
+    },
+    "roundsSummary": [
+     {
+      "id": 69,
+      "gameId": 69,
+      "roundNumber": 1,
+      "state": "OPEN"
+     }
+    ],
+    "images": {
+     "lobby-card": {
+      "base": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/EVE%20Tile%201x1%20-%20home%20shirt.png?updatedAt=1788252381804"
+     },
+     "promo": {
+      "base": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/EVE%20Tile%203x1%20-%20home%20shirt.png?updatedAt=1788252393803"
+     }
+    },
+    "prizePools": [
+     {
+      "id": 168,
+      "gameId": 69,
+      "roundId": 69,
+      "prizeType": "DRAW",
+      "prizeName": "£100 physical prize",
+      "prizeAmount": 100,
+      "prizeCategory": "PHYSICAL",
+      "totalAvailable": 1,
+      "totalAssigned": 0,
+      "soldCount": 0,
+      "revealedCount": 0,
+      "totalClaimed": 0,
+      "displayOrder": 1,
+      "isActive": true,
+      "prizeIssuanceId": 201,
+      "warehouseItemId": 42,
+      "createdAt": "2026-09-30T12:46:42.325531Z",
+      "updatedAt": "2026-09-30T12:46:42.325531Z",
+      "editions": [
+       {
+        "id": 263,
+        "prizePoolId": 168,
+        "editionId": 101,
+        "prizeName": "Personalised Home Shirt",
+        "imageUrl": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/LIV%20Tile%201x1%20-%20home%20shirt.png?updatedAt=1788252381614",
+        "isActive": true
+       },
+       {
+        "id": 264,
+        "prizePoolId": 168,
+        "editionId": 102,
+        "prizeName": "Personalised Home Shirt",
+        "imageUrl": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/EVE%20Tile%201x1%20-%20home%20shirt.png?updatedAt=1788252381804",
+        "isActive": true
+       },
+       {
+        "id": 255,
+        "prizePoolId": 168,
+        "editionId": 93,
+        "prizeName": "£100 Supermarket Shop Voucher",
+        "imageUrl": "https://ik.imagekit.io/xog1oolbe/Raffle%20Town/RaffleTown_02_10_26/RTv3%20-%201x1%20-%20H.png?updatedAt=1790933842803",
+        "prizeCategory": "VOUCHER",
+        "isActive": true
+       }
+      ]
+     }
+    ],
+    "editions": [
+     {
+      "id": 102,
+      "gameId": 69,
+      "affiliateId": 33,
+      "name": "Win a Personalised Home Shirt for 20p",
+      "slug": "win-a-personalised-home-shirt-for-20p-3",
+      "isDefault": true,
+      "state": "ACTIVE",
+      "revealMechanic": "SCAN",
+      "images": {
+       "lobby-card": {
+        "base": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/EVE%20Tile%201x1%20-%20home%20shirt.png?updatedAt=1788252381804"
+       },
+       "promo": {
+        "base": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/EVE%20Tile%203x1%20-%20home%20shirt.png?updatedAt=1788252393803"
+       }
+      }
+     }
+    ]
+   },
+   {
+    "id": 70,
+    "name": "Win £250 Cash for 50p",
+    "state": "INPROGRESS",
+    "currentRoundId": 0,
+    "sportName": "Raffles",
+    "title": "Draw Only £250 Prize 31/10",
+    "gameTypeId": 22,
+    "gameTypeName": "CHARITY RAFFLES:GS",
+    "fieldsSummary": {
+     "isFreeToPlay": "false",
+     "requiresCode": "false",
+     "hasCashPrize": "true",
+     "awardsXP": "false",
+     "numberOfLives": "1",
+     "maxTickets": "1100",
+     "rakedPot": "0",
+     "entriesCount": "0",
+     "ticketPrice": "0.5",
+     "earlyPrice": "",
+     "rebuyPrice": "",
+     "allowRebuy": "",
+     "alertState": "NONE",
+     "alertMessage": "",
+     "previewShow": "false",
+     "previewImageUrl": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/Blue%20Stadium%20%C2%A3250%20Cash%20Giveaway.png?updatedAt=1790855705567",
+     "imageUrl": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/Win%20%C2%A3250%20Cash%20Giveaway.png?updatedAt=1790855705378",
+     "raffleEntryType": "DRAW_ONLY",
+     "revealMechanic": "SCAN",
+     "maxTicketsPerPlayer": "1100",
+     "defaultCheckoutTicketCount": "10",
+     "scheduledDrawTime": "2026-10-31T21:00:00.000Z"
+    },
+    "roundsSummary": [
+     {
+      "id": 70,
+      "gameId": 70,
+      "roundNumber": 1,
+      "state": "OPEN"
+     }
+    ],
+    "images": {
+     "lobby-card": {
+      "base": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/Win%20%C2%A3250%20Cash%20Giveaway.png?updatedAt=1790855705378"
+     },
+     "promo": {
+      "base": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/Blue%20Stadium%20%C2%A3250%20Cash%20Giveaway.png?updatedAt=1790855705567"
+     }
+    },
+    "prizePools": [
+     {
+      "id": 169,
+      "gameId": 70,
+      "roundId": 70,
+      "prizeType": "DRAW",
+      "prizeName": "£250 physical prize",
+      "prizeAmount": 250,
+      "prizeCategory": "PHYSICAL",
+      "totalAvailable": 1,
+      "totalAssigned": 0,
+      "soldCount": 0,
+      "revealedCount": 0,
+      "totalClaimed": 0,
+      "displayOrder": 1,
+      "isActive": true,
+      "prizeIssuanceId": 202,
+      "warehouseItemId": 44,
+      "createdAt": "2026-09-30T12:50:35.601313Z",
+      "updatedAt": "2026-09-30T12:50:35.601313Z",
+      "editions": [
+       {
+        "id": 271,
+        "prizePoolId": 169,
+        "editionId": 110,
+        "prizeName": "£250 Cash",
+        "imageUrl": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/Win%20%C2%A3250%20Cash!.png?updatedAt=1790855705674",
+        "prizeCategory": "CASH",
+        "isActive": true
+       },
+       {
+        "id": 272,
+        "prizePoolId": 169,
+        "editionId": 111,
+        "prizeName": "£250 Cash",
+        "imageUrl": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/Win%20%C2%A3250%20Cash%20Giveaway.png?updatedAt=1790855705378",
+        "prizeCategory": "CASH",
+        "isActive": true
+       },
+       {
+        "id": 256,
+        "prizePoolId": 169,
+        "editionId": 94,
+        "prizeName": "Dyson Supersonic Hairdryer",
+        "imageUrl": "https://ik.imagekit.io/xog1oolbe/Raffle%20Town/RaffleTown_02_10_26/RTv3%20-%201x1%20-%20J.png?updatedAt=1790933841548",
+        "isActive": true
+       }
+      ]
+     }
+    ],
+    "editions": [
+     {
+      "id": 111,
+      "gameId": 70,
+      "affiliateId": 33,
+      "name": "Win £250 Cash for 50p",
+      "slug": "win-250-cash-for-50p-2",
+      "isDefault": true,
+      "state": "ACTIVE",
+      "revealMechanic": "SCAN",
+      "images": {
+       "lobby-card": {
+        "base": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/Win%20%C2%A3250%20Cash%20Giveaway.png?updatedAt=1790855705378"
+       },
+       "promo": {
+        "base": "https://ik.imagekit.io/xog1oolbe/Fan%20Games/Blue%20Stadium%20%C2%A3250%20Cash%20Giveaway.png?updatedAt=1790855705567"
+       }
+      }
+     }
+    ]
+   }
+  ]
+ }
+}

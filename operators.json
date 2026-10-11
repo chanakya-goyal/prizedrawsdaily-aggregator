@@ -743,5 +743,41 @@
   "method": "render",
   "enabled": false,
   "disabledReason": "Added + probed 2026-09-06. Renders fine (8 comps found) but it is a £1.99/month SUBSCRIPTION prize draw, not a per-ticket raffle: there is no ticket price and no entry cap, so every row fails requiredGate. Does not fit the draw model — do not re-add without one."
+ },
+ {
+  "name": "Raffle Town",
+  "slug": "raffle-town",
+  "base": "https://www.raffletown.co.uk",
+  "method": "api",
+  "apiStyle": "drawhouse",
+  "listApi": "https://api.prod.raffletown.co.uk/v3/pub/gs/charityraffles/lobbygames?affiliateId=20&state=INPROGRESS",
+  "note": "DrawHouse white-label (Micro Drama Ltd). One keyless lobby API for all DrawHouse brands; adapter lib/adapters/drawhouse.mjs. Paid draws are pools SHARED with the other DrawHouse brands (network-total cap). Instant-win-only games skipped (owner, 2026-10-11). Storefront trips a Vercel bot checkpoint — never scrape the pages."
+ },
+ {
+  "name": "ToffeesDraws",
+  "slug": "toffeesdraws",
+  "base": "https://toffeesdraws.com",
+  "method": "api",
+  "apiStyle": "drawhouse",
+  "listApi": "https://api.prod.raffletown.co.uk/v3/pub/gs/charityraffles/lobbygames?affiliateId=33&state=INPROGRESS",
+  "note": "DrawHouse white-label fan brand (Network Fantasy Holdings Ltd); same lobby API + shared pools as raffle-town. Copy must not name the club (no unaffiliated disclaimer on the site)."
+ },
+ {
+  "name": "KopiteDraws",
+  "slug": "kopitedraws",
+  "base": "https://www.kopitedraws.com",
+  "method": "api",
+  "apiStyle": "drawhouse",
+  "listApi": "https://api.prod.raffletown.co.uk/v3/pub/gs/charityraffles/lobbygames?affiliateId=34&state=INPROGRESS",
+  "note": "DrawHouse white-label fan brand (Network Fantasy Holdings Ltd); same lobby API + shared pools as raffle-town. Copy must not name the club (no unaffiliated disclaimer on the site)."
+ },
+ {
+  "name": "The Baby Show Prizes",
+  "slug": "the-baby-show-prizes",
+  "base": "https://prizes.thebabyshow.co.uk",
+  "method": "api",
+  "apiStyle": "drawhouse",
+  "listApi": "https://api.prod.raffletown.co.uk/v3/pub/gs/charityraffles/lobbygames?affiliateId=27&state=INPROGRESS",
+  "note": "DrawHouse white-label event brand (Network Fantasy Holdings Ltd). At add (2026-10-11) it ran ONLY instant-win games, so it yields 0 draws by design; kept enabled so a real draw flows the day it launches."
  }
 ]

@@ -13,6 +13,7 @@ import { raffleEngineOperator } from "./lib/adapters/raffle-engine.mjs";
 import { hydraOperator } from "./lib/adapters/hydra.mjs";
 import { inertiaOperator } from "./lib/adapters/inertia.mjs";
 import { clickOperator } from "./lib/adapters/click.mjs";
+import { drawhouseOperator } from "./lib/adapters/drawhouse.mjs";
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // A listing fetch failing loses the entire operator, so it keeps the default 3 attempts.
@@ -403,6 +404,7 @@ const API_ADAPTERS = {
   hydra: hydraOperator,                  // Dream Car Giveaways
   inertia: inertiaOperator,              // Dream Big Competitions (compengine.io)
   click: clickOperator,                  // Click Competitions (bespoke Next.js, __NEXT_DATA__)
+  drawhouse: drawhouseOperator,          // Raffle Town, ToffeesDraws, KopiteDraws, The Baby Show Prizes (one lobby API)
 };
 
 export async function apiOperator(op, perOp = 300) {
