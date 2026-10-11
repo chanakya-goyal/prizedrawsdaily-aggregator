@@ -68,3 +68,25 @@ describe("londonDayBounds", () => {
     expect(inLondon(new Date(end.getTime() + 1))).toBe("2026-09-22");
   });
 });
+
+// An instant-win POOL is many small prizes behind one headline: its photo is a poster or a collage,
+// and on 11 Oct three of five car-deck picks were pools that the visual check then had to reject.
+// A single prize with instant wins ADDED after a "+" is still one prize and stays eligible.
+import { isPrizePool } from "../select.mjs";
+test("isPrizePool: pools out, single prizes with add-on instant wins in", () => {
+  for (const t of ["License To Win – £250,000+ in Prizes!", "INSTANT WIN – RANGE ROVER SPORT AND MORE (3)",
+                   "Huge Construction Instant Wins – 10,000 Prizes – £500,000 Prize Fund", "Prize Drop *Prize Every Time* #2",
+                   "Cash Is King Instant Wins – £250,000 Prize Fund – 5,000 Prizes – ALL CASH"]) {
+    expect(isPrizePool({ title: t })).toBe(true);
+  }
+  for (const t of ["Audi Q2 or £10,000 Cash + 100 x £100 Breeze Cash Instant Wins!!", "Toyota Yaris 1.6T GR Circuit AWD or £18,000 Cash + £15K Instant Wins",
+                   "£5,000 Cash + 30 Mystery Instant Wins!", "Win £1000 Tax Free Cash for just 1p!", "Win 2023 Ford Puma ST Performance + £1,000"]) {
+    expect(isPrizePool({ title: t })).toBe(false);
+  }
+});
+test("pickBestCategory never puts a pool on the deck", () => {
+  const D = (slug, title) => ({ slug, title, categories: { slug: "car-draws", name: "Car Draws" }, total_prize_value: 1000 });
+  const pick = pickBestCategory([D("a", "BMW M4"), D("p", "INSTANT WIN – RANGE ROVER AND MORE"), D("b", "Audi RS3"), D("c", "Ford Puma ST")], 3);
+  expect(pick.draws.map((d) => d.slug)).toEqual(["a", "b", "c"]);
+  expect(pick.pool.map((d) => d.slug)).not.toContain("p");
+});

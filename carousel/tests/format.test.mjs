@@ -110,3 +110,14 @@ test("shortMoney: bubble-sized amounts", () => {
   expect(shortMoney(400)).toBe("£400");
   expect(shortMoney(1250000)).toBe("£1.25m");
 });
+
+// 11 Oct dry run: an LLF Games title opened with an ultra-low-odds shout, then "Win this 430bhp…", and the
+// bubble read "for an ULTRA-LOW … Win this …". The rule is generic (any shout before "Win"), so it is pinned
+// here with non-odds shouts: the odds-literal gate rightly refuses an odds string in a test fixture.
+test("cleanTitle drops an operator's promo shout before 'Win this'", () => {
+  expect(cleanTitle("MEGA DEAL! Win this 430bhp Stage 2 Audi RS3!")).toBe("430bhp Stage 2 Audi RS3");
+  expect(cleanTitle("FLASH SALE – Win a BMW M4")).toBe("BMW M4");
+  expect(cleanTitle("HALF PRICE! Win This Audi Q2")).toBe("Audi Q2");
+  // a real product name ending in "!" is left alone when no "Win" follows
+  expect(cleanTitle("Yahoo! Japan Gift Card")).toBe("Yahoo! Japan Gift Card");
+});

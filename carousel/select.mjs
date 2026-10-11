@@ -93,6 +93,17 @@ export async function fetchEndingSoon(days = 7, minDays = 0, { requireProvenance
   return await r.json();
 }
 
+// An instant-win POOL — many small prizes behind one headline ("Instant Win – Range Rover and more",
+// "£250,000+ in Prizes", "Prize Fund", "Prize Every Time"). Its photo is a poster or a collage and it
+// is not one prize a slide can show; on 11 Oct three of five car-deck picks were pools the visual
+// check then rejected. Only the HEADLINE is read — the text before " + " — so a single prize with
+// instant wins added on ("Audi Q2 or £10,000 Cash + 100 x £100 Instant Wins") stays eligible.
+const POOL_RE = /\binstant[\s-]*wins?\b|\bprize[\s-]*(?:fund|drop|pool)s?\b|\bin\s+prizes\b|\bevery\s+ticket\s+wins\b|\bprize\s+every\s+time\b|\b[\d,]{2,}\s+prizes\b/i;
+export function isPrizePool(d) {
+  const headline = String(d.grand_prize || d.title || "").split(/\s\+\s|\s+plus\s+/i)[0] + " " + String(d.title || "").split(/\s\+\s|\s+plus\s+/i)[0];
+  return POOL_RE.test(headline);
+}
+
 // Score each category: needs enough draws to fill the carousel, weighted by visual fit,
 // tiebroken by total prize value. Requires >=3 draws unless nothing else qualifies.
 export function pickBestCategory(draws, n = 5, onlySlug = null, opts = {}) {
@@ -100,6 +111,7 @@ export function pickBestCategory(draws, n = 5, onlySlug = null, opts = {}) {
   const by = {};
   for (const d of draws) {
     if (excludeSlugs.has(d.slug)) continue;
+    if (isPrizePool(d)) continue;
     // An unrecognised slug used to be bucketed as the literal string "other", and because
     // catCfg merged a fallback it got a real weight and could win a deck. It now resolves to a
     // visualWeight of 0, so the bucket survives for reporting and can never be selected.
