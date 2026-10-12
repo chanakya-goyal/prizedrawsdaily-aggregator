@@ -59,7 +59,7 @@ main() {
   # Tools Claude may use. dontAsk refuses everything else without prompting. In a dry run the
   # Composio execute tool and the publishing scripts are simply not available.
   local ALLOW="Read,Write,Edit,Glob,Grep,Bash(bun carousel/*),Bash(ONLY_CATEGORY=* bun carousel/plan.mjs),Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(sips *),mcp__composio__COMPOSIO_SEARCH_TOOLS,mcp__composio__COMPOSIO_GET_TOOL_SCHEMAS"
-  local DENY="Bash(bun carousel/publish.mjs*),Bash(bun carousel/state-mark.mjs*),Bash(bun carousel/cleanup.mjs*),mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL"
+  local DENY="Bash(bun carousel/publish.mjs*),Bash(bun carousel/state-mark.mjs*),Bash(bun carousel/cleanup.mjs*),Bash(bun carousel/ig-publish.mjs*),mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL"
   local MODE="MODE: DRY RUN (AUTOPOST_DRY_RUN=1). Stop where AUTOPILOT.md says DRY RUN STOPS HERE."
   if [[ $DRY == 0 ]]; then
     ALLOW="$ALLOW,mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL"

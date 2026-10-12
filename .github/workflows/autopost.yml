@@ -1,0 +1,131 @@
+# The Instagram autopilot, on GitHub's servers — no Mac needed.
+#
+# Same task as before: headless Claude follows carousel/AUTOPILOT.md (plan → photos → build → LOOK at every
+# frame → story → caption → publish → report). Claude runs on the owner's subscription via
+# CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`); publishing goes through carousel/ig-publish.mjs, which
+# calls Composio's REST API with COMPOSIO_API_KEY, because the Composio MCP login lives on the Mac.
+#
+# Schedule: 09:30 UTC = 10:30 UK in summer, 09:30 in winter. GitHub's cron can start late; the UK-hours
+# window (09:00–20:00) still holds, and a second start the same day stops at the already-published guard.
+# Manual run: Actions → Instagram autopost → Run workflow (dry run is the default for a manual start).
+name: Instagram autopost
+
+on:
+  schedule:
+    - cron: "30 9 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: build and check everything, publish nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: instagram-autopost
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      AUTOPOST_DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '1' || '0' }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+
+      - name: Guards — secrets, off switch, UK window, already posted
+        id: guard
+        run: |
+          go() { echo "go=$1" >> "$GITHUB_OUTPUT"; echo "$2"; }
+          for v in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY CLAUDE_CODE_OAUTH_TOKEN COMPOSIO_API_KEY; do
+            [ -n "${!v}" ] || { go 0 "missing secret $v"; echo "reason=missing secret $v" >> "$GITHUB_OUTPUT"; exit 0; }
+          done
+          if [ "${{ vars.AUTOPOST_OFF }}" = "1" ] && [ "$AUTOPOST_DRY_RUN" != 1 ]; then go 0 "repo variable AUTOPOST_OFF=1: paused"; exit 0; fi
+          if [ "$AUTOPOST_DRY_RUN" = 1 ]; then go 1 "dry run"; exit 0; fi
+          bun carousel/autopilot/status.mjs window || { go 0 "outside the UK posting window"; exit 0; }
+          if bun carousel/autopilot/status.mjs published-today; then go 0 "today's carousel is already published"; exit 0; fi
+          go 1 "live run"
+
+      - name: Browser, emoji font
+        if: steps.guard.outputs.go == '1'
+        run: |
+          bunx playwright install --with-deps chromium
+          sudo apt-get install -y -qq fonts-noto-color-emoji >/dev/null
+
+      - name: Gates
+        if: steps.guard.outputs.go == '1'
+        run: bun run test:gates
+
+      - name: Claude runs AUTOPILOT.md
+        if: steps.guard.outputs.go == '1'
+        id: claude
+        run: |
+          npm install -g @anthropic-ai/claude-code >/dev/null 2>&1
+          export PDD_DIR="$RUNNER_TEMP/pdd-work"; mkdir -p "$PDD_DIR/out"; echo "PDD_DIR=$PDD_DIR" >> "$GITHUB_ENV"
+          ALLOW="Read,Write,Edit,Glob,Grep,Bash(bun carousel/*),Bash(ONLY_CATEGORY=* bun carousel/plan.mjs),Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *)"
+          DENY="Bash(bun carousel/publish.mjs*),Bash(bun carousel/state-mark.mjs*),Bash(bun carousel/cleanup.mjs*),Bash(bun carousel/ig-publish.mjs*)"
+          MODE="MODE: DRY RUN (AUTOPOST_DRY_RUN=1). Stop where AUTOPILOT.md says DRY RUN STOPS HERE."
+          if [ "$AUTOPOST_DRY_RUN" != 1 ]; then DENY="WebFetch,WebSearch"; MODE="MODE: LIVE. Publish to Instagram when every check passes."; fi
+          set +e
+          { echo "$MODE"; echo "PDD_DIR=$PDD_DIR  (the work directory; already set in your environment)";
+            echo "HOST: GitHub Actions. There is no Composio MCP here: publish with bun carousel/ig-publish.mjs exactly as AUTOPILOT.md step 9 says.";
+            echo; cat carousel/autopilot/BOOTSTRAP.txt; } \
+          | timeout 90m claude -p --model opus --permission-mode dontAsk --add-dir "$PDD_DIR" \
+              --allowedTools "$ALLOW" --disallowedTools "$DENY" --output-format json > "$RUNNER_TEMP/claude.json"
+          echo "rc=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Verify and report
+        if: always() && steps.guard.outputs.go == '1'
+        run: |
+          status=$(bun carousel/autopilot/status.mjs report "$PDD_DIR/out/REPORT.md")
+          note=""
+          [ -n "$status" ] || { status=FAILED; note="no readable REPORT.md (claude exit ${{ steps.claude.outputs.rc }}; 124 = the 90-minute ceiling)"; }
+          if [ "$status" = PUBLISHED ] && ! bun carousel/autopilot/status.mjs published-today; then status=FAILED; note="REPORT.md says PUBLISHED but today's carousel row is not published"; fi
+          if [ "$AUTOPOST_DRY_RUN" = 1 ] && [ "$status" = PUBLISHED ]; then status=FAILED; note="a dry run reported PUBLISHED"; fi
+          day=$(TZ=Europe/London date +%Y-%m-%d)
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh label create autopost-log --color 0E8A16 --description "Instagram autopilot daily log" --force >/dev/null
+          log=$(gh issue list --label autopost-log --state open --json number --jq '.[0].number')
+          [ -n "$log" ] || log=$(gh issue create --title "Autopost log" --label autopost-log --body "One comment per autopilot run." | grep -oE '[0-9]+$')
+          { echo "**$day · $status**$([ "$AUTOPOST_DRY_RUN" = 1 ] && echo ' (dry run)')${note:+ · $note} · [run + frames]($run_url)"; echo;
+            sed -n '2,40p' "$PDD_DIR/out/REPORT.md" 2>/dev/null; } | gh issue comment "$log" --body-file -
+          if [ "$AUTOPOST_DRY_RUN" != 1 ] && { [ "$status" = SKIPPED ] || [ "$status" = FAILED ]; }; then
+            gh label create autopost --color B60205 --description "Instagram autopilot alarm" --force >/dev/null
+            open=$(gh issue list --label autopost --state open --json number --jq '.[0].number')
+            body=$(printf '**%s · %s**\n\n%s\n\n%s' "$day" "$status" "$(sed -n '2,6p' "$PDD_DIR/out/REPORT.md" 2>/dev/null) $note" "$run_url")
+            if [ -n "$open" ]; then gh issue comment "$open" --body "$body"; else gh issue create --title "Instagram autopilot: needs a look" --label autopost --body "$body"; fi
+            exit 1
+          fi
+
+      - name: Keep the frames for review
+        if: always() && steps.guard.outputs.go == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: autopost-${{ github.run_id }}
+          path: |
+            ${{ env.PDD_DIR }}/out/*.png
+            ${{ env.PDD_DIR }}/out/REPORT.md
+            ${{ env.PDD_DIR }}/out/CAPTION*.txt
+            ${{ runner.temp }}/claude.json
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Missing secret alarm
+        if: steps.guard.outputs.go == '0' && steps.guard.outputs.reason != ''
+        run: |
+          gh label create autopost --color B60205 --force >/dev/null
+          gh issue create --title "Instagram autopilot: ${{ steps.guard.outputs.reason }}" --label autopost \
+            --body "The scheduled run could not start: ${{ steps.guard.outputs.reason }}. Add it under Settings → Secrets → Actions."
+          exit 1

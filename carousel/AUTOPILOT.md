@@ -24,7 +24,7 @@ Write `$PDD_DIR/out/REPORT.md` at the end **whatever happens**. Its FIRST line m
 2. Never edit code, config or docs in the repo. The checkout is reset to `origin/main` before every run.
 3. Never reply to comments or DMs, never follow/like/tag anyone, never post to Facebook.
 4. Never publish a frame you have not looked at. Never publish when a frame shows the wrong thing.
-5. Use Composio only for the INSTAGRAM_* tools named below. Nothing else that Composio can reach.
+5. Publish only through `carousel/ig-publish.mjs`. Never call Composio or any social API another way.
 6. Never print or echo a secret.
 
 ## 1. Plan and fetch
@@ -104,29 +104,34 @@ Exit 2 = today's carousel is already published → STATUS: SKIPPED ("already pub
 caption, missing alt text, missing slides) → fix if it is a caption line, else STATUS: FAILED. On success read
 `out/publish.json` (`urls`, `altTexts`, `caption`, `storyUrl`). Instagram user id: `27332554436394910`.
 
-## 9. Publish to Instagram via Composio (`COMPOSIO_MULTI_EXECUTE_TOOL`, parameter name `tools`)
-1. **Carousel** — preferred: one child per image with `INSTAGRAM_POST_IG_USER_MEDIA`
-   (`ig_user_id`, `image_url`, `is_carousel_item: true`, `alt_text: altTexts[i]`), then
-   `INSTAGRAM_CREATE_CAROUSEL_CONTAINER` with `children: [ids]` + `caption`, then
-   `INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH` (`creation_id`, `max_wait_seconds: 300`). If the per-child route is
-   rejected, fall back to `INSTAGRAM_CREATE_CAROUSEL_CONTAINER` with `child_image_urls` + `caption`, then publish.
-   Then: `bun carousel/state-mark.mjs carousel published --ig <media_id>`.
-   If publishing fails twice: STATUS: FAILED (keep the error text verbatim in the report).
-2. **Story** (only if it passed step 6 and `storyUrl` exists): `INSTAGRAM_POST_IG_USER_MEDIA`
-   (`ig_user_id`, `media_type: "STORIES"`, `image_url: storyUrl`) → `INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH` →
-   `bun carousel/state-mark.mjs story published --ig <id>`. If it fails or you skipped it:
-   `bun carousel/state-mark.mjs story skipped` (only if publish.mjs wrote a story row — it does when story.png existed).
-3. **Facebook is off**: `bun carousel/state-mark.mjs fb_album skipped`.
-4. **Reel is off until the native Reel ships**: nothing to do (publish.mjs writes no reel row without reel.mp4).
+## 9. Publish to Instagram — `carousel/ig-publish.mjs` (works on the Mac and on GitHub Actions)
+```
+bun carousel/ig-publish.mjs carousel
+```
+It builds one child container per slide with its alt text, the carousel container with the caption, publishes
+(waiting up to 5 minutes for Instagram), marks the `carousel` row published, and prints
+`PUBLISHED <media_id> <permalink>`. If it exits non-zero, read the error and run it ONCE more; if it fails
+again: STATUS: FAILED with the error text verbatim. Never call it a third time — a half-failed publish can
+still have posted.
+
+Story — only if it passed step 6 and publish.json has a `storyUrl`:
+```
+bun carousel/ig-publish.mjs story
+```
+If it fails or you skipped the Story: `bun carousel/state-mark.mjs story skipped` (only when publish.mjs wrote a
+story row — it does whenever story.png existed).
+
+Facebook is off: `bun carousel/state-mark.mjs fb_album skipped`.
+The Reel is off until the native Reel ships (publish.mjs writes no reel row without reel.mp4).
 
 ## 10. Check it landed, then clean up
-Read the published carousel back (`INSTAGRAM_GET_IG_USER_MEDIA` for the user, newest item) and confirm the caption
-Instagram serves matches `out/publish.json`'s caption. Then:
 ```
+bun carousel/ig-publish.mjs verify
 bun carousel/cleanup.mjs
 bun carousel/freshness.mjs
 ```
-`freshness.mjs` must now say `OK`.
+`verify` reads the newest post back from Instagram and compares its caption with publish.json; it must print
+`VERIFIED`. `freshness.mjs` must now say `OK`.
 
 ## 11. REPORT.md
 ```

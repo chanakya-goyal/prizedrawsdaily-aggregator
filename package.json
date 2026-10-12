@@ -8,7 +8,7 @@
     "test:scraper": "bun test test/",
     "test:carousel": "bun test carousel/tests/",
     "scrape": "bun run.mjs",
-    "test:gates": "bun test carousel/tests/odds-copy.test.mjs carousel/tests/odds-literal-gate.test.mjs carousel/tests/allowlist-conformance.test.mjs carousel/tests/brief.test.mjs carousel/tests/config.test.mjs carousel/tests/honesty.test.mjs carousel/tests/tokens.test.mjs carousel/tests/scene.test.mjs carousel/tests/native-copy.test.mjs carousel/tests/format.test.mjs carousel/tests/caption-check.test.mjs carousel/tests/native-render.test.mjs carousel/tests/autopilot.test.mjs"
+    "test:gates": "bun test carousel/tests/odds-copy.test.mjs carousel/tests/odds-literal-gate.test.mjs carousel/tests/allowlist-conformance.test.mjs carousel/tests/brief.test.mjs carousel/tests/config.test.mjs carousel/tests/honesty.test.mjs carousel/tests/tokens.test.mjs carousel/tests/scene.test.mjs carousel/tests/native-copy.test.mjs carousel/tests/format.test.mjs carousel/tests/caption-check.test.mjs carousel/tests/native-render.test.mjs carousel/tests/autopilot.test.mjs carousel/tests/ig-publish.test.mjs"
   },
   "devDependencies": {
     "@types/bun": "latest"
