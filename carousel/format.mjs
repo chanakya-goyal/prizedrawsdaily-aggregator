@@ -13,6 +13,10 @@ export const priceLabel = (p) => {
 // breaks a mid-word hyphen (e.g. "T-ROC", "X-Tribute" stay intact).
 export const cleanTitle = (t = "") => {
   const s = String(t).trim()
+    // an operator's promo shout before the prize: "ULTRA-LOW ODDS! Win this X", "SUPER LOW ODDS – Win a X".
+    // Only when "Win" follows, so a product name that merely contains "!" is left alone. The shout is
+    // the operator's claim (often an odds claim) and must not reach a PDD bubble as if it were ours.
+    .replace(/^[^!–—]{2,40}?\s*(?:!+|[–—-])\s*(?=win\b)/i, "")
     .replace(/^win\s+(this|a|an|the)\s+/i, "")  // "Win this/a/the X" → "X"
     .replace(/^win\s+/i, "")                       // bare "Win X" → "X"
     .replace(/\s*[-–|]\s+.*$/, "")                 // " - subtitle" (spaced separators only)

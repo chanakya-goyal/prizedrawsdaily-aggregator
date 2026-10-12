@@ -83,14 +83,21 @@ for (let i = 0; i < pick.draws.length; i++) {
 }
 await writeFile(`${DIR}/SHOTLIST.txt`, lines.join("\n"));
 // backups = next few draws in the same category, so a draw with blocked/branded images can be swapped
-const backups = (pick.pool || []).slice(pick.draws.length, pick.draws.length + 3);
+// Five backups, not three: the visual check (AUTOPILOT.md) rejects posters and instant-win pools that
+// no code gate can see, and on 11 Oct it rejected three of five on one car deck.
+const backups = (pick.pool || []).slice(pick.draws.length, pick.draws.length + 5);
 const dayOfYear = Math.floor((Date.now() - Date.parse(new Date().getFullYear() + "-01-01")) / 86400000);
 const archetype = GLOBAL.archetypes[dayOfYear % GLOBAL.archetypes.length];
-await writeFile(`${DIR}/selection.json`, JSON.stringify({
+const selection = JSON.stringify({
   slug: pick.slug, name: pick.name, date: new Date().toISOString(),
   seoKeyword: catCfg(pick.slug).seoKeyword, archetype,
   draws: pick.draws, backups,
-}, null, 2));
+}, null, 2);
+await writeFile(`${DIR}/selection.json`, selection);
+// An untouched copy. build.mjs rewrites selection.json when it swaps or drops a draw, and a dropped
+// draw leaves the backups too — so a draw dropped for a poster-like FIRST photo could not come back
+// after a cleaner candidate was picked, short of re-planning (which archives the built frames).
+await writeFile(`${DIR}/selection.plan.json`, selection);
 
 console.log(lines.join("\n"));
 console.log(`Folder ready → ${DIR}  (reference thumbnails REF-*.jpg written; selection.json saved)`);

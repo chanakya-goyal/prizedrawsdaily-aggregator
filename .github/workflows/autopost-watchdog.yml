@@ -1,0 +1,73 @@
+# The Instagram autopilot's dead-man's switch. It runs OFF the Mac, so it still fires when the Mac
+# was asleep, off or broken — the case the Mac cannot report on itself.
+#
+# - daily 20:00 UTC: if no carousel was published in 36h, open (or comment on) an `autopost` issue;
+#   when posting is fresh again, close it.
+# - dispatched by carousel/autopilot/run.sh with a `reason` when a run SKIPPED or FAILED.
+#
+# The issue is written by github-actions[bot], which is the point: GitHub does not notify you about
+# your own comments, so an alarm posted from the Mac's own gh login would arrive silently.
+name: Autopost watchdog
+
+on:
+  schedule:
+    - cron: "0 20 * * *"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why the Mac run raised the alarm (empty = scheduled freshness check)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: autopost-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+
+      - name: Is the last published carousel fresh?
+        id: fresh
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set +e
+          line=$(bun carousel/freshness.mjs); rc=$?
+          echo "$line"
+          { echo "line=$line"; echo "rc=$rc"; } >> "$GITHUB_OUTPUT"
+
+      - name: Raise, update or close the alarm
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REASON: ${{ inputs.reason }}
+          LINE: ${{ steps.fresh.outputs.line }}
+          RC: ${{ steps.fresh.outputs.rc }}
+        run: |
+          gh label create autopost --color B60205 --description "Instagram autopilot alarm" --force >/dev/null
+          open=$(gh issue list --label autopost --state open --json number --jq '.[0].number')
+          day=$(TZ=Europe/London date +%Y-%m-%d)
+          if [ -n "$REASON" ] || [ "$RC" != "0" ]; then
+            body=$(printf '**%s**\n\n%s\n\nfreshness: `%s`\n\nLogs on the Mac: `~/Library/Logs/pdd-autopost/%s.log`. Pause: `touch ~/.pdd-autopost-off`.' \
+              "$day" "${REASON:-No Instagram carousel published in the last 36 hours.}" "$LINE" "$day")
+            if [ -n "$open" ]; then
+              gh issue comment "$open" --body "$body"
+            else
+              gh issue create --title "Instagram autopilot: needs a look" --label autopost --body "$body"
+            fi
+            # a scheduled stale check goes red too, so the Actions tab shows it
+            [ -n "$REASON" ] || exit 1
+          elif [ -n "$open" ]; then
+            gh issue close "$open" --comment "Fresh again: \`$LINE\`"
+          fi
