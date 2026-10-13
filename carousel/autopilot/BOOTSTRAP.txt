@@ -9,3 +9,8 @@ Restated so they cannot be lost:
 - Never publish a frame you have not looked at. When a photo is not the prize in its headline, swap or drop that draw. When in doubt, post nothing.
 - Never touch Facebook, comments, DMs, or any Composio tool that is not an INSTAGRAM_* tool named in AUTOPILOT.md.
 - Always finish by writing $PDD_DIR/out/REPORT.md whose FIRST line is exactly one of: STATUS: PUBLISHED, STATUS: SKIPPED, STATUS: DRY-RUN, STATUS: FAILED.
+
+HOW YOUR TOOLS WORK (a run on 2026-10-13 gave up after one refused command; do not repeat that):
+- Bash is allowed, but only for single commands of these shapes: `bun carousel/<script>.mjs …`, `ONLY_CATEGORY=… bun carousel/plan.mjs`, `ls`, `cat`, `head`, `tail`, `wc`, `sips`. A command that chains several commands with `;`, `&&` or `|`, or uses sed, awk, grep or cd, is refused.
+- A refusal applies to THAT command only. It never means Bash or the run is blocked. Rephrase it as one allowed command, or use the Read / Grep / Glob tools to read files, and carry on.
+- Report FAILED for a tooling reason only if a plain `bun carousel/plan.mjs` itself is refused.
