@@ -203,3 +203,21 @@ test("a rejected row is never re-inserted, revived or corrected", () => {
   const fresh = { title: "FREE ENTRY", ticket_price: 0, total_entries: 1000, draw_date: existing.draw_date };
   expect(routeDraw(existing, fresh).kind).toBe("skip");
 });
+
+describe("routeDraw: a stored paid price never becomes £0 on one read (review, Critical)", () => {
+  const soon = new Date(Date.now() + 5 * 864e5).toISOString();
+  const fresh = { title: "Win A 2025 Apple iPad! FREE", ticket_price: 0, total_entries: 2499, draw_date: soon };
+  // Not "ended": those rows are read lean, without a price (test/existing.test.mjs pins it).
+  for (const status of ["active", "draft"]) test(status, () => {
+    const r = routeDraw({ id: "x", status, ticket_price: 2.49, total_entries: 2499, draw_date: soon }, fresh);
+    expect(r).toMatchObject({ kind: "skip", reason: "price-to-zero" });
+  });
+  test("a row that was already £0 still routes normally", () => {
+    expect(routeDraw({ id: "x", status: "active", ticket_price: 0, total_entries: 2499, draw_date: soon, title: fresh.title }, fresh).reason).not.toBe("price-to-zero");
+  });
+});
+
+test("twinIndex: a REJECTED row is a twin, so a rejected draw never returns under a URL variant (review, Important)", () => {
+  const twinOf = twinIndex([{ id: 9, status: "rejected", entry_url: "https://www.raffletown.co.uk/prize-draw/1000-free-draw?ref=prizedrawsdaily.co.uk" }]);
+  expect(twinOf("https://www.raffletown.co.uk/prize-draw/1000-free-draw")?.id).toBe(9);
+});

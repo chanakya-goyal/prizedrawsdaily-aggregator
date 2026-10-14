@@ -18,8 +18,8 @@ describe("freeCheck: genuinely free draws pass", () => {
   test("'spinning reel' and 'Clubhouse' are not catches", () => {
     expect(freeCheck(free("FREE Shimano spinning reel from Clubhouse")).free).toBe(true);
   });
-  test("'no cost' counts as free wording", () => {
-    expect(freeCheck(free("Win £5 Cash", { free_text: "absolutely no cost to enter" })).free).toBe(true);
+  test("'no cost' in the title counts as free wording", () => {
+    expect(freeCheck(free("Win £5 Cash – no cost to enter")).free).toBe(true);
   });
 });
 
@@ -85,4 +85,34 @@ describe("freeCheck: live A/B findings (2026-10-15)", () => {
   test("'place your first order' is a catch", () => {
     expect(freeCheck(free("FREE £1,000", { free_text: "Simply place your first order on any live competition and you'll receive your free entry." })).reason).toBe("free but conditional: first order");
   });
+});
+
+// Whole-branch review findings (2026-10-15).
+describe("freeCheck: a paid draw misread as £0 is never 'free' (review, Critical)", () => {
+  test("'Free postal entry' boilerplate in the description is not free wording", () => {
+    expect(freeCheck(free("Win A 2025 Apple iPad!", { grand_prize: "Apple iPad", free_text: "Free postal entry route available. See T&Cs." })))
+      .toEqual({ free: false, reason: "£0 with no free wording" });
+  });
+  test("'no cost' in the description alone is not free wording", () => {
+    expect(freeCheck(free("Win A Rolex", { grand_prize: "Rolex", free_text: "Enter by post at no cost." })).free).toBe(false);
+  });
+  test("'tax free' and 'free delivery' in the title are not free wording", () => {
+    expect(freeCheck(free("£10,000 TAX FREE CASH", { grand_prize: "£10,000 cash" })).free).toBe(false);
+    expect(freeCheck(free("Dyson V15 + Free Delivery", { grand_prize: "Dyson V15" })).free).toBe(false);
+  });
+  test("a title that says free still passes", () => {
+    expect(freeCheck(free("Win £5 Cash - FREE", { free_text: "Free postal entry available" })).free).toBe(true);
+  });
+});
+
+describe("freeCheck: more ways a catch is written (review, Important)", () => {
+  const cases = [
+    ["FREE £100", "Spend over £20 to qualify", "spend over £"],
+    ["FREE £100", "Spend a minimum of £10 this week", "spend a minimum of £"],
+    ["FREE £100", "Buy any ticket this week and you're automatically entered", "buy any ticket"],
+    ["FREE £100", "Open to customers who have made a deposit", "deposit"],
+    ["FREE £100", "Open to ticket holders of our main draw", "ticket holders"],
+    ["FREE £100", "<p>Spend &pound;5 to enter</p>", "spend £"],
+  ];
+  for (const [t, ft, phrase] of cases) test(ft, () => expect(freeCheck(free(t, { free_text: ft })).reason).toBe(`free but conditional: ${phrase}`));
 });

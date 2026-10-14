@@ -103,7 +103,10 @@ whatever happens, always produce the step-5 report.
    own text shows no catch; this step reads the operator's PAGE once to confirm it.
    `…/rest/v1/draws?ticket_price=eq.0&status=in.(active,draft)&or=(free_entry_route.is.null,free_entry_route.neq.online-free)&select=id,title,entry_url,operator:operators(slug)&limit=40`
    For each row, open `entry_url` (same curl as step 2; a bot block → leave it and count it as
-   unchecked). Read the entry rules and terms on that page:
+   unchecked). FIRST: if the page shows a ticket price above £0, the £0 is a parser miss, not a
+   free draw → `bun manager/draw-update.mjs <id> '{"status":"draft"}'` and report it under
+   Free draws as "parser: page says £X". Never reject such a row. Otherwise read the entry
+   rules and terms on that page:
    - It states ANY spend, purchase, subscription, membership, VIP/loyalty or "active players"
      condition, or the free item is an instant win / spin / scratchcard →
      `bun manager/draw-update.mjs <id> '{"status":"rejected"}'` and quote the condition.
@@ -244,6 +247,7 @@ S5. **Silent-operator diagnosis (self-healing, leashed).** For each operator tri
    **Spot-check:** X/10 passed · N unverified (bot-blocked) · N fields fixed · N sent back to draft
    **Free draws:** N checked · N confirmed free · N rejected · N unchecked (blocked)
    - <operator>/<title> — rejected: "<quoted condition>"
+   - <operator>/<title> — parser: page says £X → sent to draft
    - <operator>/<title> — FAIL <field>: row said X, page says Y → <what you did>
    **Classified:** N drafts categorised (M undecidable, left draft)
    **Enrichment:** N descriptions rewritten (of M live draws that needed one) · N batches redone
