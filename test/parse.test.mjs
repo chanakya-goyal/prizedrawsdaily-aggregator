@@ -141,6 +141,13 @@ describe("extractPrice", () => {
   test("cash alternative not mistaken for ticket price", () =>
     expect(extractPrice({ text: "Cash Alternative: £10,000 Entries only £0.05" })).toBe(0.05));
   test("£X per ticket", () => expect(extractPrice({ text: "just £3 per ticket" })).toBe(3));
+  // winmore prints its price chip in pence; the prize list below it is in pounds.
+  test("labelled pence (1p /Per Entry!) beats a £ prize", () =>
+    expect(extractPrice({ text: "1p /Per Entry! RRP: £6,400.00 💷 £50 x 1" })).toBe(0.01));
+  test("labelled pence beats '£100 each' end prizes", () =>
+    expect(extractPrice({ text: "26p /Per Entry! 9 x £100 each" })).toBe(0.26));
+  test("unlabelled '1P TICKETS' headline is not a pence label", () =>
+    expect(extractPrice({ text: "1P TICKETS | £2 per entry" })).toBe(2));
   // Multi-ticket quantity selector default → divide the bundle total back to the unit price.
   test("selected-quantity total (X 25 TICKETS £9.75) → unit", () => expect(extractPrice({ text: "X 25 TICKETS\n£9.75\nADD TO CART" })).toBe(0.39));
   test("bundle default qty 100 (X 100 TICKETS £20.00) → unit", () => expect(extractPrice({ text: "X 100 TICKETS £20.00" })).toBe(0.2));
@@ -199,6 +206,22 @@ describe("fieldsFromHtml — WooCommerce-Lottery plugin (labelled entries + data
   });
 });
 
+describe("fieldsFromHtml — countdown data-end (diamonddraws shape)", () => {
+  // The visible "Ends 2 Nov • 8:30PM" has no year; the countdown node carries the full
+  // Europe/London wall-clock target.
+  test("reads #countdown[data-end]", () => {
+    const h = `<html><body><h1>Pumpkin Smash</h1><span>Ends 2 Nov • 8:30PM</span>
+      <div id="countdown" data-end="2026-11-02 20:30:00"></div></body></html>`;
+    const r = fieldsFromHtml({ html: h, url: "https://op.test/competitions/pumpkin-smash", op: { base: "https://op.test" } });
+    expect(r.draw_date).toBe("2026-11-02T20:30:00+00:00");
+  });
+  test("ignores a bare data-end that is not a countdown", () => {
+    const h = `<html><body><h1>Win a Watch</h1><div class="slider" data-end="2027-01-01 00:00:00"></div></body></html>`;
+    const r = fieldsFromHtml({ html: h, url: "https://op.test/p/watch", op: { base: "https://op.test" } });
+    expect(r.draw_date).toBeNull();
+  });
+});
+
 describe("fieldsFromHtml — lottery-for-woocommerce data-time countdowns", () => {
   // The 2026-06-27 operator cohort (croc-comps, bee-the-winner, drift, galaxy, …) renders the
   // close date only as a countdown data-time attribute — epoch seconds on some sites, a
@@ -234,6 +257,14 @@ describe("fieldsFromHtml — lottery-for-woocommerce data-time countdowns", () =
       </body></html>`;
     const r = fieldsFromHtml({ html: h, url: "https://op.test/product/ps5", op: { base: "https://op.test" } });
     expect(r.draw_date).toStartWith("2026-07-23");
+  });
+  test("PrizeStack data-draw-time keeps its instant (East Anglia shape)", () => {
+    // 20:00 BST on 18 Oct is 19:00 UTC.
+    const h = `<html><body><h1>WIN £2,000 TAX FREE CASH</h1>
+      <div class="main-countdown flex" data-draw-time="2026-10-18T20:00:00+01:00"></div>
+      <p>Ticket sales close Oct 18th @ 20:00 - the draw will take place 30 minutes later.</p></body></html>`;
+    const r = fieldsFromHtml({ html: h, url: "https://op.test/prizes/win-2000", op: { base: "https://op.test" } });
+    expect(new Date(r.draw_date).toISOString()).toBe("2026-10-18T19:00:00.000Z");
   });
   test("a bare data-time outside countdown/lottery nodes is ignored", () => {
     const h = `<html><body><h1>Win a PS5</h1>
@@ -881,5 +912,32 @@ describe("extractEntries — the method travels with the value", () => {
   test("a non-strict call with an operator pattern that does NOT match reports the real tier", () => {
     expect(extractEntries("14,993 Tickets", { entries: "(\\d+) spots" }))
       .toEqual({ value: 14993, method: "bare-count" });
+  });
+});
+
+// RaffleX platform (Speed Competitions, Ruby, Optimised Odds, Phat Stax): the draw date is
+// printed month-first with no year ("Draw On Wed Aug 12th 8:30pm") and the header price in
+// pence ("10p"). Neither parsed, so every RaffleX draw was binned as "missing draw_date".
+describe("RaffleX — month-first short dates + pence header price", () => {
+  test("labelled month-first date with a time", () => {
+    expect(extractDate("Draw On Fri Oct 30th 8:30pm")).toMatch(/^20\d\d-10-30T20:30:00/);
+  });
+  test("a stronger full date still wins over the month-first form", () => {
+    expect(extractDate("Draw On Fri Oct 30th 8:30pm. Ends 1st November 2026")).toMatch(/^2026-11-01T/);
+  });
+  test("a word that merely starts with a month prefix is not a month", () => {
+    expect(extractDate("the Marvel 2nd edition")).toBeNull();
+  });
+  test("a pence-only price element reads as pounds; page text containing a pence word does not", () => {
+    expect(extractPrice({ text: "10p" })).toBe(0.1);
+    expect(extractPrice({ text: " 7p " })).toBe(0.07);
+    expect(extractPrice({ text: "Win 10p entries and a £5 Site Credit" })).toBe(5);
+  });
+  test("fieldsFromHtml with selectors.price 'h1 + p' on the RaffleX header", () => {
+    const html = `<html><body><div class="flex"><h1>Cash Coffins £666 Main Draw</h1><!--[if BLOCK]><![endif]--><p class="text-3xl">10p</p></div>
+      <div class="mt-2"><p>Draw On Fri Oct 30th 8:30pm</p></div><p>£1 Site Credit</p><p>1,200 / 50,000</p></body></html>`;
+    const d = fieldsFromHtml({ html, url: "https://x.example/competition/cash-coffins", op: { base: "https://x.example", selectors: { price: "h1 + p" } } });
+    expect(d.ticket_price).toBe(0.1);
+    expect(d.draw_date).toMatch(/-10-30T20:30:00/);
   });
 });
