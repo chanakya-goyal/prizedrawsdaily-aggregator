@@ -636,8 +636,10 @@
  {
   "name": "Carp Fishing Draws & Giveaways",
   "slug": "carp-fishing-draws-giveaways",
-  "base": "https://fishingdraws.co.uk",
-  "method": "render"
+  "base": "https://www.fishingdraws.co.uk",
+  "method": "woo",
+  "apiStyle": "rest_route",
+  "note": "Zap theme; /wp-json/ 404s, so the Store API is read through ?rest_route=. Was render with 0 draws; the woo path only became safe with the neighbour-block fix (2026-10-15), because its 'Featured Competitions' cards leaked their caps into every page."
  },
  {
   "name": "Radiance Rewards",

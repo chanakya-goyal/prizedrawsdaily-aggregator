@@ -8,7 +8,7 @@ import { gotoSettled } from "./lib/render-nav.mjs";
 
 export { CATEGORIES, UA, WINDOW_DAYS, normalizeUkDate };
 import { detectZap, parseZapRefresh, mergeZap, fetchZapRefresh } from "./lib/zap.mjs";
-import { isPurchasable, hasAvailableVariant, permalinkKey, saysFinished } from "./lib/liveness.mjs";
+import { isPurchasable, hasAvailableVariant, permalinkKey, saysFinished, ltyFinished } from "./lib/liveness.mjs";
 import { raffleEngineOperator } from "./lib/adapters/raffle-engine.mjs";
 import { hydraOperator } from "./lib/adapters/hydra.mjs";
 import { inertiaOperator } from "./lib/adapters/inertia.mjs";
@@ -320,7 +320,7 @@ export async function wooOperator(op, perOp = 6, { knownUrls = new Set() } = {})
   if (collected.length > products.length) {
     console.log(`  ${products.length} of ${collected.length} live (maxLive ${target}; ${known.length} already published, always re-checked)`);
   }
-  let sawZap = false;
+  let sawZap = false, ltyClosed = 0;
   const pairs = await pMap(products, FETCH_CONCURRENCY, async (p) => {
     try {
       const minor = p.prices?.currency_minor_unit ?? 2;
@@ -336,10 +336,13 @@ export async function wooOperator(op, perOp = 6, { knownUrls = new Set() } = {})
       const apiStock = sm ? Number(sm[1].replace(/,/g, "")) : null;
       const { html, refused } = await readProductPage(p.permalink, op); // "" when blocked — API desc still usable
       if (!sawZap && detectZap(html)) sawZap = true;
+      // A closed lty lottery is still `is_purchasable` in the Store API; its page says otherwise.
+      if (ltyFinished(html)) { ltyClosed++; return null; }
       return { id: p.id, refused, draw: fieldsFromHtml({ html, url: p.permalink, op, knownTitle: p.name, knownImage: img, knownPrice: price, descriptionText: apiDesc, prizeText, apiCategories, apiStock }) };
     } catch (e) { console.log(`  ! ${(p.permalink || p.name || "?").slice(-42)} parse failed: ${(e.message || "").slice(0, 50)}`); return null; }
   });
   const kept = pairs.filter((x) => x && x.draw);
+  if (ltyClosed) console.log(`  🏁 ${ltyClosed} product(s) the Store API calls purchasable say "Lottery Closed/Finished" on the page — skipped`);
   // Zap/craic-competitions family: cap + close date exist only behind a public admin-ajax
   // call (the pages paint them client-side) — one batched request fills every gap.
   if (sawZap && kept.some((x) => x.draw.total_entries == null || !x.draw.draw_date)) {

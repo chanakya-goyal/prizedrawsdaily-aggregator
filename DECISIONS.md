@@ -374,3 +374,24 @@ draws a day; at 0 it can take ~2,400.
 **Reverse when:** ended draw pages start earning clicks that depend on the photo, for example
 image search. Raise `RETENTION_DAYS`. Cloudinary still holds no copy of the deleted photos; the
 migrated ones are in the local backup.
+
+---
+
+## 2026-10-15 · A closed lty lottery ends on the operator's own status line, not on `is_purchasable`.
+
+**Decided:** lottery-for-woocommerce keeps `is_purchasable: true` on a lottery it has closed, so
+`ltyFinished()` (`lib/liveness.mjs`) reads the plugin's own status in the product summary:
+"Lottery Closed / Please wait for the result", "Lottery Finished", "Lottery Failed", or a drawn
+winners table where the buy box was, with no buy button. The scrape skips such products, and
+`ended-sweep.mjs` ends a woo row on it **only when the row's `draw_date` has passed**.
+
+**Rejected:** ending on a missing buy button alone. Star Draws shows exactly that (an empty
+summary, no button) on lotteries it still lists, and absence is not evidence (the law above).
+
+**Evidence:** on 2026-10-15, 40 of 40 "purchasable" Property Comps products and 40 of 40 Albo
+products carried one of these markers. The markers are DOM elements in the operator's own
+summary, read with neighbour cards removed; the plugin's i18n bundle carries the same strings
+in a `<script>`, which is why `saysFinished` never reads raw HTML and this does not either.
+
+**Reverses if:** a future-dated row is ever ended by it (it cannot be, by construction), or the
+plugin starts printing these markers on lotteries that are still on sale.
