@@ -10,7 +10,7 @@ const operators = Array.isArray(raw) ? raw : raw.operators;
 
 const METHODS = new Set(["api", "woo", "shopify", "render"]);
 // Must match API_ADAPTERS in extractor.mjs; `rest_route` is the woo URL-form variant.
-const API_STYLES = new Set(["raffle-engine", "hydra", "inertia", "click", "drawhouse"]);
+const API_STYLES = new Set(["raffle-engine", "hydra", "inertia", "click", "drawhouse", "raffolux"]);
 const WOO_STYLES = new Set(["rest_route"]);
 // Every key the code reads, including the dormant escape hatches no entry currently uses —
 // they are legitimate, so listing them keeps this test from blocking a valid future config.

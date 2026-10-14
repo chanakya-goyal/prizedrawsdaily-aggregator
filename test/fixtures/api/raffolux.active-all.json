@@ -1,0 +1,237 @@
+[
+ {
+  "id": "01M2FXJFT8JV2S5JNY3YSGZMY9",
+  "title": "Win a Tiffany Necklace",
+  "summary": "x",
+  "description": "<b>WIN a Tiffany Necklace!</b><br><br>That little blue box could have your name on it. We're giving one lucky winner a g",
+  "competitionDetails": "x",
+  "slug": "win-a-tiffany-necklace",
+  "category": "indulgence",
+  "prizeId": "01M2FXJFSW52917C1XZGZ5ZKXJ",
+  "prizeName": "Win a Tiffany Necklace",
+  "pricePerTicket": 0.99,
+  "prizeValue": "280.00",
+  "prizeCashAlternativeValue": 196,
+  "totalTickets": 499,
+  "drawDate": "2026-10-14T21:00:00.000Z",
+  "maximumAllowedTickets": 25,
+  "allowCustomTicketSelection": false,
+  "answerOptions": null,
+  "questionId": null,
+  "questionText": null,
+  "drawType": "automatic",
+  "configuration": {
+   "featured": false,
+   "jackpot": false,
+   "startingTicketCount": 10,
+   "hero": false,
+   "bundle": {
+    "enabled": true,
+    "discounts": [
+     {
+      "rangeLower": 5,
+      "rangeUpper": 10,
+      "discountPercentage": 0,
+      "index": 0
+     },
+     {
+      "rangeLower": 10,
+      "rangeUpper": 25,
+      "discountPercentage": 0,
+      "index": 1
+     },
+     {
+      "rangeLower": 25,
+      "rangeUpper": null,
+      "discountPercentage": 0,
+      "index": 2
+     }
+    ]
+   },
+   "prizes": {
+    "products": []
+   },
+   "instants": []
+  },
+  "media": {
+   "thumbnail": "https://7a5u9axnkq.ufs.sh/f/eEKIULAh76cPObwamPLEtovaqs3AZ5PSRVJkY8cCb6KgeD1I",
+   "main": "https://7a5u9axnkq.ufs.sh/f/eEKIULAh76cPObwamPLEtovaqs3AZ5PSRVJkY8cCb6KgeD1I",
+   "images": [],
+   "hero": null,
+   "heroVertical": null
+  },
+  "details": {},
+  "soldTicketCount": 224
+ },
+ {
+  "id": "01M2T4Z2HZHZX81TAQ477JSPX5",
+  "title": "Win £5 Cash - FREE",
+  "summary": "Win £5 Cash - FREE",
+  "description": "<b>Win £5 Cash - FREE</b><br><br>A quick, easy little win - £5 cash for absolutely no cost to enter. It won't change you",
+  "competitionDetails": "Win £5 Cash - FREE",
+  "slug": "win-5-cash-free-2",
+  "category": "cash",
+  "prizeId": "01M2T4Z2HHSZHC8G4S8AQ76S32",
+  "prizeName": "Win £5 Cash - FREE",
+  "pricePerTicket": 0,
+  "prizeValue": "5.00",
+  "prizeCashAlternativeValue": 3.5,
+  "totalTickets": 1999,
+  "drawDate": "2026-10-14T21:00:00.000Z",
+  "maximumAllowedTickets": 1,
+  "allowCustomTicketSelection": false,
+  "answerOptions": null,
+  "questionId": null,
+  "questionText": null,
+  "drawType": "automatic",
+  "configuration": {
+   "featured": false,
+   "jackpot": false,
+   "hero": false,
+   "bundle": {
+    "enabled": false,
+    "discounts": []
+   },
+   "prizes": {
+    "products": []
+   },
+   "instants": []
+  },
+  "media": {
+   "thumbnail": "https://7a5u9axnkq.ufs.sh/f/eEKIULAh76cPqX3LxSNPzUnV3wZWyGovxMIhAO9CLHkYfXR8",
+   "main": "https://7a5u9axnkq.ufs.sh/f/eEKIULAh76cPqX3LxSNPzUnV3wZWyGovxMIhAO9CLHkYfXR8",
+   "images": [],
+   "hero": null,
+   "heroVertical": null
+  },
+  "details": {},
+  "soldTicketCount": 1860
+ },
+ {
+  "id": "01M2FXP8X9V7AM81KTAH3D9TYC",
+  "title": "£10K Novel Fortune Instant Win!",
+  "summary": "£10K Novel Fortune Instant Win!",
+  "description": "<b>Just One More Chapter</b><br><br>\nThat moment you fall into a book and forget the time entirely. Kindles, e-readers a",
+  "competitionDetails": "£10K Novel Fortune Instant Win!",
+  "slug": "book-worm-instant-win",
+  "category": "instant-win",
+  "prizeId": "01M2FXP8WYGQJ1F1QBWC0ZBFJZ",
+  "prizeName": "Book Worm Instant Win",
+  "pricePerTicket": 0.99,
+  "prizeValue": "250.00",
+  "prizeCashAlternativeValue": 175,
+  "totalTickets": 19999,
+  "drawDate": "2026-10-18T21:00:00.000Z",
+  "maximumAllowedTickets": 999,
+  "allowCustomTicketSelection": false,
+  "answerOptions": null,
+  "questionId": null,
+  "questionText": null,
+  "drawType": "automatic",
+  "configuration": {
+   "featured": true,
+   "jackpot": false,
+   "startingTicketCount": 10,
+   "hero": false,
+   "bundle": {
+    "enabled": true,
+    "discounts": [
+     {
+      "rangeLower": 5,
+      "rangeUpper": 10,
+      "discountPercentage": 0,
+      "index": 0
+     },
+     {
+      "rangeLower": 10,
+      "rangeUpper": 25,
+      "discountPercentage": 0,
+      "index": 1
+     },
+     {
+      "rangeLower": 25,
+      "rangeUpper": null,
+      "discountPercentage": 0,
+      "index": 2
+     }
+    ]
+   },
+   "gameId": [
+    "carousel"
+   ],
+   "theme": "book-worm",
+   "prizes": {
+    "products": []
+   },
+   "instants": [
+    {
+     "id": "01M22TQHBHBHNPAHPYWM6582RR",
+     "total": 1
+    }
+   ]
+  },
+  "media": {
+   "thumbnail": "https://7a5u9axnkq.ufs.sh/f/eEKIULAh76cPc9BU8TdWWKAd9ajCIBJDNkR3x8gHGUzPfwTo",
+   "main": "https://7a5u9axnkq.ufs.sh/f/eEKIULAh76cPw5KYLFnAUTJKIh7MiQNVltjP1G0Fs9y8nC6m",
+   "images": [],
+   "hero": null,
+   "heroVertical": null
+  },
+  "details": {},
+  "soldTicketCount": 5328
+ },
+ {
+  "id": "01M3XZ5H0FZMFWDYFYXPWP1H8P",
+  "title": "Win a South Africa Safari Trip + £5k Cash",
+  "summary": "Win a South Africa Safari Trip",
+  "description": "<b>Win a South African Safari Adventure for Two + £5,000 Cash</b><br><br>\n\nPicture this: Table Mountain at sunrise, a gl",
+  "competitionDetails": "Win a South Africa Safari Trip",
+  "slug": "south-african-safari",
+  "category": "holiday",
+  "prizeId": "01M3XZ5H03QB0BWFP8EXP63H8N",
+  "prizeName": "Win A South African Adventure & £5,000 Cash",
+  "pricePerTicket": 0.1,
+  "prizeValue": "15000.00",
+  "prizeCashAlternativeValue": 10500,
+  "totalTickets": 999999,
+  "drawDate": "2026-12-30T22:00:00.000Z",
+  "maximumAllowedTickets": 99999,
+  "allowCustomTicketSelection": false,
+  "answerOptions": null,
+  "questionId": null,
+  "questionText": null,
+  "drawType": "automatic",
+  "configuration": {
+   "featured": false,
+   "jackpot": false,
+   "hero": true,
+   "bundle": {
+    "enabled": false,
+    "discounts": []
+   },
+   "prizes": {
+    "products": []
+   },
+   "instants": []
+  },
+  "media": {
+   "thumbnail": "https://7a5u9axnkq.ufs.sh/f/eEKIULAh76cP1hnFNyPXEicYIsjhTVdqZkoGt4fK3S5z0ulx",
+   "main": "https://7a5u9axnkq.ufs.sh/f/eEKIULAh76cPcifzEqWWKAd9ajCIBJDNkR3x8gHGUzPfwToL",
+   "images": [],
+   "hero": "https://7a5u9axnkq.ufs.sh/f/eEKIULAh76cPtwqwqUwp6OaQRfoBl79KWGvgix0kIeb4D2Jc",
+   "heroVertical": "https://7a5u9axnkq.ufs.sh/f/eEKIULAh76cPObeo0KLEtovaqs3AZ5PSRVJkY8cCb6KgeD1I"
+  },
+  "details": {},
+  "soldTicketCount": 1862
+ },
+ {
+  "id": "01BROKEN",
+  "title": "",
+  "slug": "x",
+  "category": "cash",
+  "pricePerTicket": 1,
+  "totalTickets": 999,
+  "drawDate": "2026-10-20T21:00:00.000Z",
+  "media": {}
+ }
+]

@@ -201,13 +201,17 @@
   "name": "Raffle Master",
   "slug": "raffle-master",
   "base": "https://rafflemaster.co.uk",
-  "method": "render"
+  "method": "render",
+  "enabled": false,
+  "disabledReason": "Company entered insolvency on 17 Sep 2026; the site serves a 503 insolvency/maintenance notice. Verified 2026-10-14."
  },
  {
   "name": "Raffolux",
   "slug": "raffolux",
   "base": "https://raffolux.com",
-  "method": "render"
+  "method": "api",
+  "apiStyle": "raffolux",
+  "listApi": "https://raffolux.com/api/raffle/active/site/all"
  },
  {
   "name": "Redline Competitions",
@@ -380,14 +384,22 @@
   "slug": "optimised-odds",
   "base": "https://optimisedodds.com",
   "method": "render",
-  "fetcher": "flaresolverr"
+  "fetcher": "flaresolverr",
+  "selectors": {
+   "price": "h1 + p"
+  },
+  "note": "RaffleX platform (Laravel Livewire). The header price sits in the <p> right after the <h1> and is printed in pence (\"10p\"); without the selector the price fell back to the smallest £ on the page (an instant-win prize). Draw date is the month-first \"Draw On Wed Aug 12th 8:30pm\" line (lib/parse.mjs MONTH_FIRST_RE)."
  },
  {
   "name": "Phatstax",
   "slug": "phatstax",
   "base": "https://phatstax.co.uk",
   "method": "render",
-  "fetcher": "flaresolverr"
+  "fetcher": "flaresolverr",
+  "selectors": {
+   "price": "h1 + p"
+  },
+  "note": "RaffleX platform (Laravel Livewire). The header price sits in the <p> right after the <h1> and is printed in pence (\"10p\"); without the selector the price fell back to the smallest £ on the page (an instant-win prize). Draw date is the month-first \"Draw On Wed Aug 12th 8:30pm\" line (lib/parse.mjs MONTH_FIRST_RE)."
  },
  {
   "name": "Play Competitions",
@@ -408,14 +420,22 @@
   "slug": "ruby-competitions-ltd",
   "base": "https://rubycompetitions.co.uk",
   "method": "render",
-  "fetcher": "flaresolverr"
+  "fetcher": "flaresolverr",
+  "selectors": {
+   "price": "h1 + p"
+  },
+  "note": "RaffleX platform (Laravel Livewire). The header price sits in the <p> right after the <h1> and is printed in pence (\"10p\"); without the selector the price fell back to the smallest £ on the page (an instant-win prize). Draw date is the month-first \"Draw On Wed Aug 12th 8:30pm\" line (lib/parse.mjs MONTH_FIRST_RE)."
  },
  {
   "name": "Speedcompetitions",
   "slug": "speedcompetitions",
   "base": "https://speedcompetitions.co.uk",
   "method": "render",
-  "fetcher": "flaresolverr"
+  "fetcher": "flaresolverr",
+  "selectors": {
+   "price": "h1 + p"
+  },
+  "note": "RaffleX platform (Laravel Livewire). The header price sits in the <p> right after the <h1> and is printed in pence (\"10p\"); without the selector the price fell back to the smallest £ on the page (an instant-win prize). Draw date is the month-first \"Draw On Wed Aug 12th 8:30pm\" line (lib/parse.mjs MONTH_FIRST_RE)."
  },
  {
   "name": "Albo Competitions",
@@ -470,7 +490,9 @@
   "name": "Max Competitions",
   "slug": "max-competitions",
   "base": "https://maxcompetitions.co.uk",
-  "method": "woo"
+  "method": "woo",
+  "enabled": false,
+  "disabledReason": "Every page (home and product) serves a 'Coming Soon' maintenance screen, so no draw can be entered; the Woo Store API still lists stale products, which must not be published. Verified 2026-10-14."
  },
  {
   "name": "MLS Fishing Competitions",
@@ -566,22 +588,29 @@
   "name": "Ignite Comps",
   "slug": "ignite-comps",
   "base": "https://www.ignitecomps.co.uk",
+  "listing": "https://www.ignitecomps.co.uk/view-competitions",
   "method": "render",
+  "drawMatch": "/draw-detail/[a-z0-9-]{6,}",
   "wait": 6000
  },
  {
   "name": "Diamond Draws",
   "slug": "diamond-draws",
-  "base": "https://www.diamonddraws.com",
+  "base": "https://diamonddraws.com",
   "method": "render",
-  "listing": "https://www.diamonddraws.com/competitions",
+  "listing": "https://diamonddraws.com/competitions",
   "wait": 8000
  },
  {
   "name": "Winmore",
   "slug": "winmore",
   "base": "https://winmore.uk",
-  "method": "render"
+  "method": "render",
+  "drawMatch": "/ticketed-prizes/[a-z0-9][a-z0-9-]*/?$",
+  "selectors": {
+   "price": "p.bg-light span.text-primaryColor"
+  },
+  "note": "The price chip prints pence (\"15p /Per Entry!\"); without the selector the price fell back to an instant-win prize (\"£50 x 1\")."
  },
  {
   "name": "Winner Winner Chicken Dinner",
@@ -593,7 +622,9 @@
   "name": "Bubbl Win",
   "slug": "bubbl-win-ltd",
   "base": "https://bubbl.win",
-  "method": "render"
+  "method": "render",
+  "enabled": false,
+  "disabledReason": "Cloudflare 522 (origin unreachable) on every request; the site is down. Verified 2026-10-14."
  },
  {
   "name": "The Birthday Draw",
@@ -612,7 +643,9 @@
   "name": "Radiance Rewards",
   "slug": "radiance-rewards",
   "base": "https://radiancerewards.co.uk",
-  "method": "render"
+  "method": "render",
+  "enabled": false,
+  "disabledReason": "www host never answers (connection times out after the apex 301); the site is down. Verified 2026-10-14."
  },
  {
   "name": "Bounty Competitions",
@@ -625,14 +658,16 @@
   "name": "Phat Lads",
   "slug": "phatlads",
   "base": "https://phatlads.com",
-  "method": "render",
-  "fetcher": "flaresolverr"
+  "method": "api",
+  "apiStyle": "inertia",
+  "fetcher": "flaresolverr",
+  "listing": "https://phatlads.com/"
  },
  {
   "name": "Jammy",
   "slug": "jammy",
   "base": "https://www.jammy.co.uk",
-  "method": "render",
+  "method": "woo",
   "fetcher": "flaresolverr"
  },
  {

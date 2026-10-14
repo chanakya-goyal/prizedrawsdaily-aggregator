@@ -9,6 +9,7 @@ import { mapCompetition as mapHydra, imageUrl, isLive } from "../lib/adapters/hy
 import { parseDataPage, arrayOf, mapCompetition as mapInertia } from "../lib/adapters/inertia.mjs";
 import { parseNextData, collectCompetitions, mapCompetition as mapClick } from "../lib/adapters/click.mjs";
 import { mapGame as mapDrawhouse, affiliateIdOf, brandEdition, drawPool, poolSentence } from "../lib/adapters/drawhouse.mjs";
+import { mapRaffle as mapRaffolux } from "../lib/adapters/raffolux.mjs";
 import { gate } from "../gate.mjs";
 import { gotoSettled } from "../lib/render-nav.mjs";
 
@@ -367,6 +368,40 @@ describe("drawhouse adapter (Raffle Town / ToffeesDraws / KopiteDraws / The Baby
     const d = mapDrawhouse(g, td, 33);
     expect(d.grand_prize).not.toMatch(/physical prize/i);
     expect(d.grand_prize).toBe(d.title);
+  });
+});
+
+describe("raffolux adapter (keyless /api/raffle/active/site/all feed)", () => {
+  const op = { slug: "raffolux", name: "Raffolux", base: "https://raffolux.com", method: "api", apiStyle: "raffolux" };
+  const feed = async () => Bun.file("test/fixtures/api/raffolux.active-all.json").json();
+  const byTitle = (rs, t) => rs.find((r) => r.title === t);
+
+  test("a paid raffle maps to a valid shape with the feed's cap, price and UTC draw time", async () => {
+    const d = mapRaffolux(byTitle(await feed(), "£10K Novel Fortune Instant Win!"), op);
+    expectDrawShape(d);
+    expect(d.ticket_price).toBe(0.99);
+    expect(d.total_entries).toBe(19999);
+    // True UTC instant passed through untouched (normalizeUkDate would re-stamp it as UK time).
+    expect(d.draw_date).toBe("2026-10-18T21:00:00.000Z");
+    expect(d.entry_url).toMatch(/^https:\/\/raffolux\.com\/raffle\/instant-win\/[0-9A-Z]{26}\/[a-z0-9-]+$/);
+    expect(d.image_url).toMatch(/^https:\/\//);
+  });
+
+  test("the entry URL is /raffle/{category}/{id}/{slug}", async () => {
+    const d = mapRaffolux(byTitle(await feed(), "Win a Tiffany Necklace"), op);
+    expect(d.entry_url).toBe("https://raffolux.com/raffle/indulgence/01M2FXJFT8JV2S5JNY3YSGZMY9/win-a-tiffany-necklace");
+  });
+
+  test("a free raffle keeps its £0 price (the gate, not the adapter, decides)", async () => {
+    const d = mapRaffolux(byTitle(await feed(), "Win £5 Cash - FREE"), op);
+    expect(d.ticket_price).toBe(0);
+    expect(d.total_entries).toBe(1999);
+  });
+
+  test("a raffle with no title is dropped", async () => {
+    const rs = await feed();
+    expect(mapRaffolux(rs.find((r) => r.id === "01BROKEN"), op)).toBe(null);
+    expect(rs.map((r) => mapRaffolux(r, op)).filter(Boolean).length).toBe(rs.length - 1);
   });
 });
 
