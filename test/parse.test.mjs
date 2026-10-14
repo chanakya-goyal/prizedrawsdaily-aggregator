@@ -141,12 +141,13 @@ describe("extractPrice", () => {
   test("cash alternative not mistaken for ticket price", () =>
     expect(extractPrice({ text: "Cash Alternative: £10,000 Entries only £0.05" })).toBe(0.05));
   test("£X per ticket", () => expect(extractPrice({ text: "just £3 per ticket" })).toBe(3));
-  // winmore prints its price chip in pence; the prize list below it is in pounds.
-  test("labelled pence (1p /Per Entry!) beats a £ prize", () =>
-    expect(extractPrice({ text: "1p /Per Entry! RRP: £6,400.00 💷 £50 x 1" })).toBe(0.01));
-  test("labelled pence beats '£100 each' end prizes", () =>
-    expect(extractPrice({ text: "26p /Per Entry! 9 x £100 each" })).toBe(0.26));
-  test("unlabelled '1P TICKETS' headline is not a pence label", () =>
+  // winmore prints its price chip in pence (read via selectors.price); the prize list is in pounds.
+  test("a selector-scoped pence chip (winmore '15p') reads as pounds", () =>
+    expect(extractPrice({ text: "15p" })).toBe(0.15));
+  // ooosch: the description keeps the full price while the page shows the sale price.
+  test("a pence label in page text does not beat the page's £ sale price", () =>
+    expect(extractPrice({ text: "Ninja Air Fryer #3 DRAW TOMORROW £0.29 £0.19 1999 Tickets Entry Details: Just 29p per ticket" })).toBe(0.19));
+  test("unlabelled '1P TICKETS' headline is not a pence price", () =>
     expect(extractPrice({ text: "1P TICKETS | £2 per entry" })).toBe(2));
   // Multi-ticket quantity selector default → divide the bundle total back to the unit price.
   test("selected-quantity total (X 25 TICKETS £9.75) → unit", () => expect(extractPrice({ text: "X 25 TICKETS\n£9.75\nADD TO CART" })).toBe(0.39));

@@ -606,7 +606,11 @@
   "slug": "winmore",
   "base": "https://winmore.uk",
   "method": "render",
-  "drawMatch": "/ticketed-prizes/[a-z0-9][a-z0-9-]*/?$"
+  "drawMatch": "/ticketed-prizes/[a-z0-9][a-z0-9-]*/?$",
+  "selectors": {
+   "price": "p.bg-light span.text-primaryColor"
+  },
+  "note": "The price chip prints pence (\"15p /Per Entry!\"); without the selector the price fell back to an instant-win prize (\"£50 x 1\")."
  },
  {
   "name": "Winner Winner Chicken Dinner",
