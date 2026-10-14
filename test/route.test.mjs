@@ -2,7 +2,7 @@
 // inline in run.mjs with no test coverage at all — the most consequential branching in the repo,
 // verified only by watching production. These lock the matrix down.
 import { test, expect, describe } from "bun:test";
-import { routeDraw, poolValue, categoryPatch } from "../lib/route.mjs";
+import { routeDraw, poolValue, categoryPatch, twinIndex } from "../lib/route.mjs";
 
 const NOW = new Date("2026-09-06T12:00:00Z");
 const CAT = { "cash-prizes": "cat-cash", "car-draws": "cat-car" };
@@ -176,4 +176,24 @@ describe("routeDraw", () => {
   test("any other status is skipped", () => {
     expect(routeDraw(stored({ status: "archived" }), fresh(), { now: NOW, catMap: CAT }).reason).toBe("not-draft");
   });
+});
+
+describe("twinIndex: the same page under another query string is the same draw (2026-10-15)", () => {
+  // Raffle Town's hand-added £1,000 free row carries ?ref=; the drawhouse adapter emits the bare
+  // URL. Once free draws pass the gate, an exact-URL miss would list that draw twice.
+  const rows = [
+    { id: 1, status: "active", entry_url: "https://www.raffletown.co.uk/prize-draw/1000-free-draw?ref=prizedrawsdaily.co.uk" },
+    { id: 2, status: "ended", entry_url: "https://x.co.uk/product/old-car/?utm=1" },
+    { id: 3, status: "draft", entry_url: "https://x.co.uk/product/new-car/" },
+  ];
+  const twinOf = twinIndex(rows);
+  test("a live row differing only by query is found", () =>
+    expect(twinOf("https://www.raffletown.co.uk/prize-draw/1000-free-draw")?.id).toBe(1));
+  test("a draft row differing only by trailing slash is found", () =>
+    expect(twinOf("https://x.co.uk/product/new-car")?.id).toBe(3));
+  test("an ended row is not a twin, so relisting is unaffected", () =>
+    expect(twinOf("https://x.co.uk/product/old-car/")).toBe(null));
+  test("the exact URL is not its own twin (byUrl handles it)", () =>
+    expect(twinOf("https://x.co.uk/product/new-car/")).toBe(null));
+  test("an unrelated URL has no twin", () => expect(twinOf("https://x.co.uk/product/boat/")).toBe(null));
 });
