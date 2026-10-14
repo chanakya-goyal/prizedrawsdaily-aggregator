@@ -21,6 +21,12 @@ adapter lands.
    **plus** the dedicated page.
 4. **Detection:** an automatic text check at scrape time, plus a double-check by the daily QA
    routine on the operator's page. No manual approval.
+5. **Site-credit prizes count as free to enter** (owner, 2026-10-15), but every place that shows
+   one must say the credit can only be spent with that operator (see 2.2).
+6. **"Account required" and "answer a question" still count as free** (owner, 2026-10-15).
+7. **A £0 draw the QA routine finds conditional is hidden permanently** (`rejected`), with no
+   manual undo (owner, 2026-10-15).
+8. **Split the header entry** into "Free Draws" and "Instant Wins" (owner, 2026-10-15).
 
 ## Part 1 — scraper (`pdd-aggregator`)
 
@@ -106,11 +112,16 @@ Modelled on `src/routes/instant-win-competitions-uk.tsx`.
 ### 2.2 Free badge
 - `DrawCard` shows a "Free" badge when `Number(ticket_price) === 0`. It replaces the price line.
   The draw page, HomeSpotlight and ClosedDrawRow already handle £0.
+- **Site-credit note:** when a free draw's prize is site credit (title or grand_prize matches
+  `site credit`, `account credit` or `wallet credit`), the card, the draw page and the
+  /free-prize-draws-uk grid show "Site credit: can only be spent at {operator name}". The
+  helper `isSiteCredit(draw)` is shared, so the wording is identical everywhere.
 - Check every list that renders `DrawCard`: /draws, category, operator, ending-today and new-competitions.
 
 ### 2.3 Links and discovery
-- Header nav: today's entry is "Free & Instant Wins" → `/instant-win-competitions-uk`. Point
-  "Free" at the new page and keep instant wins separate.
+- Header nav: today's entry is "Free & Instant Wins" → `/instant-win-competitions-uk`. Split it
+  into two entries: "Free Draws" → `/free-prize-draws-uk` and "Instant Wins" →
+  `/instant-win-competitions-uk`.
 - Footer link, a homepage "Free draws today (N)" link (hidden when N = 0), sitemap entry,
   `edge-cache.ts` path list, and an IndexNow ping on deploy.
 
