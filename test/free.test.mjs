@@ -65,3 +65,24 @@ describe("freeCheck: fail closed on price", () => {
   test("a paid draw is never 'free'", () => expect(freeCheck({ ticket_price: 0.99, title: "FREE BMW" }).free).toBe(false));
   test("a null price is never 'free'", () => expect(freeCheck({ ticket_price: null, title: "FREE BMW" }).free).toBe(false));
 });
+
+// Found by the 2026-10-15 A/B, reading every passing £0 draw against its own page.
+describe("freeCheck: live A/B findings (2026-10-15)", () => {
+  test("'No purchase required' is free wording, not a catch (Bonkers)", () => {
+    const r = freeCheck(free("ABARTH 500 T-JET – FREE ENTRY! – MUST ANSWER THE PHONE!", { free_text: "✅ 5 FREE tickets per person ✅ No purchase required 💥" }));
+    expect(r).toEqual({ free: true, reason: "free to enter" });
+  });
+  test("'Spend over £1 … to qualify' decides the prize, so it is a catch (RaffledUp)", () => {
+    const r = freeCheck(free("FREEBIE FRIDAY!", { free_text: "Spend over £1 on DRAWN NEXT COMPS – Get £100 RU Credit (in the same order as your free ticket(s) to qualify.)" }));
+    expect(r.reason).toBe("free but conditional: spend over £");
+  });
+  test("a spend-for-a-bonus line also rejects (Pawsome; fails closed, by design)", () => {
+    expect(freeCheck(free("FREE ENTRY – Amazon Echo Dot", { free_text: "Bonus: Spend over £1 on the order that includes this free ticket and you'll also bag £20 credit" })).free).toBe(false);
+  });
+  test("'NEW CUSTOMERS ONLY' in the title is a catch, as Click's means 'place your first order' (Click)", () => {
+    expect(freeCheck(free("Win £1,000 Tax Free Cash For FREE! *NEW CUSTOMERS ONLY*")).reason).toBe("free but conditional: new customers only");
+  });
+  test("'place your first order' is a catch", () => {
+    expect(freeCheck(free("FREE £1,000", { free_text: "Simply place your first order on any live competition and you'll receive your free entry." })).reason).toBe("free but conditional: first order");
+  });
+});
