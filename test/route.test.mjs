@@ -197,3 +197,9 @@ describe("twinIndex: the same page under another query string is the same draw (
     expect(twinOf("https://x.co.uk/product/new-car/")).toBe(null));
   test("an unrelated URL has no twin", () => expect(twinOf("https://x.co.uk/product/boat/")).toBe(null));
 });
+
+test("a rejected row is never re-inserted, revived or corrected", () => {
+  const existing = { id: "x", status: "rejected", draw_date: new Date(Date.now() + 864e5).toISOString() };
+  const fresh = { title: "FREE ENTRY", ticket_price: 0, total_entries: 1000, draw_date: existing.draw_date };
+  expect(routeDraw(existing, fresh).kind).toBe("skip");
+});

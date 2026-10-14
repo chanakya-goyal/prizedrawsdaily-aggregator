@@ -71,8 +71,9 @@ THE COMMANDS THE ROUTINE USES (already in the repo)
    bun manager/drafts-fetch.mjs
        -> print all current draft draws (+ a category name->id map) as JSON
 
-   bun manager/draw-update.mjs <id> '{"prize_description":"...","status":"active"}'
-       -> update one draw (write the description, publish, or fix category)
+   bun manager/draw-update.mjs <id> '{"prize_description":"..."}'
+       -> update one draw (write the description or fix category). It refuses
+          status "active": only the Action's verify gate publishes.
 
 
 WHAT TO WATCH

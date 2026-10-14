@@ -1,6 +1,7 @@
 // Cowork/Claude helper: update one draw by id.
 // Usage: bun manager/draw-update.mjs <id> '<json>'
-//   <json> = columns to set, e.g. '{"prize_description":"...","status":"active"}'
+//   <json> = columns to set, e.g. '{"prize_description":"..."}' — status may only be
+//   draft / ended / rejected: publishing is the verify gate's job, never this script's.
 //   To change category, pass {"category_id":"<uuid>"} (ids come from drafts-fetch output).
 //   When YOU judged that category rather than a rule deriving it, stamp the provenance too:
 //   {"category_id":"<uuid>","category_source":"claude"} — that is what stops the next scrape
@@ -46,6 +47,15 @@ if ("total_entries_method" in body && body.total_entries_method !== null && !ENT
 const FREE_ENTRY_ROUTES = ["postal", "online-free", "none-stated", "unknown"];
 if ("free_entry_route" in body && !FREE_ENTRY_ROUTES.includes(body.free_entry_route)) {
   console.error(`free_entry_route must be one of ${FREE_ENTRY_ROUTES.join(", ")} — got ${JSON.stringify(body.free_entry_route)}`);
+  process.exit(1);
+}
+// The routine never publishes (PROMPT.md rule 1); draft→active belongs to the verify gate.
+// 'rejected' (2026-10-14) permanently hides a £0 draw whose page states a catch: existing.mjs
+// still loads it, so run.mjs never re-inserts the URL, and route.mjs skips every status but
+// active/draft/ended. The site only ever shows active and ended rows.
+const STATUSES = ["draft", "ended", "rejected"];
+if ("status" in body && !STATUSES.includes(body.status)) {
+  console.error(`status must be one of ${STATUSES.join(", ")} — got ${JSON.stringify(body.status)}`);
   process.exit(1);
 }
 
