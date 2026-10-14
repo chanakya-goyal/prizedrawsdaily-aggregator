@@ -17,7 +17,7 @@ import { chromium } from "playwright";
 import { chromiumLaunchOptions } from "./lib/browser.mjs";
 import { renderOperator, wooOperator, shopifyOperator, apiOperator, makeContext } from "./extractor.mjs";
 import { permalinkKey } from "./lib/liveness.mjs";
-import { supabaseUrl } from "./lib/sb.mjs";
+import { supabaseUrl, sbGetAll } from "./lib/sb.mjs";
 
 const SB = supabaseUrl();
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -28,8 +28,9 @@ const TO = "2026-10-25T01:00:00Z"; // the clocks go back; GMT stamps are right f
 if (!KEY) { console.error("need SUPABASE_SERVICE_ROLE_KEY"); process.exit(1); }
 const H = { apikey: KEY, Authorization: `Bearer ${KEY}` };
 
-const rows = await (await fetch(`${SB}/rest/v1/draws?status=in.(active,draft)&draw_date=gte.${FROM}&draw_date=lt.${TO}&select=id,title,status,draw_date,entry_url,operators(slug)&limit=5000`, { headers: H })).json();
-if (!Array.isArray(rows)) { console.error(rows); process.exit(1); }
+// Paged: PostgREST returns at most 1,000 rows per request whatever `limit` says, and the first
+// APPLY run on 2026-10-15 read exactly 1,000 — so rows past the first page were never checked.
+const rows = await sbGetAll(`draws?status=in.(active,draft)&draw_date=gte.${FROM}&draw_date=lt.${TO}&select=id,title,status,draw_date,entry_url,operators(slug)`, { key: KEY });
 const ops = (await Bun.file("operators.json").json()).filter((o) => o.enabled !== false);
 const bySlug = Object.groupBy(rows, (r) => r.operators?.slug);
 const targets = ops.filter((o) => bySlug[o.slug] && (!ONLY || ONLY.has(o.slug)));

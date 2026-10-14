@@ -12,7 +12,7 @@ import { staleDateDecision, deadDraftDecision } from "./lib/verify.mjs";
 import { raffleEngineOperator } from "./lib/adapters/raffle-engine.mjs";
 import { hydraOperator } from "./lib/adapters/hydra.mjs";
 import { inertiaOperator } from "./lib/adapters/inertia.mjs";
-import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, saysFinished } from "./lib/liveness.mjs";
+import { isPurchasable, productSlug, isPercentLiteralSlug, permalinkKey, saysFinished, ltyFinished } from "./lib/liveness.mjs";
 import { wooProductForUrl } from "./lib/woo.mjs";
 import { sbGetAll, sbCount, supabaseUrl } from "./lib/sb.mjs";
 import { auditDecision, auditPatch, comparableFields, shouldApplyAudit } from "./lib/audit.mjs";
@@ -159,6 +159,16 @@ async function isEnded(d) {
       const minor = p.prices?.currency_minor_unit ?? 2;
       const fresh = { ticket_price: p.prices?.price != null ? Number((Number(p.prices.price) / 10 ** minor).toFixed(2)) : null };
       if (!isPurchasable(p)) return { ended: true, why: `not purchasable (stock: ${p.stock_availability?.text || "?"})`, purchasable: false, freshDate, fresh, reachable: true, source: "woo" };
+      // lottery-for-woocommerce leaves a closed lottery `is_purchasable`, so for a row whose date
+      // has passed, read the operator's own status on the page (ltyFinished in lib/liveness.mjs).
+      // Past-dated rows only: a future-dated row is never ended on a page marker, and this keeps
+      // the extra request to the rows the flag alone cannot settle.
+      if (!isFutureDated(d)) {
+        try {
+          const r = await fetch(d.entry_url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) });
+          if (r.ok && ltyFinished(await r.text())) return { ended: true, why: "page says Lottery Closed/Finished (lty)", purchasable: false, freshDate, fresh, reachable: true, source: "woo" };
+        } catch { /* page unreadable: the Store API flag stands */ }
+      }
       return { ended: false, why: "purchasable", purchasable: true, freshDate, fresh, reachable: true, source: "woo" };
     }
     if (op.method === "shopify") {
