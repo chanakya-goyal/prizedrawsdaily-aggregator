@@ -368,9 +368,10 @@
  {
   "name": "DD Competitions",
   "slug": "dd-competitions",
-  "base": "https://www.ddcompetitions.com",
+  "base": "https://ddcompetitions.com",
   "method": "render",
-  "fetcher": "flaresolverr"
+  "fetcher": "flaresolverr",
+  "note": "www. 301-redirects to the bare domain, so with a www base every absolute competition link failed the same-origin check (CI 2026-10-14: 0 draw pages, only 3 www links seen)."
  },
  {
   "name": "Gallowaygiveaways",
