@@ -209,6 +209,18 @@ describe("fieldsFromHtml — lottery-for-woocommerce data-time countdowns", () =
     const r = fieldsFromHtml({ html: h, url: "https://op.test/product/rolex", op: { base: "https://op.test" } });
     expect(r.draw_date).toStartWith("2026-07-12");
   });
+  // An epoch is an exact instant. It must be stored as that same instant in every season: it
+  // used to go through toISOString() (UTC) and then be re-stamped as UK wall-clock, which put
+  // it an hour early all summer.
+  test("epoch data-time keeps its exact instant in summer and in October", () => {
+    for (const iso of ["2026-07-12T19:00:00Z", "2026-10-15T19:00:00Z", "2026-11-20T20:00:00Z"]) {
+      const s = Math.floor(Date.parse(iso) / 1000);
+      const h = `<html><body><h1>Win a Rolex</h1>
+        <div class="lottery-time-countdown" data-time="${s}"></div></body></html>`;
+      const r = fieldsFromHtml({ html: h, url: "https://op.test/product/rolex", op: { base: "https://op.test" } });
+      expect(new Date(r.draw_date).getTime()).toBe(Date.parse(iso));
+    }
+  });
   test("datetime-string data-time (bee-the-winner shape)", () => {
     const h = `<html><body><h1>Win £500 Cash</h1>
       <div class="lty-lottery-countdown-timer" data-time="2026/07/23 17:00:00"></div></body></html>`;
@@ -366,6 +378,32 @@ describe("fieldsFromHtml — grand_prize end-to-end (the reported Daydream bug)"
 describe("normalizeUkDate", () => {
   test("date-only gets 20:00", () => expect(normalizeUkDate("2026-07-01")).toBe("2026-07-01T20:00:00+01:00"));
   test("passes through nullish", () => expect(normalizeUkDate(null)).toBeNull());
+  // BST runs from 01:00 UTC on the last Sunday of March to 01:00 UTC on the last Sunday of
+  // October — not "April to September". A month-only rule stamped every 1–24 October draw
+  // an hour late (Hot Comps "ends 15/10/2026 @ 8:00pm" was stored as 20:00Z = 9pm UK).
+  test("October before the clocks go back is still BST", () => {
+    expect(normalizeUkDate("2026-10-15T20:00")).toBe("2026-10-15T20:00:00+01:00");
+    expect(normalizeUkDate("2026-10-24T23:30")).toBe("2026-10-24T23:30:00+01:00");
+    expect(normalizeUkDate("2026-10-18")).toBe("2026-10-18T20:00:00+01:00");
+  });
+  test("after the last Sunday of October is GMT", () => {
+    expect(normalizeUkDate("2026-10-25T20:00")).toBe("2026-10-25T20:00:00+00:00");
+    expect(normalizeUkDate("2026-11-02T20:00")).toBe("2026-11-02T20:00:00+00:00");
+    expect(normalizeUkDate("2027-01-10T21:00")).toBe("2027-01-10T21:00:00+00:00");
+  });
+  test("late March flips to BST on the last Sunday, not on 1 April", () => {
+    expect(normalizeUkDate("2026-03-28T20:00")).toBe("2026-03-28T20:00:00+00:00");
+    expect(normalizeUkDate("2026-03-29T20:00")).toBe("2026-03-29T20:00:00+01:00");
+    expect(normalizeUkDate("2027-03-27T20:00")).toBe("2027-03-27T20:00:00+00:00");
+    expect(normalizeUkDate("2027-03-28T20:00")).toBe("2027-03-28T20:00:00+01:00");
+  });
+  test("the 2027 changeover lands on its own last Sunday (31 Oct)", () => {
+    expect(normalizeUkDate("2027-10-30T20:00")).toBe("2027-10-30T20:00:00+01:00");
+    expect(normalizeUkDate("2027-10-31T20:00")).toBe("2027-10-31T20:00:00+00:00");
+  });
+  test("an explicit offset is still replaced by the UK wall-clock reading (unchanged behaviour)", () => {
+    expect(normalizeUkDate("2026-10-18T20:00:00+01:00")).toBe("2026-10-18T20:00:00+01:00");
+  });
 });
 
 describe("textOf strips markup", () => {
