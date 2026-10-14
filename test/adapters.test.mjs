@@ -404,6 +404,19 @@ describe("raffolux adapter (keyless /api/raffle/active/site/all feed)", () => {
     expect(mapRaffolux(rs.find((r) => r.id === "01BROKEN"), op)).toBe(null);
     expect(rs.map((r) => mapRaffolux(r, op)).filter(Boolean).length).toBe(rs.length - 1);
   });
+
+  test("free raffles carry the operator's own text for the free check, and pass the gate", async () => {
+    const { gate } = await import("../gate.mjs");
+    const raffles = await feed();
+    const r = raffles.find((x) => x.title === "Win £5 Cash - FREE");
+    const d = mapRaffolux(r, op);
+    expect(d.ticket_price).toBe(0);
+    expect(d.free_text).toContain("no cost to enter");
+    expect(d.free_text.length).toBeLessThanOrEqual(2000);
+    // The fixture date may be in the past by the time this runs; gate against a "now" just before it.
+    const now = new Date(new Date(d.draw_date).getTime() - 864e5);
+    expect(gate(d, now).pass).toBe(true);
+  });
 });
 
 // ---- gotoSettled: networkidle must never be able to kill an operator on its own ----
