@@ -339,15 +339,16 @@ describe("drawhouse adapter (Raffle Town / ToffeesDraws / KopiteDraws / The Baby
     expect(mapDrawhouse(byId(gs, 9069), rt, 20)).toBe(null);
   });
 
-  test("the free draw is mapped honestly at £0 — rejecting it is the gate's job", async () => {
+  test("the free draw is mapped honestly at £0 — judging it is the gate's job", async () => {
     const d = mapDrawhouse(byId(await games("raffle-town"), 74), rt, 20);
     expect(d.ticket_price).toBe(0);
     expect(d.total_entries).toBe(200000);
     expect(d.grand_prize).toBe("£1000 Cash");
-    // Fixed "now" a few days before the fixture's draws so only the price rule can fire.
+    // Since 2026-10-15 a truly free draw passes the price rule ("£1000 Free Draw"), so on
+    // 20 Oct only the 35-day window rejects this 30 Nov draw; inside it, it passes.
     const g = gate(d, new Date("2026-10-20T12:00:00Z"));
-    expect(g.pass).toBe(false);
-    expect(g.reasons.join(" ")).toMatch(/price/i);
+    expect(g.reasons).toEqual(["ends >35d away"]);
+    expect(gate(d, new Date("2026-11-20T12:00:00Z")).pass).toBe(true);
   });
 
   test("each brand gets ITS edition: same game 69, the fan site's own prize, name and URL", async () => {
@@ -402,6 +403,19 @@ describe("raffolux adapter (keyless /api/raffle/active/site/all feed)", () => {
     const rs = await feed();
     expect(mapRaffolux(rs.find((r) => r.id === "01BROKEN"), op)).toBe(null);
     expect(rs.map((r) => mapRaffolux(r, op)).filter(Boolean).length).toBe(rs.length - 1);
+  });
+
+  test("free raffles carry the operator's own text for the free check, and pass the gate", async () => {
+    const { gate } = await import("../gate.mjs");
+    const raffles = await feed();
+    const r = raffles.find((x) => x.title === "Win £5 Cash - FREE");
+    const d = mapRaffolux(r, op);
+    expect(d.ticket_price).toBe(0);
+    expect(d.free_text).toContain("no cost to enter");
+    expect(d.free_text.length).toBeLessThanOrEqual(2000);
+    // The fixture date may be in the past by the time this runs; gate against a "now" just before it.
+    const now = new Date(new Date(d.draw_date).getTime() - 864e5);
+    expect(gate(d, now).pass).toBe(true);
   });
 });
 

@@ -6,6 +6,7 @@
 // SKIP = drop the draw entirely (missing required / business fail). DRAFT (decided by the
 // supervisor downstream) = present-but-suspicious, held for review.
 import { CATEGORIES, WINDOW_DAYS } from "./lib/parse.mjs";
+import { freeCheck } from "./lib/free.mjs";
 
 export const REQUIRED_FIELDS = (process.env.REQUIRED_FIELDS ||
   "title,ticket_price,total_entries,draw_date,image_url,entry_url")
@@ -64,7 +65,10 @@ export function businessGate(draw, now = new Date()) {
   const collectible = draw.category === "collectibles"
     || /pok[eé]mon|\bpsa\b|\bcard\b|holo|gem ?mint|ace ?10|\btcg\b|graded|\bslab\b|funko|lego|warhammer|age of sigmar|sigmar|astra militarum|space marines?|necrons?|tyranids?|horus heresy|kill team|games workshop|citadel|lorcana|magic the gathering|\bmtg\b|yu-?gi-?oh|model kit/i.test(`${draw.title} ${draw.grand_prize}`);
   const minEntries = collectible ? 50 : 500;
-  if (!(draw.ticket_price > 0)) reasons.push("no/zero ticket price");
+  // £0 is allowed only for a TRULY free draw (owner decision 2026-10-14). lib/free.mjs fails
+  // closed, and every other rule below still applies to it unchanged.
+  if (draw.ticket_price === 0) { const f = freeCheck(draw); if (!f.free) reasons.push(f.reason); }
+  else if (!(draw.ticket_price > 0)) reasons.push("no/zero ticket price");
   if (!(draw.total_entries > 0)) reasons.push("no total entries");
   else if (draw.total_entries < minEntries) reasons.push(`only ${draw.total_entries} entries — non-standard draw`);
   if (!draw.draw_date) reasons.push("no draw date");

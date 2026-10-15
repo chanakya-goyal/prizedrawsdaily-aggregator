@@ -45,3 +45,27 @@ describe("gate (combined)", () => {
   test("required failure short-circuits", () => { const d = good(); d.draw_date = null; const r = gate(d); expect(r.pass).toBe(false); expect(r.stage).toBe("required"); });
   test("business failure after schema", () => { const d = good(); d.draw_date = past; const r = gate(d); expect(r.stage).toBe("business"); });
 });
+
+describe("businessGate: free draws (2026-10-14)", () => {
+  const freeDraw = (over = {}) => ({ ...good(), title: "FREE ENTRY – £1000 CASH", grand_prize: "£1000 cash", ticket_price: 0, ...over });
+
+  test("a truly free draw passes the whole gate", () => expect(gate(freeDraw()).pass).toBe(true));
+  test("a conditional free draw fails with the catch named", () => {
+    const r = gate(freeDraw({ title: "FREE ENTRY - SPEND £5 AND WIN" }));
+    expect(r.pass).toBe(false);
+    expect(r.reasons).toContain("free but conditional: spend £");
+  });
+  test("£0 without free wording still fails (unread price)", () => {
+    expect(gate(freeDraw({ title: "Win a BMW M4", grand_prize: "BMW M4" })).reasons).toContain("£0 with no free wording");
+  });
+  test("free draws still need a real cap", () => {
+    expect(gate(freeDraw({ total_entries: 100 })).reasons).toContain("only 100 entries — non-standard draw");
+  });
+  test("free draws still need a date inside the window", () => {
+    expect(gate(freeDraw({ draw_date: farOff })).pass).toBe(false);
+  });
+  test("a null price is still a missing field, not free", () => {
+    expect(gate(freeDraw({ ticket_price: null })).stage).toBe("required");
+  });
+  test("paid draws are unchanged", () => expect(gate(good())).toEqual(gate({ ...good() })));
+});

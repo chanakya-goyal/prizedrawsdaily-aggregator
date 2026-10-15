@@ -1,4 +1,5 @@
 import { test, expect, describe } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { fieldFlags, buildHealthReport, reportMarkdown, classifySilent } from "../lib/manager.mjs";
 import { templateDescription } from "../lib/describe.mjs";
 
@@ -250,4 +251,16 @@ describe("reportMarkdown — refused product pages", () => {
     expect(reportMarkdown(buildHealthReport({ counts: [{ slug: "a", scraped: 1 }], expected: ["a"] })))
       .not.toContain("Product pages refused");
   });
+});
+
+describe("draw-update status values", () => {
+  const run = (json) => spawnSync("bun", ["manager/draw-update.mjs", "00000000-0000-0000-0000-000000000000", json], {
+    env: { ...process.env, SUPABASE_URL: "http://127.0.0.1:9", SUPABASE_SERVICE_ROLE_KEY: "test" }, encoding: "utf8",
+  });
+  test("refuses to publish", () => {
+    const r = run('{"status":"active"}');
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("status must be one of draft, ended, rejected");
+  });
+  test("refuses a typo", () => expect(run('{"status":"rejcted"}').status).toBe(1));
 });

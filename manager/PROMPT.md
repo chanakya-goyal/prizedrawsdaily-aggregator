@@ -32,7 +32,8 @@ whatever happens, always produce the step-5 report.
 1. **Never publish.** You never write `"status":"active"` on anything, ever. draft→active
    belongs to the Action's verify gate, which has evidence you don't (two independent scrapes
    agreeing). Your only status writes go the other way: `"draft"` sends a row back to the gate
-   to re-prove itself, `"ended"` retires a finished comp.
+   to re-prove itself, `"ended"` retires a finished comp, `"rejected"` permanently hides a
+   "free" draw whose page states a catch (step 1b). draw-update.mjs refuses anything else.
 2. **Never bulk-run the scraper.** A second full scrape hours after the Action's is a same-day
    "second observation" and collapses the one-day wait the whole gate rests on. To diagnose ONE
    operator: `AUTO_PUBLISH=false ONLY=<slug> DRY_RUN=true bun run.mjs`. Spell out
@@ -97,6 +98,21 @@ whatever happens, always produce the step-5 report.
 1. **Ended sweep.** `STATUS=active,draft DRY_RUN=false bun ended-sweep.mjs`
    Marks finished comps (not-purchasable / "finished" text) as status=ended so no dead comp is
    live. Failure: retry once, then continue and note it in the report.
+
+1b. **Free-draw double-check (once per £0 row).** The gate lets a £0 draw through only when its
+   own text shows no catch; this step reads the operator's PAGE once to confirm it.
+   `…/rest/v1/draws?ticket_price=eq.0&status=in.(active,draft)&or=(free_entry_route.is.null,free_entry_route.neq.online-free)&select=id,title,entry_url,operator:operators(slug)&limit=40`
+   For each row, open `entry_url` (same curl as step 2; a bot block → leave it and count it as
+   unchecked). FIRST: if the page shows a ticket price above £0, the £0 is a parser miss, not a
+   free draw → `bun manager/draw-update.mjs <id> '{"status":"draft"}'` and report it under
+   Free draws as "parser: page says £X". Never reject such a row. Otherwise read the entry
+   rules and terms on that page:
+   - It states ANY spend, purchase, subscription, membership, VIP/loyalty or "active players"
+     condition, or the free item is an instant win / spin / scratchcard →
+     `bun manager/draw-update.mjs <id> '{"status":"rejected"}'` and quote the condition.
+   - Genuinely free (an account, a skill question or one entry per person is fine) →
+     `bun manager/draw-update.mjs <id> '{"free_entry_route":"online-free"}'` (marks it checked).
+   `rejected` is permanent and there is no undo, so reject only on a condition you can quote.
 
 2. **Spot-check 10 auto-published draws — THE CORE STEP.**
    Pool = rows the gate flipped live in the last 24h. Best source is the Action run's log/step
@@ -229,6 +245,9 @@ S5. **Silent-operator diagnosis (self-healing, leashed).** For each operator tri
    **Published by the gate (last 24h):** N (from the Action summary — say "unavailable" if you
    could not read it, never guess)
    **Spot-check:** X/10 passed · N unverified (bot-blocked) · N fields fixed · N sent back to draft
+   **Free draws:** N checked · N confirmed free · N rejected · N unchecked (blocked)
+   - <operator>/<title> — rejected: "<quoted condition>"
+   - <operator>/<title> — parser: page says £X → sent to draft
    - <operator>/<title> — FAIL <field>: row said X, page says Y → <what you did>
    **Classified:** N drafts categorised (M undecidable, left draft)
    **Enrichment:** N descriptions rewritten (of M live draws that needed one) · N batches redone

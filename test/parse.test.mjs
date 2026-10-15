@@ -942,3 +942,13 @@ describe("RaffleX — month-first short dates + pence header price", () => {
     expect(d.draw_date).toMatch(/-10-30T20:30:00/);
   });
 });
+
+describe("fieldsFromHtml free_text (free-draw check input)", () => {
+  test("carries the API description and the product summary, capped at 2,000 chars", () => {
+    const html = `<html><body><div class="summary"><h1>FREE ENTRY – £1000 CASH</h1><p>${"Answer the question to enter. ".repeat(10)}</p></div></body></html>`;
+    const d = fieldsFromHtml({ html, url: "https://op.test/p/1", op: { base: "https://op.test" }, knownTitle: "FREE ENTRY – £1000 CASH", descriptionText: "No purchase necessary. " + "x".repeat(3000) });
+    expect(d.free_text).toContain("No purchase necessary");
+    expect(d.free_text).toContain("Answer the question");
+    expect(d.free_text.length).toBeLessThanOrEqual(2000);
+  });
+});

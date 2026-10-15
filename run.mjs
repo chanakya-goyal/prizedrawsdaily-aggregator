@@ -15,7 +15,7 @@ import { fieldFlags, buildHealthReport, writeStepSummary, checkImage, probeSilen
 import { rehostImage } from "./lib/rehost.mjs";
 import { summarise, byPublishUrgency } from "./lib/verify.mjs";
 import { permalinkKey } from "./lib/liveness.mjs";
-import { routeDraw, figuresPatch } from "./lib/route.mjs";
+import { routeDraw, figuresPatch, twinIndex } from "./lib/route.mjs";
 import { shardConfig, shardOf, shardedPublishCap, rotateRoster, rosterOffset } from "./lib/shard.mjs";
 import { fetchWithRetry } from "./lib/fetcher.mjs";
 import { uniqueSlug } from "./lib/slug.mjs";
@@ -188,6 +188,7 @@ const opMap = Object.fromEntries(dbOps.map((o) => [o.slug, o.id]));
 const existing = await loadExisting(sbGetAll);
 const byUrl = new Map(existing.filter((d) => d.entry_url).map((d) => [d.entry_url, d]));
 const takenSlugs = new Set(existing.map((d) => d.slug));
+const twinOf = twinIndex(existing);
 // Canonical keys of every draw we already hold, so a capped operator still re-reads them.
 const knownUrls = new Set(existing.filter((d) => d.entry_url).map((d) => permalinkKey(d.entry_url)));
 console.log(`loaded ${cats.length} cats, ${dbOps.length} operators, ${existing.length} existing draws\n`);
@@ -210,7 +211,7 @@ const verdicts = [];
 // PR #40.) Rows sit in the DB as draft until settled, so nothing is half-published if the run
 // dies; the next run simply re-verifies them.
 const publishQueue = [];
-let pages = 0, skipped = 0, autoPublished = 0, relisted = 0, correctedLive = 0;
+let pages = 0, skipped = 0, twinSkips = 0, autoPublished = 0, relisted = 0, correctedLive = 0;
 // Render-path comps whose page visibly says the competition has finished. In `report` mode
 // these are counted and kept; in `enforce` they are counted and dropped. Either way the
 // number is printed — an unreported inventory change is the failure mode this fleet exists
@@ -363,6 +364,8 @@ for (const op of operators) {
     const { pass, stage, reasons, draw: d } = gate(raw, now);
     if (!pass) { skipped++; console.log(`  ⏭  ${(raw.title || "?").slice(0, 40)} — ${stage}: ${reasons.join(", ")}`); continue; }
     const ex = byUrl.get(d.entry_url);
+    const twin = ex ? null : twinOf(d.entry_url);
+    if (twin) { skipped++; twinSkips++; console.log(`  ⏭  ${(d.title || "?").slice(0, 40)} — same page as stored row ${twin.id} (URL differs only by query)`); continue; }
     // The five-way decision (insert / relist / correct / draft / skip) lives in lib/route.mjs so
     // it can be unit-tested; everything below is side effects only — pushes, counters, logging.
     const plan = routeDraw(ex, d, {
@@ -386,6 +389,8 @@ for (const op of operators) {
       if (plan.reason === "no-correction" && plan.decision.flags.length && plan.decision.fields.length) {
         console.log(`  🚫 ${d.title.slice(0, 40)} — live row left alone: ${plan.decision.reason.slice(0, 90)}`);
       }
+      // Loud: a stored paid price read as £0 is a parse miss on a row the public can see.
+      if (plan.reason === "price-to-zero") console.log(`  🚫 ${(d.title || "?").slice(0, 40)} — stored price £${ex.ticket_price} read as £0: left alone (parser?)`);
       if (plan.reason === "correction-cap") {
         console.log(`  ⏸ correction cap ${CORRECT_MAX} reached — ${d.title.slice(0, 40)} left for the next run`);
       }
@@ -460,7 +465,7 @@ if (renderFinished.length) {
     Object.entries(byOp).map(([s, n]) => `${s}:${n}`).join(" "));
   await Bun.write("render-finished.json", JSON.stringify({ mode, total: renderFinished.length, byOperator: byOp, hits: renderFinished }, null, 2));
 }
-console.log(`\n\n==== ${totalNew} new, ${totalRefreshed} refreshed${relisted ? `, ${relisted} relisted` : ""}${correctedLive ? `, ${correctedLive} live rows corrected` : ""} (${pages} pages read, ${skipped} skipped) ====`);
+console.log(`\n\n==== ${totalNew} new, ${totalRefreshed} refreshed${relisted ? `, ${relisted} relisted` : ""}${correctedLive ? `, ${correctedLive} live rows corrected` : ""} (${pages} pages read, ${skipped} skipped${twinSkips ? `, ${twinSkips} as the same page as a stored row (not refreshed)` : ""}) ====`);
 if (DRY_RUN) {
   console.log("(dry run — nothing written)");
 } else {
