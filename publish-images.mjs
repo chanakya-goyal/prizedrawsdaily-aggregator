@@ -22,7 +22,7 @@ import { mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { cloudinaryConfig } from "./lib/storage.mjs";
 import {
-  planMirror, pagesBase, pagesSite, pagesProject, pagesUrl, manifestOf,
+  planMirror, pagesBase, pagesSite, pagesProject, pagesUrl, manifestOf, settle,
   HEADERS_FILE, NOT_FOUND_FILE, PAGES_MAX_FILES, PAGES_WARN_FILES, PAGES_MAX_BYTES,
 } from "./lib/pages.mjs";
 
@@ -251,9 +251,14 @@ if (!unchanged) {
 const sample = [...new Set(moves.map((m) => m.key))].sort(() => Math.random() - 0.5).slice(0, 25);
 let bad = 0;
 await pool(sample, 8, async (key) => {
-  const r = await fetch(pagesUrl(BASE, key), { headers: { "User-Agent": UA } }).catch(() => null);
-  const len = r?.ok ? (await r.arrayBuffer()).byteLength : -1;
-  if (len !== staged.get(key).bytes) { bad++; console.log(`  ✗ ${key}: ${r?.status ?? "no response"}, ${len} bytes`); }
+  let status, len;
+  const right = await settle(async () => {
+    const r = await fetch(pagesUrl(BASE, key), { headers: { "User-Agent": UA } }).catch(() => null);
+    status = r?.status ?? "no response";
+    len = r?.ok ? (await r.arrayBuffer()).byteLength : -1;
+    return len === staged.get(key).bytes;
+  });
+  if (!right) { bad++; console.log(`  ✗ ${key}: ${status}, ${len} bytes (after a minute of re-checks)`); }
 });
 if (bad) { console.error(`✗ ${bad}/${sample.length} spot-checked photo(s) wrong on the site — no row was changed.`); process.exit(1); }
 

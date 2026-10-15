@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { planMirror, isSafeKey, pagesUrl, pagesKeyOf, pagesSite, pagesBase, manifestOf, HEADERS_FILE } from "../lib/pages.mjs";
+import { planMirror, isSafeKey, pagesUrl, pagesKeyOf, pagesSite, pagesBase, manifestOf, HEADERS_FILE, settle } from "../lib/pages.mjs";
 
 // Why this file exists: publish-images.mjs REPLACES the whole Pages site on every deploy, so
 // a photo the plan leaves out is a photo deleted from a live page, and a row moved before
@@ -134,5 +134,30 @@ describe("manifestOf", () => {
     const a = manifestOf([["b/2.webp", { sha256: "2", bytes: 2 }], ["a/1.webp", { sha256: "1", bytes: 1 }]]);
     const b = manifestOf(new Map([["a/1.webp", { sha256: "1", bytes: 1 }], ["b/2.webp", { sha256: "2", bytes: 2 }]]));
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+});
+
+describe("settle", () => {
+  // 2026-10-14/15: two runs failed because a photo uploaded seconds earlier was still 404 at
+  // the edge right after the new manifest went live; every one of them served fine minutes later.
+  const noSleep = async () => {};
+  test("a photo that is late to appear is re-checked until it is right", async () => {
+    let n = 0;
+    const ok = await settle(async () => ++n >= 3, { tries: 6, waitMs: 1, sleep: noSleep });
+    expect(ok).toBe(true);
+    expect(n).toBe(3);
+  });
+
+  test("a photo that never appears still fails, after the last try", async () => {
+    let n = 0;
+    const ok = await settle(async () => (n++, false), { tries: 4, waitMs: 1, sleep: noSleep });
+    expect(ok).toBe(false);
+    expect(n).toBe(4);
+  });
+
+  test("a right photo is checked once", async () => {
+    let n = 0;
+    expect(await settle(async () => (n++, true), { sleep: noSleep })).toBe(true);
+    expect(n).toBe(1);
   });
 });
