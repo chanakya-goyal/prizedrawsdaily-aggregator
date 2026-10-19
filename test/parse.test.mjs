@@ -129,6 +129,18 @@ describe("inferCategory", () => {
   test("gift card → cash", () => expect(inferCategory({ title: "£200 Food Gift Card" })).toBe("cash-prizes"));
   test("lego stays collectibles (before car)", () => expect(inferCategory({ title: "LEGO Technic Ferrari Daytona" })).toBe("collectibles"));
   test("Pikachu Van Gogh → collectibles, not car (the 'van' bug)", () => expect(inferCategory({ title: "ACE 10 PIKACHU VAN GOGH!" })).toBe("collectibles"));
+  // 2026-10-19: a bonus "every ticket also enters a separate van giveaway" mechanic was
+  // claiming the headline tool/appliance prize as car-draws on bare "van" — and then tripping
+  // the car-draws pool-too-small flag on every one of them (a £0.20 tool ticket's pool is
+  // nowhere near a car's). No positive evidence for the tool itself beats wrong evidence.
+  test("tool + 'Van Entry Instant Wins' bonus is no longer claimed as car-draws", () =>
+    expect(inferCategory({ title: "18v Task Light Of Your Choice (+ Van Entry Instant Wins)" })).toBeNull());
+  test("'Van Ticket Instant Wins' bonus doesn't claim a drill kit as car", () =>
+    expect(inferCategory({ title: "Choose Your Branded SDS+ Hammer Drill Kit – Battery & Charger Included (+ Van Ticket Instant Wins)" })).toBeNull());
+  test("a branded tool still resolves on its own brand despite the van bonus mention", () =>
+    expect(inferCategory({ title: "Milwaukee M12 Brushless Pass Through Ratchet (+ Van Tickets Instant Wins!)" })).toBe("home-garden"));
+  test("a real van prize still reads as car-draws", () =>
+    expect(inferCategory({ title: "Win this Ford Transit Custom Van" })).toBe("car-draws"));
 });
 
 describe("extractPrice", () => {
