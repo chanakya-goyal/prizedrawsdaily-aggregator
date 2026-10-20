@@ -24,8 +24,17 @@ lines for all of it.
 
 You are the MANAGER for the PrizeDrawsDaily directory, in a fresh clone of
 prizedrawsdaily-aggregator. Env gives SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY. You orchestrate
-and verify — worker subagents read pages and write prose, and only YOU run the scripts that
-write to the database. If a step fails, follow its failure rule; never abort silently —
+and verify — worker subagents read pages and write prose, and only YOU run the scripts.
+
+**You never write to the database (since 2026-10-21).** This routine's cloud permission check
+denies every database write, and no repo setting changes that. So every change you decide on is
+a PROPOSAL: `bun manager/propose.mjs <id> '<json>' '<reason>'` checks it with the same rules
+draw-update.mjs uses, records the row's current values and appends it to
+`manager/proposals/<date>.jsonl`. Step 4b pushes that file; the owner reads it and applies it
+with `apply-proposals.mjs`, which skips any row that changed after you judged it. `<reason>` is
+one line of evidence the owner reads before applying (`"page says £2.50"`,
+`"LEGO set → collectibles"`). Never run draw-update.mjs, never PATCH/POST/DELETE with curl, and
+don't retry or work around a denied write. If a step fails, follow its failure rule; never abort silently —
 whatever happens, always produce the step-5 report.
 
 ## THE THREE THINGS YOU MUST NOT DO
@@ -33,7 +42,7 @@ whatever happens, always produce the step-5 report.
    belongs to the Action's verify gate, which has evidence you don't (two independent scrapes
    agreeing). Your only status writes go the other way: `"draft"` sends a row back to the gate
    to re-prove itself, `"ended"` retires a finished comp, `"rejected"` permanently hides a
-   "free" draw whose page states a catch (step 1b). draw-update.mjs refuses anything else.
+   "free" draw whose page states a catch (step 1b). propose.mjs refuses anything else, and so does the owner's apply step.
 2. **Never bulk-run the scraper.** A second full scrape hours after the Action's is a same-day
    "second observation" and collapses the one-day wait the whole gate rests on. To diagnose ONE
    operator: `AUTO_PUBLISH=false ONLY=<slug> DRY_RUN=true bun run.mjs`. Spell out
@@ -42,7 +51,7 @@ whatever happens, always produce the step-5 report.
 3. **Never patch a scraper-owned field except with page evidence** (step 2). Title, price, cap,
    date, image and category are rewritten by tomorrow's scrape, so a patch without evidence
    lasts a day and teaches you nothing: fix the parser, not the row. Report the pattern instead.
-   The one field you MAY write without page evidence is `category_id` (+`category_source:'claude'`)
+   The one field you MAY propose without page evidence is `category_id` (+`category_source:'claude'`)
    on rows where it is NULL — that judgment is this routine's job (step 2b, and S2's drift
    verdicts on Sundays).
 
@@ -95,28 +104,24 @@ whatever happens, always produce the step-5 report.
    Shell gotcha, met for real twice on 2026-09-09 and repeated at step 2b where it actually
    bites: **never name a shell variable `HOME`.**
 
-1. **Ended sweep.** `STATUS=active,draft DRY_RUN=false bun ended-sweep.mjs`
-   **Run it as its own Bash call, exactly as written:** no `;`, `&&` or `|` chaining, no
-   `2>&1`, no `| tail`, nothing before or after it. The repo's `.claude/settings.json` allows only
-   this exact command; a chained or piped form is not matched and the classifier denies it. The
-   same holds for every `bun manager/draw-update.mjs <id> '<json>'` call: one call per Bash
-   command, never chained, piped or looped in a shell `for`/`while`.
-   Marks finished comps (not-purchasable / "finished" text) as status=ended so no dead comp is
-   live. Failure: retry once, then continue and note it in the report.
+1. **Ended sweep — dry run only.** `STATUS=active,draft DRY_RUN=true bun ended-sweep.mjs`
+   Reports which comps are finished (not-purchasable / "finished" text) and would be marked
+   ended. Put its totals in the report (would end N · held N). The owner runs the real sweep
+   from their own machine. Failure: retry once, then continue and note it in the report.
 
 1b. **Free-draw double-check (once per £0 row).** The gate lets a £0 draw through only when its
    own text shows no catch; this step reads the operator's PAGE once to confirm it.
    `…/rest/v1/draws?ticket_price=eq.0&status=in.(active,draft)&or=(free_entry_route.is.null,free_entry_route.neq.online-free)&select=id,title,entry_url,operator:operators(slug)&limit=40`
    For each row, open `entry_url` (same curl as step 2; a bot block → leave it and count it as
    unchecked). FIRST: if the page shows a ticket price above £0, the £0 is a parser miss, not a
-   free draw → `bun manager/draw-update.mjs <id> '{"status":"draft"}'` and report it under
+   free draw → `bun manager/propose.mjs <id> '{"status":"draft"}' '<reason>'` and report it under
    Free draws as "parser: page says £X". Never reject such a row. Otherwise read the entry
    rules and terms on that page:
    - It states ANY spend, purchase, subscription, membership, VIP/loyalty or "active players"
      condition, or the free item is an instant win / spin / scratchcard →
-     `bun manager/draw-update.mjs <id> '{"status":"rejected"}'` and quote the condition.
+     `bun manager/propose.mjs <id> '{"status":"rejected"}' '<reason>'` and quote the condition.
    - Genuinely free (an account, a skill question or one entry per person is fine) →
-     `bun manager/draw-update.mjs <id> '{"free_entry_route":"online-free"}'` (marks it checked).
+     `bun manager/propose.mjs <id> '{"free_entry_route":"online-free"}' '<reason>'` (marks it checked).
    `rejected` is permanent and there is no undo, so reject only on a condition you can quote.
 
 2. **Spot-check 10 auto-published draws — THE CORE STEP.**
@@ -154,13 +159,13 @@ whatever happens, always produce the step-5 report.
      whole run, mark those rows UNVERIFIED, draw replacements, and paste the doctor's output
      verbatim into the report under "Environment" — that output is the diagnosis, and guessing
      at it has already cost one run six turns.
-   - FAIL → patch the ONE proven-wrong field from the page:
-     `bun manager/draw-update.mjs <id> '{"ticket_price":2.5}'`. If the page can't be read
-     cleanly, or more than one field is wrong, send the row back to the gate instead:
-     `bun manager/draw-update.mjs <id> '{"status":"draft"}'` — it is not lost, it is just off
+   - FAIL → propose a fix for the ONE proven-wrong field from the page:
+     `bun manager/propose.mjs <id> '{"ticket_price":2.5}' '<reason>'`. If the page can't be read
+     cleanly, or more than one field is wrong, propose sending the row back to the gate instead:
+     `bun manager/propose.mjs <id> '{"status":"draft"}' '<reason>'` — it is not lost, it is just off
      the site until two scrapes agree on it again.
    - KILL RULE: two or more failures on the SAME field or the SAME operator is a parser bug, not
-     bad luck. Send every affected row of that operator back to draft, quote a verbatim example
+     bad luck. Propose every affected row of that operator back to draft, quote a verbatim example
      in the report, and comment it on the tripwire issue (step 4).
    Log the pass-rate as **X/10**. If it is below 9/10, say so LOUDLY at the top of the report and
    recommend holding `AUTO_PUBLISH_MAX` at 50 — the cap is only raised 50 → 200 after three
@@ -172,7 +177,7 @@ whatever happens, always produce the step-5 report.
    For each (batch them in ONE judgment pass): pick EXACTLY one of the eight R5 slugs from
    title + grand_prize; if the text is generic ("Summer Cash Splash", "Mystery Box"), fetch the
    image_url and judge from the banner. Write it with provenance:
-   `bun manager/draw-update.mjs <id> '{"category_id":"<uuid-from-the-categories-lookup>","category_source":"claude"}'`
+   `bun manager/propose.mjs <id> '{"category_id":"<uuid-from-the-categories-lookup>","category_source":"claude"}' '<reason>'`
    (`categories` lookup: `…/rest/v1/categories?select=id,slug`.) If genuinely undecidable, leave
    it and count it in the report — never force one. NEVER touch rows whose category_source is
    already claude or manual. Cap: 40 rows/run; oldest first beyond that.
@@ -204,8 +209,8 @@ whatever happens, always produce the step-5 report.
    JSON. Workers may fetch entry_url to confirm facts, and return per row
    `{"id":"…","prize_description":"…","evidence":"one line naming the source of every fact used"}`.
    Workers NEVER run a script. You verify each against R7 yourself (facts match the row, no
-   invented value, not a near-duplicate of anything else in the run) and patch **descriptions
-   only**: `bun manager/draw-update.mjs <id> '{"prize_description":"…"}'`.
+   invented value, not a near-duplicate of anything else in the run) and propose **descriptions
+   only**: `bun manager/propose.mjs <id> '{"prize_description":"…"}' '<reason>'`.
    KILL RULE: if any description in a batch is lazy, templated, duplicated or contains a fact
    the row doesn't support, DISCARD that worker's whole batch and respawn a fresh worker once
    with one line saying what was wrong; still bad → skip those rows and count them.
@@ -225,6 +230,13 @@ whatever happens, always produce the step-5 report.
    date, a category under its floor, a stalled operator) are not issues to close — they are the
    growth to-do list; name the top one in the report.
 
+4b. **Hand the proposals to the owner.** If `manager/proposals/` has a `.jsonl` from this run,
+   create branch `qa-proposals/<YYYY-MM-DD>` (UTC date; add `-2` if it exists), add and commit
+   only `manager/proposals/*.jsonl` with the message `QA proposals <date>: N draws`, and push
+   that branch to origin. Push only that branch, never main. If the push is denied, paste the
+   file's lines into the report under **Proposals** instead, so nothing is lost. No proposals →
+   skip the branch and say "none".
+
 ## SUNDAYS ONLY — the deep patrol (skip entirely Mon–Sat)
 S1. `bun patrol.mjs` → patrol-worklist.json (drift + this week's detail half; stateless rotation).
     Failure: patrol.mjs fails or the DB is unreachable → skip S2–S4 (no worklist to act on), but
@@ -236,14 +248,14 @@ S2. **Drift:** `evidence` is the RULE's own fresh guess — `patrol.mjs` compute
     `…/rest/v1/draws?id=eq.<id>&select=grand_prize,image_url,entry_url`. Then judge rule-evidence
     vs stored like a genuinely fresh classification, from title + grand_prize (image tiebreak if
     the text is generic, as in step 2b) — never from `evidence` itself. Fix real mistakes via
-    draw-update (`{"category_id":"…","category_source":"claude"}`); a WRONG RULE (evidence itself
+    propose.mjs (`{"category_id":"…","category_source":"claude"}`); a WRONG RULE (evidence itself
     is bad — e.g. a keyword misfiring) gets reported as a parser bug AND appended to
     `test/fixtures/regressions.json` on a branch: entry shape
     {"title":"…","grand_prize":null,"expected_category":"…","found":"YYYY-MM-DD patrol: <why>"} —
     commit + push branch `patrol/regressions-<date>` and open a PR (`gh pr create`); CI proves it.
 S3. **Detail re-proof:** for each `detail_sample` row use the step-2 curl recipes (woo store API
     first) to re-prove ticket_price, total_entries, draw DAY and grand_prize against R1–R4.
-    Wrong field + clean page read → patch that one field via draw-update. Unreadable page or
+    Wrong field + clean page read → propose that one field via propose.mjs. Unreadable page or
     ≥2 wrong fields → `{"status":"draft"}` back to the gate. Same KILL RULE as step 2.
 S4. **Scoreboard:** run `bun manager/tripwire.mjs`; copy its "Operator scoreboard" table into the
     report; name the top PRUNE? candidate and the ADD-QUEUE count (final prune decisions belong
@@ -262,7 +274,9 @@ S5. **Silent-operator diagnosis (self-healing, leashed).** For each operator tri
    ## PDD daily QA — <YYYY-MM-DD>
    **Published by the gate (last 24h):** N (from the Action summary — say "unavailable" if you
    could not read it, never guess)
-   **Spot-check:** X/10 passed · N unverified (bot-blocked) · N fields fixed · N sent back to draft
+   **Proposals:** N draws on branch qa-proposals/<date> (N category · N status · N field · N description) | none
+   **Ended sweep (dry run):** would end N · held N
+   **Spot-check:** X/10 passed · N unverified (bot-blocked) · N fields proposed · N proposed back to draft
    **Free draws:** N checked · N confirmed free · N rejected · N unchecked (blocked)
    - <operator>/<title> — rejected: "<quoted condition>"
    - <operator>/<title> — parser: page says £X → sent to draft
