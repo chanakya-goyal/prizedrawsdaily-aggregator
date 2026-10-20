@@ -123,6 +123,8 @@ whatever happens, always produce the step-5 report.
    - Genuinely free (an account, a skill question or one entry per person is fine) →
      `bun manager/propose.mjs <id> '{"free_entry_route":"online-free"}' '<reason>'` (marks it checked).
    `rejected` is permanent and there is no undo, so reject only on a condition you can quote.
+   The `<reason>` says what the page showed: "no spend condition, free online entry" for a
+   confirmed-free draw, or the quoted condition for a rejection.
 
 2. **Spot-check 10 auto-published draws — THE CORE STEP.**
    Pool = rows the gate flipped live in the last 24h. Best source is the Action run's log/step
@@ -173,14 +175,21 @@ whatever happens, always produce the step-5 report.
    never a made-up pass-rate.
 
 2b. **Classify the category-blocked drafts.** These are rows the scraper refused to guess:
-   `…/rest/v1/draws?status=eq.draft&category_id=is.null&order=created_at.asc&limit=60&select=id,title,grand_prize,entry_url,image_url,operator:operators(slug)`
+   `…/rest/v1/draws?status=eq.draft&category_id=is.null&draw_date=gt.<now ISO>&order=draw_date.asc&limit=100&select=id,title,grand_prize,draw_date,entry_url,image_url,operator:operators(slug)`
+   Soonest draw first: a draft that closes tomorrow loses its whole life on the site if it waits,
+   and a past-dated draft can never publish, so it is not worth a judgment.
    For each (batch them in ONE judgment pass): pick EXACTLY one of the eight R5 slugs from
    title + grand_prize; if the text is generic ("Summer Cash Splash", "Mystery Box"), fetch the
    image_url and judge from the banner. Write it with provenance:
    `bun manager/propose.mjs <id> '{"category_id":"<uuid-from-the-categories-lookup>","category_source":"claude"}' '<reason>'`
    (`categories` lookup: `…/rest/v1/categories?select=id,slug`.) If genuinely undecidable, leave
    it and count it in the report — never force one. NEVER touch rows whose category_source is
-   already claude or manual. Cap: 40 rows/run; oldest first beyond that.
+   already claude or manual. **Work through the list until the cap or the list runs out** — on
+   2026-10-20 a run judged 5 of 233 and stopped, and every unjudged draft is a draw the site can't
+   show. Most titles name the prize outright, so a judgment is one line, not a page read. The
+   `<reason>` names what you judged from ("title: LEGO set", "banner: cash pot") — never a phrase
+   copied from another step. Cap: 100 rows/run across 2b+2c, 2b first. Report "N proposed of M
+   fetched (U undecidable)"; fewer than the cap with rows left over must say why.
    ⚠️ **Name the category variables `CAT_HOME`, `CAT_CASH`, … — never bare `HOME`.** This is the
    step where that shell script gets written, and two separate runs on 2026-09-09 used `HOME`
    for the home-garden UUID anyway, with the same warning sitting up in step 0. `HOME` shadows
@@ -191,14 +200,14 @@ whatever happens, always produce the step-5 report.
    lists future-dated drafts whose RULE category the prize text contradicts, or whose car/house
    category sits under the £5k pool floor. Step 2b never sees them (they have a category), and no
    rule ever changes them, so without this step they wait until they expire. Judge each exactly
-   as in 2b (title + grand_prize, image tiebreak) and stamp it the same way
+   as in 2b (title + grand_prize, image tiebreak) and propose it the same way
    (`{"category_id":"…","category_source":"claude"}`) — INCLUDING when the stored category was
    right (a keyword misfire such as "xTool M2 laser cutter" read as a car): the stamp is the
    judgment the gate needs. The publish gate checks a judged category as stored, and the pool
    floor still applies to it, so a real car draw with a £80 pool stays held — never re-label a
    row just to get past that floor; a car prize whose pool looks wrong is a parser question,
-   report it. Undecidable → leave it and count it. Shares 2b's cap: 40 rows/run across 2b+2c,
-   2b first.
+   report it. Undecidable → leave it and count it. Shares 2b's cap (100 rows/run across 2b+2c,
+   2b first), and the same rule applies: keep going until the cap or the list runs out.
 
 3. **Enrichment — descriptions on live draws (workers).** The gate requires ≥20 characters, so
    what you will find is the deterministic template, not emptiness. Fetch live rows and pick the
@@ -281,7 +290,7 @@ S5. **Silent-operator diagnosis (self-healing, leashed).** For each operator tri
    - <operator>/<title> — rejected: "<quoted condition>"
    - <operator>/<title> — parser: page says £X → sent to draft
    - <operator>/<title> — FAIL <field>: row said X, page says Y → <what you did>
-   **Classified:** N drafts categorised (M undecidable, left draft)
+   **Classified:** 2b N proposed of M fetched (U undecidable) · 2c N proposed of M held
    **Enrichment:** N descriptions rewritten (of M live draws that needed one) · N batches redone
    **Tripwire:** <green | red: reason> · open issues: <#n commented / #n closed / none> ·
    top warning: <…>
