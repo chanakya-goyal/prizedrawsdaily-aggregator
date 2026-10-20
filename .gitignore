@@ -66,3 +66,6 @@ migrations/backups/
 
 # staged Cloudflare Pages site (publish-images.mjs), cached by CI
 .pages-images/
+
+# QA proposals applied from this machine (apply-proposals.mjs)
+manager/proposals/applied.log

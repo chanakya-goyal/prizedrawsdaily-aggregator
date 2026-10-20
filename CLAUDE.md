@@ -17,6 +17,7 @@ Default to using Bun instead of Node.js.
 - **Free-limit guardian** — `quota-watch.mjs` (daily, `quota-alarm` label) reads every free limit (Pages files, Cloudinary credits, Supabase database / file storage / data transfer, Actions cache), keeps a daily reading in `quota_snapshots` and forecasts days to full (rules: `lib/quota.mjs`). It needs `sql/2026-10-10-quota-guardian.sql` applied once. Dead photos are deleted daily by `image-retention.mjs` (`RETENTION_DAYS=0`) and `cloudinary-sweep.mjs` (`lib/sweep.mjs`). `lib/usage-watch.mjs` says how to recalibrate the egress estimate.
 - **[`DECISIONS.md`](DECISIONS.md)** — the standing laws this pipeline may not break (a past date never ends a draw; absence from a feed is not evidence; `total_entries` is required), each with what would reverse it. **Read before changing anything in `lib/verify.mjs` or `ended-sweep.mjs`.**
 - **[`../pdd-seo-tools/docs/LESSONS.md`](../pdd-seo-tools/docs/LESSONS.md)** — the fleet-wide mistakes log. Every entry names the mechanical check that now catches the trap.
+- **[`manager/APPLY.md`](manager/APPLY.md)** — the daily QA routine only PROPOSES database changes (`manager/propose.mjs`, pushed on `qa-proposals/<date>` branches); the owner applies them with `manager/apply-proposals.mjs`. Patch rules shared in `manager/draw-patch.mjs`.
 - `tripwire.md` is **generated** — edit `manager/tripwire.mjs`, not the file.
 
 
