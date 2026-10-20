@@ -395,3 +395,28 @@ in a `<script>`, which is why `saysFinished` never reads raw HTML and this does 
 
 **Reverses if:** a future-dated row is ever ended by it (it cannot be, by construction), or the
 plugin starts printing these markers on lotteries that are still on sale.
+
+## 2026-10-20 · A judged category is checked as stored; a rule category is checked as read.
+
+**Decided:** when a draft's `category_source` is `claude` or `manual`, the publish gate
+(`verifyAgainstStored`, via `routeDraw`) runs the category checks on the STORED category, the one
+the row is published under, and does not re-flag a contradiction with the keyword evidence: the
+judgment is the answer to that disagreement. The car/house £5k pool floor still applies to the
+judged category. Rule-sourced and uncategorised rows are checked exactly as before. The QA
+routine gets step 2c (`manager/category-held.mjs`, read-only) to find these rows.
+
+**Rejected:** (1) letting prize-text evidence outrank the operator's taxonomy in `resolveCategory`.
+It was simulated on 2026-08-19 and moved golf-star's whole catalogue into car-draws. (2) Waiving
+the pool floor for judged rows. A £80 "car draw" is far more likely a misread cap than a real
+draw, whoever chose the category.
+
+**Evidence:** Action logs from 18 and 19 Oct 2026 (8 sweeps) show 455 distinct drafts held. About
+120 of them were held on "category X contradicts the prize" or "car-draws pool only £N"
+(e.g. "£500 CASH!" filed under tech by lavish-life; tool kits "(+ Van Entry)" filed under
+car-draws by trade-tool-giveaways). Before this change, nothing could release those rows. Step 2b
+only reads `category_id IS NULL`, and a Claude stamp was ignored because the gate checked the
+rule's fresh category.
+
+**Reverses if:** the Sunday patrol or the live-row audit finds judged categories wrong at a
+higher rate than rule categories. In that case, judgments need a second opinion before they
+count.

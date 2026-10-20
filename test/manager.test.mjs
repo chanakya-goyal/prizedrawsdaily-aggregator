@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { fieldFlags, buildHealthReport, reportMarkdown, classifySilent } from "../lib/manager.mjs";
+import { fieldFlags, buildHealthReport, reportMarkdown, classifySilent, categoryHoldReasons } from "../lib/manager.mjs";
 import { templateDescription } from "../lib/describe.mjs";
 
 const base = () => ({
@@ -263,4 +263,23 @@ describe("draw-update status values", () => {
     expect(r.stderr).toContain("status must be one of draft, ended, rejected");
   });
   test("refuses a typo", () => expect(run('{"status":"rejcted"}').status).toBe(1));
+});
+
+// manager/category-held.mjs feeds the QA routine the drafts only a judgment can release.
+describe("categoryHoldReasons — drafts held on their category alone", () => {
+  const DESC = "A well formed description that is comfortably over twenty characters long.";
+  const row = (over = {}) => ({ title: "£500 CASH!", grand_prize: "£500 Cash", ticket_price: 0.5, total_entries: 4000,
+    image_url: "https://x.test/a.jpg", entry_url: "https://op.test/p/500-cash", prize_description: DESC, ...over });
+  test("a rule category the prize text contradicts is listed", () => {
+    expect(categoryHoldReasons(row(), "tech-giveaways")).toEqual(["category 'tech-giveaways' contradicts the prize, which reads as 'cash-prizes'"]);
+  });
+  test("a car draw under the £5k pool floor is listed", () => {
+    expect(categoryHoldReasons(row({ title: "Win a BMW M3", grand_prize: "BMW M3", ticket_price: 0.04, total_entries: 2000 }), "car-draws"))
+      .toEqual(["car-draws pool only £80"]);
+  });
+  test("a consistent category is not listed", () => expect(categoryHoldReasons(row(), "cash-prizes")).toEqual([]));
+  test("other flags are not category holds — they are not this list's business", () => {
+    expect(categoryHoldReasons(row({ ticket_price: 75 }), "cash-prizes")).toEqual([]);
+  });
+  test("no category, no answer", () => expect(categoryHoldReasons(row(), undefined)).toEqual([]));
 });
