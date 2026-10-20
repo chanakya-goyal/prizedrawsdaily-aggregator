@@ -96,6 +96,11 @@ whatever happens, always produce the step-5 report.
    bites: **never name a shell variable `HOME`.**
 
 1. **Ended sweep.** `STATUS=active,draft DRY_RUN=false bun ended-sweep.mjs`
+   **Run it as its own Bash call, exactly as written:** no `;`, `&&` or `|` chaining, no
+   `2>&1`, no `| tail`, nothing before or after it. The repo's `.claude/settings.json` allows only
+   this exact command; a chained or piped form is not matched and the classifier denies it. The
+   same holds for every `bun manager/draw-update.mjs <id> '<json>'` call: one call per Bash
+   command, never chained, piped or looped in a shell `for`/`while`.
    Marks finished comps (not-purchasable / "finished" text) as status=ended so no dead comp is
    live. Failure: retry once, then continue and note it in the report.
 
