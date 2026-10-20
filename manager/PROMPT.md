@@ -177,6 +177,19 @@ whatever happens, always produce the step-5 report.
    the real one, `bun` then writes its install cache into a directory named after the UUID in
    the repo root, and the stop hook blocks the run on untracked files at the very end.
 
+2c. **Judge the drafts held on their category.** `bun manager/category-held.mjs` (read-only)
+   lists future-dated drafts whose RULE category the prize text contradicts, or whose car/house
+   category sits under the £5k pool floor. Step 2b never sees them (they have a category), and no
+   rule ever changes them, so without this step they wait until they expire. Judge each exactly
+   as in 2b (title + grand_prize, image tiebreak) and stamp it the same way
+   (`{"category_id":"…","category_source":"claude"}`) — INCLUDING when the stored category was
+   right (a keyword misfire such as "xTool M2 laser cutter" read as a car): the stamp is the
+   judgment the gate needs. The publish gate checks a judged category as stored, and the pool
+   floor still applies to it, so a real car draw with a £80 pool stays held — never re-label a
+   row just to get past that floor; a car prize whose pool looks wrong is a parser question,
+   report it. Undecidable → leave it and count it. Shares 2b's cap: 40 rows/run across 2b+2c,
+   2b first.
+
 3. **Enrichment — descriptions on live draws (workers).** The gate requires ≥20 characters, so
    what you will find is the deterministic template, not emptiness. Fetch live rows and pick the
    ones whose `prize_description` is missing, under ~60 characters, or reads like the template:

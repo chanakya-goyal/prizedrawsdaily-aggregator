@@ -149,6 +149,23 @@ describe("routeDraw", () => {
       expect(p.candidate).toBe(false);
       expect(p.verdict.publish).toBe(true);
     });
+    // 2026-10-20: the gate checks a JUDGED category as stored (route resolves its slug from
+    // catMap), so a Claude/manual stamp can release a row whose rule category contradicts it.
+    test("a claude-judged category releases a row the rule's category would hold", () => {
+      const ruleSaysCar = fresh({ category: "car-draws", ticket_price: 0.5, total_entries: 2000 });
+      const asRule = routeDraw(stored({ category_id: "cat-car", category_source: "rule", ticket_price: 0.5 }), ruleSaysCar, { now: NOW, catMap: CAT, autoPublish: true });
+      expect(asRule.candidate).toBe(false);
+      const judged = routeDraw(stored({ category_id: "cat-cash", category_source: "claude", ticket_price: 0.5 }), ruleSaysCar, { now: NOW, catMap: CAT, autoPublish: true });
+      expect(judged.verdict.reasons).toEqual([]);
+      expect(judged.candidate).toBe(true);
+      // and the publish row never rewrites the judged category
+      expect(judged.row.category_id).toBeUndefined();
+    });
+    test("a judged category id missing from catMap falls back to the old check (holds)", () => {
+      const ruleSaysCar = fresh({ category: "car-draws", ticket_price: 0.5, total_entries: 2000 });
+      const p = routeDraw(stored({ category_id: "cat-unknown", category_source: "claude", ticket_price: 0.5 }), ruleSaysCar, { now: NOW, catMap: CAT, autoPublish: true });
+      expect(p.candidate).toBe(false);
+    });
     test("disagreement holds it as a draft", () => {
       const p = routeDraw(stored(), fresh({ ticket_price: 5 }), { now: NOW, catMap: CAT, autoPublish: true });
       expect(p.candidate).toBe(false);

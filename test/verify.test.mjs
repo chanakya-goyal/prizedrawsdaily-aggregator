@@ -432,3 +432,72 @@ describe("staleDateDecision — the 397 cohort", () => {
     expect(v.action).toBe("extend");
   });
 });
+
+// 2026-10-20: the rule's category was checked even after Claude or a human had judged the row,
+// so a judged draft whose rule category contradicted its prize text could never publish. The
+// category the row is published under is the STORED one — check that, and let a judgment settle
+// a contradiction, while every other rule (the car/house pool floor included) still applies.
+describe("verifyAgainstStored — a judged category is the one checked", () => {
+  // Rule says tech (operator taxonomy), text says cash: the contradiction the rule cannot settle.
+  const cashText = { ...base, title: "£500 CASH!", grand_prize: "£500 Cash", category: "tech-giveaways", ticket_price: 0.5, total_entries: 4000 };
+  const row = (over = {}) => ({ ...cashText, prize_description: base.description, category_id: "cat-x", ...over });
+  const run = (storedRow, freshRow, storedCategory) =>
+    verifyAgainstStored(storedRow, freshRow, { now: NOW, imageOk: true, storedCategory });
+
+  test("a RULE row is still held on a contradiction — unchanged", () => {
+    const v = run(row({ category_source: "rule" }), cashText, "tech-giveaways");
+    expect(v.publish).toBe(false);
+    expect(v.reasons.join(" ")).toMatch(/contradicts the prize/);
+  });
+
+  test("a row with no category_source is still held on a contradiction — unchanged", () => {
+    const v = run(row({ category_source: null }), cashText, "tech-giveaways");
+    expect(v.publish).toBe(false);
+  });
+
+  test("a CLAUDE-judged row publishes under its judged category despite the rule's guess", () => {
+    const v = run(row({ category_source: "claude" }), cashText, "cash-prizes");
+    expect(v.publish).toBe(true);
+    expect(v.reasons).toEqual([]);
+  });
+
+  test("a MANUAL row is treated the same as a claude one", () => {
+    expect(run(row({ category_source: "manual" }), cashText, "cash-prizes").publish).toBe(true);
+  });
+
+  // A real held draft (pristine-competitions, 2026-10-19): the car rule's bare "M2" token reads a
+  // laser cutter as a car. The operator's tech label was right; only a judgment can say so.
+  test("a judgment that overrules a misfiring keyword rule is not re-flagged", () => {
+    const laser = { ...base, title: "xTool M2 Color Craft Laser Cutter & Engraver", grand_prize: "xTool M2 laser cutter", category: "tech-giveaways", ticket_price: 0.5, total_entries: 4000 };
+    const storedLaser = { ...laser, prize_description: base.description, category_id: "cat-tech" };
+    expect(run({ ...storedLaser, category_source: "rule" }, laser, "tech-giveaways").reasons.join(" ")).toMatch(/reads as 'car-draws'/);
+    const v = run({ ...storedLaser, category_source: "claude" }, laser, "tech-giveaways");
+    expect(v.publish).toBe(true);
+  });
+
+  test("the car pool floor is checked against the JUDGED category — a judged car draw with a £80 pool still holds", () => {
+    const tiny = { ...base, ticket_price: 0.04, total_entries: 2000, category: null };
+    const v = run({ ...tiny, prize_description: base.description, category_id: "cat-car", category_source: "claude" }, tiny, "car-draws");
+    expect(v.publish).toBe(false);
+    expect(v.reasons.join(" ")).toMatch(/car-draws pool only £80/);
+  });
+
+  test("re-judged away from car-draws, a small pool no longer reads as a broken car draw", () => {
+    const tools = { ...base, title: "Milwaukee M18 2pc Kit (+ Van Entry)", grand_prize: "Milwaukee M18 kit", category: "car-draws", ticket_price: 0.5, total_entries: 2400 };
+    const asRule = run({ ...tools, prize_description: base.description, category_id: "cat-car", category_source: "rule" }, tools, "car-draws");
+    expect(asRule.reasons.join(" ")).toMatch(/pool only/);
+    const asJudged = run({ ...tools, prize_description: base.description, category_id: "cat-home", category_source: "claude" }, tools, "home-garden");
+    expect(asJudged.reasons.join(" ")).not.toMatch(/pool only/);
+  });
+
+  test("without storedCategory the old behaviour holds exactly, even for a judged row", () => {
+    const v = run(row({ category_source: "claude" }), cashText, null);
+    expect(v.reasons.join(" ")).toMatch(/contradicts the prize/);
+  });
+
+  test("a judgment never waives the agreement test", () => {
+    const v = run(row({ category_source: "claude" }), { ...cashText, ticket_price: 0.75 }, "cash-prizes");
+    expect(v.publish).toBe(false);
+    expect(v.reasons.join(" ")).toMatch(/ticket_price/);
+  });
+});
