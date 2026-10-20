@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(STATUS=active,draft DRY_RUN=false bun ended-sweep.mjs)",
+      "Bash(bun manager/draw-update.mjs *)"
+    ]
+  }
+}
