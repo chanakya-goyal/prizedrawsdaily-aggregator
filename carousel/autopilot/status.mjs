@@ -15,13 +15,14 @@ export function reportStatus(text) {
   return m && STATUSES.includes(m[1]) ? m[1] : null;
 }
 
-// launchd fires at 16:15 IST, which is 11:45 UK in summer and 10:45 in winter. If the Mac was asleep,
-// launchd runs the missed job on wake — at 3am UK that would post into a dead feed. The window keeps
-// a catch-up inside UK waking hours, and anything later waits for tomorrow's slot.
+// launchd fires at 16:45 and 17:45 IST: 12:15 / 13:15 UK in summer, 11:15 / 12:15 in winter. The
+// window opens at 12:00 UK so the lunchtime post lands at 12:15 in both seasons (the second firing
+// finds it published and stops). If the Mac was asleep, launchd runs the missed job on wake; the
+// window keeps a catch-up inside UK waking hours, and anything later waits for tomorrow.
 export function ukHour(now = new Date()) {
   return Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hourCycle: "h23" }).format(now));
 }
-export const inWindow = (now = new Date(), from = 9, to = 20) => { const h = ukHour(now); return h >= from && h < to; };
+export const inWindow = (now = new Date(), from = 12, to = 20) => { const h = ukHour(now); return h >= from && h < to; };
 
 if (import.meta.main) {
   const [cmd, arg] = Bun.argv.slice(2);

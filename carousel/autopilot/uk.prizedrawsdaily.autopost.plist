@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Template: install.sh replaces __HOME__ and writes it to ~/Library/LaunchAgents/. -->
-<!-- 16:15 Mac time (IST) = 11:45 UK in summer, 10:45 UK in winter. A run missed while the Mac
-     slept is started on wake; run.sh's UK-hours window stops a night-time catch-up from posting. -->
+<!-- 16:45 and 17:45 Mac time (IST) = 12:15 / 13:15 UK in summer, 11:15 / 12:15 UK in winter. run.sh's
+     UK window (12:00-20:00) lets exactly one of them post at 12:15 UK; the other finds it published.
+     A run missed while the Mac slept is started on wake; the window stops a night-time catch-up. -->
 <plist version="1.0">
 <dict>
   <key>Label</key><string>uk.prizedrawsdaily.autopost</string>
@@ -12,7 +13,10 @@
     <string>__HOME__/pdd-autopost/carousel/autopilot/run.sh</string>
   </array>
   <key>StartCalendarInterval</key>
-  <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>15</integer></dict>
+  <array>
+    <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>45</integer></dict>
+    <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>45</integer></dict>
+  </array>
   <key>EnvironmentVariables</key>
   <dict>
     <key>HOME</key><string>__HOME__</string>

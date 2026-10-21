@@ -2,8 +2,8 @@
 // half-second, in the same Instagram-sticker look as the native deck.
 //
 //   bun carousel/native-reel.mjs            (after build.mjs: reads selection.json + out/images.json)
-//   → out/reel.mp4, out/cover.jpg, out/reel-keyframes.png, out/reel-meta.json, out/REEL_CAPTION.txt
-//   → out/reel-2/… the same five files for the second hero (the evening/morning slot)
+//   → out/reel-1/{reel.mp4, cover.jpg, reel-keyframes.png, reel-meta.json, REEL_CAPTION.txt}
+//   → out/reel-2/… the same five files for the second hero (the morning slot)
 //
 // Why it looks like this (21 Oct audit, live Graph API): the six old Reels were the only posts
 // Instagram showed to non-followers, but 80–92% of viewers left within 2–3 s. They opened on a
@@ -193,7 +193,9 @@ async function main() {
   const audio = await pickAudio(catCfg(sel.slug).audioMood);
 
   for (const [i, d] of heroes.entries()) {
-    const outDir = i === 0 ? `${DIR}/out` : `${DIR}/out/reel-${i + 1}`;
+    // out/reel-N/, never out/reel.mp4: that legacy path makes publish.mjs host it as the old daily
+    // Reel and write an fb_video row nothing completes. These go through autopilot/queue.mjs.
+    const outDir = `${DIR}/out/reel-${i + 1}`;
     const work = `${DIR}/.reelwork/native-${i + 1}`;
     await mkdir(outDir, { recursive: true });
     await mkdir(work, { recursive: true });

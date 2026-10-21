@@ -10,7 +10,6 @@
 set -euo pipefail
 SRC="$HOME/pdd-aggregator"
 DEST="$HOME/pdd-autopost"
-PLIST="$HOME/Library/LaunchAgents/uk.prizedrawsdaily.autopost.plist"
 
 git -C "$SRC" fetch -q origin
 if [[ ! -d "$DEST" ]]; then
@@ -23,12 +22,18 @@ ln -sfn "$SRC/.env" "$DEST/.env"
 (cd "$DEST" && bun install --frozen-lockfile >/dev/null)
 
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs/pdd-autopost" "$HOME/pdd-autopost-work"
-sed "s#__HOME__#$HOME#g" "$DEST/carousel/autopilot/uk.prizedrawsdaily.autopost.plist" > "$PLIST"
-launchctl bootout "gui/$(id -u)/uk.prizedrawsdaily.autopost" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST"
+# Two jobs: the lunchtime build + carousel (autopost) and the Reel slots (autopost-slots).
+for LABEL in uk.prizedrawsdaily.autopost uk.prizedrawsdaily.autopost-slots; do
+  P="$HOME/Library/LaunchAgents/$LABEL.plist"
+  sed "s#__HOME__#$HOME#g" "$DEST/carousel/autopilot/$LABEL.plist" > "$P"
+  launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+  launchctl bootstrap "gui/$(id -u)" "$P"
+done
+mkdir -p "$HOME/pdd-autopost-queue"
 
 if [[ "${1:-}" == "--paused" ]]; then touch "$HOME/.pdd-autopost-off"; fi
-echo "✓ installed: daily at 16:15 Mac time → $DEST/carousel/autopilot/run.sh"
+echo "✓ installed: lunchtime build + carousel at 12:15 UK (16:45/17:45 Mac time) → $DEST/carousel/autopilot/run.sh"
+echo "  reels:     17:45 UK and 07:45 UK next morning (run.sh --slot, queue in ~/pdd-autopost-queue)"
 echo "  logs:      ~/Library/Logs/pdd-autopost/"
 if [[ -e "$HOME/.pdd-autopost-off" ]]; then echo "  state:     PAUSED (rm ~/.pdd-autopost-off to arm)"; else echo "  state:     ARMED"; fi
 echo "  run now:   launchctl kickstart gui/$(id -u)/uk.prizedrawsdaily.autopost"

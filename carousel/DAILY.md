@@ -41,8 +41,9 @@ professional for people scrolling Instagram. The deck now looks like a person po
   `publish.mjs` now runs the same check and **refuses to publish on class A**.
 - **Story**: `bun carousel/story.mjs` renders the native Story still (`out/story.png`). In the Composio story call
   pass it as **`image_url`** (it is a PNG, not a video).
-- **Reel: SKIP `reel.mjs` until the native reel ships.** It still renders the newsprint look, and posting it
-  beside the native carousel mixes two brands. Mark it: `bun carousel/state-mark.mjs reel skipped`.
+- **Reel: the native Reel is `bun carousel/native-reel.mjs`** (two Reels, `out/reel-1/` and `out/reel-2/`), queued
+  for their UK slots with `bun carousel/autopilot/queue.mjs add reel|reel-2` (see AUTOPILOT.md §6b/§8b). The
+  legacy `reel.mjs` stays off (newsprint look). Never `state-mark` a `reel` row by hand: the queue owns it.
 - **No typographic fallback any more**: a prize frame with no photograph is refused, not drawn as a text card.
 
 ### The visual check code cannot do (do it on EVERY frame before publishing)

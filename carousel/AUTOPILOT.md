@@ -5,9 +5,14 @@ This file is the task definition. `carousel/autopilot/run.sh` starts Claude with
 the same pattern as `manager/PROMPT.md`. Everything below the line is for the Claude doing the run.
 
 Owner's standing decisions (2026-10-11): **full autopilot** — post without asking, report afterwards. The
-**native template** only (`docs/superpowers/specs/2026-10-11-native-ig-redesign.md`). **Skip the Reel** until
-the native Reel ships. Facebook is **off** (the Page is unpublished). When in doubt, **post nothing** — a
-missed day costs a little reach; a wrong prize cost the Facebook Page.
+**native template** only (`docs/superpowers/specs/2026-10-11-native-ig-redesign.md`). Facebook is **off** (the
+Page is unpublished). When in doubt, **post nothing** — a missed day costs a little reach; a wrong prize cost
+the Facebook Page.
+
+2026-10-21: the 21 Oct audit found Reels were the only format reaching non-followers, so this run now also
+builds **two native Reels** (`carousel/native-reel.mjs`, one prize each) and QUEUES them for their own UK
+slots (17:45 today, 07:45 tomorrow) with `carousel/autopilot/queue.mjs`. The slot runs post them. The legacy
+`carousel/reel.mjs` stays off.
 
 ---
 
@@ -74,7 +79,7 @@ The template lines already pass the wording gate. You MAY write `$PDD_DIR/COPY.j
 (schema at the bottom of `out/BRIEFING.md`) and rebuild; a line the gate refuses is logged and the template line
 kept. Keep it light UK register, no "you", no figures except that slide's own price. Skip this step if unsure.
 
-Steps 6 and 7 come AFTER your last rebuild: the Story's corner photos and the fallback caption are made from
+Steps 6, 6b and 7 come AFTER your last rebuild: the Story's corner photos and the fallback caption are made from
 the deck as it stands, so a Story or caption made before a swap shows draws you rejected.
 
 ## 6. Story
@@ -82,6 +87,18 @@ the deck as it stands, so a Story or caption made before a swap shows draws you 
 bun carousel/story.mjs
 ```
 Read `out/story.png`. Same check as step 3. If the Story fails the check, do not post a Story today.
+
+## 6b. The two Reels
+```
+bun carousel/native-reel.mjs
+```
+It writes `out/reel-1/` and `out/reel-2/`, each with `reel.mp4`, `cover.jpg`, `reel-keyframes.png` (six
+moments side by side), `reel-meta.json` and `REEL_CAPTION.txt`. Read BOTH `reel-keyframes.png` files and both
+`cover.jpg`. A Reel FAILS when the photo is not the prize in its words, when the photo is mostly operator
+artwork, or when any text is cut off, unreadable or overlapping (the same tests as step 3). Read both
+`REEL_CAPTION.txt` too: the prize line must name the operator.
+A Reel that fails is simply not queued in step 8b. If `native-reel.mjs` itself exits 1, carry on with the
+carousel and say so in the report: the Reels are optional, the carousel is not.
 
 ## 7. Caption
 `out/CAPTION_FALLBACK.txt` is already in the native shape and gate-clean. Use it as is, or write `out/CAPTION.txt`
@@ -94,7 +111,7 @@ bun carousel/caption-check.mjs
 It must print `✓ captions clean`. If not, fix the line it names or delete your CAPTION.txt and use the fallback.
 
 **DRY RUN STOPS HERE.** Write REPORT.md with `STATUS: DRY-RUN`, the deck you would have posted, every frame you
-rejected and why, and the caption. Then end.
+rejected and why, the caption, and each Reel's hook line with your verdict on it. Then end.
 
 ## 8. Host the assets
 ```
@@ -103,6 +120,14 @@ bun carousel/publish.mjs
 Exit 2 = today's carousel is already published → STATUS: SKIPPED ("already published"). Exit 1 = refused (a class-A
 caption, missing alt text, missing slides) → fix if it is a caption line, else STATUS: FAILED. On success read
 `out/publish.json` (`urls`, `altTexts`, `caption`, `storyUrl`). Instagram user id: `27332554436394910`.
+
+## 8b. Queue the Reels that passed step 6b
+```
+bun carousel/autopilot/queue.mjs add reel
+bun carousel/autopilot/queue.mjs add reel-2
+```
+(only for the ones that passed). Each hosts that Reel and queues it for its slot. A refusal (for example, its
+draw closes before the slot) is fine: note it in the report and carry on. Never post a Reel yourself.
 
 ## 9. Publish to Instagram via Composio (`COMPOSIO_MULTI_EXECUTE_TOOL`, parameter name `tools`)
 1. **Carousel** — preferred: one child per image with `INSTAGRAM_POST_IG_USER_MEDIA`
@@ -117,7 +142,7 @@ caption, missing alt text, missing slides) → fix if it is a caption line, else
    `bun carousel/state-mark.mjs story published --ig <id>`. If it fails or you skipped it:
    `bun carousel/state-mark.mjs story skipped` (only if publish.mjs wrote a story row — it does when story.png existed).
 3. **Facebook is off**: `bun carousel/state-mark.mjs fb_album skipped`.
-4. **Reel is off until the native Reel ships**: nothing to do (publish.mjs writes no reel row without reel.mp4).
+4. **The Reels are not posted by this run**: the slot runs post what step 8b queued.
 
 ## 10. Check it landed, then clean up
 Read the published carousel back (`INSTAGRAM_GET_IG_USER_MEDIA` for the user, newest item) and confirm the caption
@@ -126,7 +151,8 @@ Instagram serves matches `out/publish.json`'s caption. Then:
 bun carousel/cleanup.mjs
 bun carousel/freshness.mjs
 ```
-`freshness.mjs` must now say `OK`.
+`freshness.mjs` must now say `OK`. When Reels are queued, `cleanup.mjs` refuses ("still has row(s) in
+flight": the queued Reels need the hosted files). That is expected; the last slot run frees the day.
 
 ## 11. REPORT.md
 ```
@@ -135,6 +161,7 @@ category: <slug> · <N> prizes · story: posted|skipped
 carousel: https://www.instagram.com/p/<shortcode>/   (or the media id)
 frames rejected: <slug> — <why>  (one line each, or "none")
 swaps: <what you changed and why>
+reels: reel "<hook>" → queued 17:45 | not queued (<why>); reel-2 "<hook>" → queued 07:45 | not queued (<why>)
 notes: anything the owner should know (one or two lines)
 ```
 Keep it short. The owner reads it on a phone.

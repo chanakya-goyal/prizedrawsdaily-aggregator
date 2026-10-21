@@ -59,8 +59,10 @@ if (import.meta.main) {
     process.exit(1);
   }
 
-  const today = todayLondon();
-  const rows = (await recentPosts(1)).filter((r) => r.date === today);
+  // CLEANUP_DATE: the Reel queue (autopilot/queue.mjs) frees a day's assets when that day's LAST
+  // queued Reel posts, which for the morning slot is the next calendar day.
+  const today = /^\d{4}-\d{2}-\d{2}$/.test(process.env.CLEANUP_DATE || "") ? process.env.CLEANUP_DATE : todayLondon();
+  const rows = (await recentPosts(3)).filter((r) => r.date === today);
 
   if (!readyForCleanup(rows)) {
     if (rows.length === 0) {
