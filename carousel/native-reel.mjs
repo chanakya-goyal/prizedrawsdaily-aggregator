@@ -178,8 +178,8 @@ async function captureChild(jobPath) {
 
 const FF = "/opt/homebrew/bin/ffmpeg";
 async function ff(args) {
-  const p = Bun.spawn([FF, "-y", "-loglevel", "error", ...args], { stdout: "pipe", stderr: "pipe" });
-  if ((await p.exited) !== 0) throw new Error(`ffmpeg: ${(await new Response(p.stderr).text()).slice(-300)}`);
+  const p = Bun.spawnSync([FF, "-y", "-loglevel", "error", ...args], { stdout: "pipe", stderr: "pipe" }); // see encode.mjs run()
+  if (p.exitCode !== 0) throw new Error(`ffmpeg: ${p.stderr.toString().slice(-300)}`);
 }
 const frameAt = (dir, ms) => `${dir}/f${String(Math.min(Math.round(DURATION_MS / (1000 / FPS)), Math.round(ms / (1000 / FPS)) + 1)).padStart(5, "0")}.png`;
 
