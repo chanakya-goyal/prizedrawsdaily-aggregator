@@ -57,6 +57,13 @@ export function withArticle(title) {
   const t = String(title).trim();
   const first = t.split(/\s+/)[0] || "";
   const last = t.split(/\s+/).pop() || "";
+  // A leading MEASURE names one thing and still takes an article, spoken as the number sounds:
+  // "an 18ct", "an 8kg", "a 10g". A bare count ("2 iPhones") or a model year does not.
+  const unit = first.match(/^(\d+)(?:\.\d+)?(?:g|kg|oz|ct|carat|mm|cm|ml|l|bhp|hp|cc|gb|tb|in|inch|ft)$/i);
+  if (unit) {
+    const n = unit[1];
+    return `${/^8/.test(n) || (/^1[18]/.test(n) && n.length % 3 === 2) ? "an" : "a"} ${t}`;
+  }
   if (/^(?:(?:a|an|the|your)\b|\d)/i.test(t) || /\s(&|and|\+)\s/i.test(t)) return t;
   if (/[a-z]s$/.test(last) && !/(ss|us|is|series|plus|pass|express)$/i.test(last)) return t;
   // An initialism or a model code is read letter by letter: "an M4", "an RS3", "an S1000RR".

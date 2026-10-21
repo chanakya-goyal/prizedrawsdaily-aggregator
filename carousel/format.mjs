@@ -29,8 +29,26 @@ export const cleanTitle = (t = "") => {
     .replace(/[!\s]+$/, "")                         // trailing "!" / spaces
     .replace(/\s+/g, " ")
     .trim();
-  return s || String(t).trim();
+  return deShout(s) || String(t).trim();
 };
+
+// An operator that types its whole title in capitals ("ROLEX DAYTONA STEEL 40MM BLACK DIAL") would
+// shout on every PDD frame. Only a title with NO lowercase letter is touched, so a deliberate "BMW M4"
+// or "iPhone 17" is never re-cased. Initialisms (BMW, RS3, PS5) stay; units go lower (40mm).
+const SMALL = new Set(["and", "or", "of", "the", "for", "with", "in", "on", "to"]);
+const WORDS3 = new Set(["BAR", "SET", "BOX", "KIT", "CAR", "VAN", "PRO", "MAX", "NEW", "ONE", "TWO", "RED", "BIG", "AIR", "BAG", "CUP", "PEN", "HAT", "MAT"]);
+const CASED = Object.fromEntries(["iPhone", "iPad", "iMac", "AirPods", "MacBook", "PlayStation", "GoPro", "OLED", "QLED", "LEGO", "Xbox", "TAG", "AirTag"].map((w) => [w.toUpperCase(), w]));
+export function deShout(s) {
+  if (!/[A-Z]{2}/.test(s) || /[a-z]/.test(s)) return s;
+  return s.split(" ").map((w, i) => {
+    const core = w.replace(/[^A-Z0-9]/g, "");
+    if (CASED[core]) return w.replace(core, CASED[core]);
+    if (/^\d+(?:\.\d+)?[A-Z]{1,4}$/.test(w)) return w.toLowerCase();             // 40MM, 467BHP, 10G
+    if (i > 0 && SMALL.has(w.toLowerCase())) return w.toLowerCase();
+    if (/^[A-Z]{4,}$/.test(w) || WORDS3.has(w)) return w[0] + w.slice(1).toLowerCase();
+    return w;                                                                          // BMW, RS3, PS5, £20
+  }).join(" ");
+}
 
 // Cash attached to a NON-cash prize, split by what the operator actually offers:
 //   alternative — "X or £30,000 cash", "X | £2,000 CASH ALT": cash INSTEAD of the prize

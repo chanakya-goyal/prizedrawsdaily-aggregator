@@ -55,6 +55,16 @@ export function slotWindow(slot, buildDate) {
   return { from: londonToUtc(day, s.from), to: londonToUtc(day, s.to) };
 }
 
+// When the i-th built Reel (out/reel-<i+1>) goes out. Its words ("closes tomorrow") must be true
+// THEN, not at build time: reel-2 is built at lunchtime and airs the next morning.
+export const REEL_SLOTS = ["reel", "reel-2"];
+export function airTime(i, now = new Date()) {
+  const slot = REEL_SLOTS[i];
+  if (!slot) return now;
+  const { from } = slotWindow(slot, now.toLocaleDateString("en-CA", { timeZone: "Europe/London" }));
+  return from > now ? from : now;
+}
+
 // Pure: may this queued item post now? Returns { ok, why }.
 export function dueVerdict(item, { now = new Date(), row = null, draw = null } = {}) {
   if (!item) return { ok: false, why: "nothing queued" };
