@@ -17,8 +17,10 @@
 // only COMPOSIO_API_KEY, so the same step runs on the Mac or on GitHub Actions, and the exact calls are code
 // rather than something a model re-derives every morning.
 //
-// Keys: a project key (ak_…) goes in `x-api-key`; a consumer key (ck_…, the project behind Composio's hosted
-// MCP) goes in `x-consumer-api-key`. Accounts connected through the MCP live in the consumer project.
+// Keys: a project key (ak_…) calls the REST API with `x-api-key`. A consumer key (ck_…, the project behind
+// Composio's hosted MCP, where the owner's Instagram and Facebook are connected) is REFUSED by the REST API
+// (401 "Missing dashboard JWT", 21 Oct 2026), so it goes through the hosted MCP endpoint instead, calling the
+// same tools via COMPOSIO_MULTI_EXECUTE_TOOL.
 import { GLOBAL, workDir } from "./config.mjs";
 import { markStatus, todayLondon, getPost, patchPost } from "./state.mjs";
 import { dueItem, done, release } from "./autopilot/queue.mjs";
@@ -59,8 +61,43 @@ async function account() {
   return accountCache;
 }
 
+export const MCP_URL = "https://connect.composio.dev/mcp";
+let mcpReady = null, rpcId = 0;
+async function mcpRpc(method, params, notify = false) {
+  const r = await fetch(MCP_URL, { method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "x-consumer-api-key": process.env.COMPOSIO_API_KEY },
+    body: JSON.stringify(notify ? { jsonrpc: "2.0", method, params } : { jsonrpc: "2.0", id: ++rpcId, method, params }) });
+  const t = await r.text();
+  if (notify) return null;
+  if (!r.ok) throw new Error(`MCP ${method} HTTP ${r.status}: ${t.slice(0, 200)}`);
+  // streamable HTTP answers as plain JSON or as one SSE event
+  const line = t.trim().startsWith("{") ? t : t.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).pop();
+  return JSON.parse(line || "{}");
+}
+// One tool's result out of COMPOSIO_MULTI_EXECUTE_TOOL's envelope, shaped like the REST answer.
+export function parseMcpResult(rpc, slug) {
+  if (rpc?.error) throw new Error(`${slug} failed (MCP): ${JSON.stringify(rpc.error).slice(0, 300)}`);
+  const text = (rpc?.result?.content || []).map((c) => c.text || "").join("");
+  let j; try { j = JSON.parse(text); } catch { throw new Error(`${slug} failed (MCP): ${text.slice(0, 300)}`); }
+  const r0 = j?.data?.results?.[0];
+  if (j?.successful === false || !r0 || r0.response?.successful === false || r0.error) {
+    throw new Error(`${slug} failed (MCP): ${JSON.stringify(r0?.response?.error ?? r0?.error ?? j?.error ?? r0?.response ?? j).slice(0, 400)}`);
+  }
+  return { successful: true, data: r0.response?.data ?? r0.response };
+}
+async function mcpExecute(slug, args) {
+  mcpReady ??= (async () => {
+    await mcpRpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "pdd-autopilot", version: "1" } });
+    await mcpRpc("notifications/initialized", {}, true);
+  })();
+  await mcpReady;
+  return parseMcpResult(await mcpRpc("tools/call", { name: "COMPOSIO_MULTI_EXECUTE_TOOL", arguments: {
+    tools: [{ tool_slug: slug, arguments: args }], sync_response_to_workbench: false, current_step: slug, thought: "PrizeDrawsDaily autopilot" } }), slug);
+}
+
 export async function execute(slug, args, { dry = false } = {}) {
   if (dry) { console.log(`  [dry] ${slug} ${JSON.stringify(args).slice(0, 220)}`); return { successful: true, data: { id: `dry-${slug}` } }; }
+  if ((process.env.COMPOSIO_API_KEY || "").startsWith("ck_")) return mcpExecute(slug, args);
   const acct = await account();
   const body = { arguments: args, version: "latest" };
   if (typeof acct === "string") body.connected_account_id = acct;
@@ -152,6 +189,14 @@ export async function fbReel(item, { dry = false } = {}) {
   return String(id);
 }
 
+export const sameCaption = (a, b) => norm(a) === norm(b);
+async function alreadyPosted(ig, item) {
+  const res = await execute("INSTAGRAM_GET_IG_USER_MEDIA", { ig_user_id: ig, limit: 5, fields: "id,caption,media_product_type,timestamp" });
+  const list = res?.data?.data ?? res?.data?.response_data?.data ?? res?.data ?? [];
+  const hit = (Array.isArray(list) ? list : []).find((m) => sameCaption(m.caption, item.caption) && new Date(m.timestamp) >= new Date(item.from) - 3600e3);
+  return hit ? String(hit.id) : null;
+}
+
 // One queued Reel. queue.mjs decides whether it is due (slot window, posted already, draw still open), so
 // this posts exactly what the lunchtime run built and checked: its video, cover and caption byte for byte.
 // Exit codes for the workflow: 0 posted, 3 nothing due (not an error), 1 failed.
@@ -161,7 +206,10 @@ export async function reel(which = "auto", { dry = false } = {}) {
   const { slot, item } = r;
   const ig = item.igUserId || IG_USER;
   let media = null, lastErr = null;
-  for (let attempt = 1; attempt <= 2 && !media; attempt++) {   // a fresh container once, as PUBLISH_SLOT.md did
+  for (let attempt = 1; attempt <= 3 && !media; attempt++) {   // a fresh container on a retry, as PUBLISH_SLOT.md did
+    // A publish whose answer was lost (a timeout after Instagram accepted it) must not post twice: before every
+    // attempt, look for this exact caption among the newest posts and take that id if it is there.
+    if (!dry) { media = await alreadyPosted(ig, item).catch(() => null); if (media) { console.log(`  already on Instagram: ${media}`); break; } }
     try {
       const container = idOf(await execute("INSTAGRAM_POST_IG_USER_MEDIA", { ig_user_id: ig, media_type: "REELS",
         video_url: item.videoUrl, cover_url: item.coverUrl, caption: item.caption, share_to_feed: true }, { dry }));

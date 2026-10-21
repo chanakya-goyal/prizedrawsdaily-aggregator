@@ -26,3 +26,13 @@ test("the Facebook caption drops the Instagram-only 'link in bio' and keeps ever
   expect(fbCaption(deck)).toBe("head\n\nlines\n\nwho\nT&Cs on each site\n\n#tags");
   expect(fbCaption(reel)).toContain("via Bonkers Competitions");
 });
+
+test("a consumer-key call's answer is unwrapped from the MCP envelope; a failed tool throws", async () => {
+  const { parseMcpResult } = await import("../ig-publish.mjs");
+  const wrap = (o) => ({ result: { content: [{ type: "text", text: JSON.stringify(o) }] } });
+  const ok = wrap({ successful: true, data: { results: [{ response: { successful: true, data: { id: "179" } }, tool_slug: "X", index: 0 }] } });
+  expect(parseMcpResult(ok, "X")).toEqual({ successful: true, data: { id: "179" } });
+  const bad = wrap({ successful: true, data: { results: [{ response: { successful: false, error: "Media ID is not available" }, tool_slug: "X" }] } });
+  expect(() => parseMcpResult(bad, "X")).toThrow(/Media ID is not available/);
+  expect(() => parseMcpResult({ error: { message: "nope" } }, "X")).toThrow(/nope/);
+});
