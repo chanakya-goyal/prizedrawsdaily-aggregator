@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { closesLabel, priceLabel, cleanTitle } from "../format.mjs";
+import { closesLabel, priceLabel, cleanTitle, deShout } from "../format.mjs";
 
 // 30 Jun 2026 was a Tuesday. en-GB "30/06/2026" is unparseable by new Date() —
 // the old code returned the generic label instead of TONIGHT/TOMORROW.
@@ -120,4 +120,15 @@ test("cleanTitle drops an operator's promo shout before 'Win this'", () => {
   expect(cleanTitle("HALF PRICE! Win This Audi Q2")).toBe("Audi Q2");
   // a real product name ending in "!" is left alone when no "Win" follows
   expect(cleanTitle("Yahoo! Japan Gift Card")).toBe("Yahoo! Japan Gift Card");
+});
+
+test("deShout re-cases an all-caps title and leaves every other title alone", () => {
+  expect(cleanTitle("ROLEX DAYTONA STEEL 40MM BLACK DIAL – RSP £22,000")).toBe("Rolex Daytona Steel 40mm Black Dial");
+  expect(deShout("10G GOLD BAR")).toBe("10g Gold Bar");
+  expect(deShout("BMW M4 COMPETITION AND £5,000")).toBe("BMW M4 Competition and £5,000");
+  expect(deShout("IPHONE 17 PRO MAX")).toBe("iPhone 17 Pro Max");
+  expect(deShout("PS5 SLIM WITH OLED TV")).toBe("PS5 Slim with OLED TV");
+  expect(deShout("BMW M4")).toBe("BMW M4");
+  expect(deShout("iPhone 17 PRO")).toBe("iPhone 17 PRO");
+  expect(deShout("Audi RS3")).toBe("Audi RS3");
 });

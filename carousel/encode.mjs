@@ -17,7 +17,10 @@ export async function encodeVideo({ framesDir, fps, out, audio }) {
   const durS = frameCount / fps;
   const track = `${AUDIO_DIR}${audio.file}`;
   const inputs = ["-framerate", String(fps), "-i", `${framesDir}/f%05d.png`, "-ss", String((audio.trimToOnsetMs || 0) / 1000), "-i", track];
-  let filter = `[1:a]atrim=duration=${durS},loudnorm=I=-16:TP=-1.5[a0]`;
+  // A clip cut from mid-song fades in and out instead of clicking (only when the caller asks).
+  const fades = [audio.fadeInMs ? `afade=t=in:d=${audio.fadeInMs / 1000}` : null,
+    audio.fadeOutMs ? `afade=t=out:st=${Math.max(0, durS - audio.fadeOutMs / 1000)}:d=${audio.fadeOutMs / 1000}` : null].filter(Boolean);
+  let filter = `[1:a]atrim=duration=${durS},${fades.map((f) => f + ",").join("")}loudnorm=I=-16:TP=-1.5[a0]`;
   let amixInputs = ["[a0]"];
   (audio.stingTimesMs || []).forEach((t, i) => {
     inputs.push("-i", `${AUDIO_DIR}${audio.stingFile}`);

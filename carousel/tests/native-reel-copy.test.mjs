@@ -52,6 +52,11 @@ test("hookFor is deterministic and falls back to the plain price", () => {
   expect(hookFor(long, sel.date).line).toBe("£2 a ticket 👀");
 });
 
+test("the contrast hook reads as a sentence, article and all", () => {
+  expect(HOOKS.contrast({ price: "£2.50", short: "10g Gold Bar" })).toBe("a 10g Gold Bar for £2.50 👀");
+  expect(HOOKS.contrast({ price: "£20", short: "Rolex Daytona" })).toBe("a Rolex Daytona for £20 👀");
+});
+
 test("the Reel names the operator and its caption carries no em dash, no 'you', no ask to share", () => {
   const d = draw();
   const m = reelModel({ d, sel, photo: "x.jpg", now });
