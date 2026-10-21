@@ -1,6 +1,7 @@
 // carousel/ig-publish.mjs — publish today's post to Instagram through Composio's REST API.
 //
-//   bun carousel/ig-publish.mjs accounts      list the Instagram accounts this key can reach
+//   bun carousel/ig-publish.mjs accounts      list the Instagram accounts this key can reach (project key)
+//   bun carousel/ig-publish.mjs ping          read-only: can this key reach the Instagram account AND the Page?
 //   bun carousel/ig-publish.mjs carousel      children (alt text) → carousel container → publish → state row
 //   bun carousel/ig-publish.mjs story         the Story still → publish → state row
 //   bun carousel/ig-publish.mjs verify        newest post's caption == publish.json's caption
@@ -166,6 +167,15 @@ export async function story({ dry = false } = {}) {
 
 const norm = (s) => String(s || "").replace(/\s+/g, " ").trim();
 
+// Read-only proof that the key in THIS environment reaches both accounts. Prints names, never tokens.
+export async function ping() {
+  const ig = await execute("INSTAGRAM_GET_USER_INFO", { ig_user_id: IG_USER });
+  const fb = await execute("FACEBOOK_GET_PAGE_DETAILS", { page_id: FB_PAGE, fields: "id,name,is_published" });
+  const igName = ig?.data?.username || ig?.data?.name, fbName = fb?.data?.name;
+  if (!igName || !fbName) throw new Error(`ping: instagram=${igName || "unreachable"} facebook=${fbName || "unreachable"}`);
+  console.log(`PING OK · instagram: ${igName} · facebook: ${fbName}${fb.data.is_published === false ? " (Page UNPUBLISHED)" : ""}`);
+}
+
 const fbIdOf = (res) => { const d = res?.data ?? res; return d?.post_id ?? d?.id ?? d?.data?.post_id ?? d?.data?.id ?? null; };
 
 // The carousel's slides as one Facebook multi-photo post. Facebook is a second home: a failure here is
@@ -251,6 +261,7 @@ if (import.meta.main) {
     else if (cmd === "carousel") await carousel({ dry });
     else if (cmd === "story") await story({ dry });
     else if (cmd === "verify") process.exit((await verify({ dry })) ? 0 : 1);
+    else if (cmd === "ping") await ping();
     else if (cmd === "fb-carousel") await fbCarousel({ dry });
     else if (cmd === "fb-caption") console.log(fbCaption((await pub()).caption));
     else if (cmd === "reel") process.exit(await reel(Bun.argv[3] && !Bun.argv[3].startsWith("--") ? Bun.argv[3] : "auto", { dry }));
