@@ -158,7 +158,7 @@ Facebook never holds Instagram back. Then go to step 10's cleanup.
    `bun carousel/state-mark.mjs story published --ig <id>`. If it fails or you skipped it:
    `bun carousel/state-mark.mjs story skipped` (only if publish.mjs wrote a story row — it does when story.png existed).
 3. **Facebook** (Page published 2026-10-21): get the Facebook caption with `bun carousel/ig-publish.mjs fb-caption`
-   (Instagram's caption without "link in bio"), then `FACEBOOK_CREATE_MULTI_PHOTO_POST` with
+   (Instagram's caption with a tracked site link in place of "link in bio"; post it exactly as printed), then `FACEBOOK_CREATE_MULTI_PHOTO_POST` with
    `page_id: "1106603652538117"`, `photo_urls: urls` and `message:` that caption. Then
    `bun carousel/state-mark.mjs fb_album published --fb <post id>`. If it fails:
    `bun carousel/state-mark.mjs fb_album skipped` and say so in the report. Never let it hold Instagram back.
