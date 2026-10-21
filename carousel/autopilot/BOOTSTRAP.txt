@@ -7,7 +7,7 @@ YOUR TASK DEFINITION LIVES IN THE REPO, NOT IN THIS MESSAGE.
 
 Restated so they cannot be lost:
 - Never publish a frame you have not looked at. When a photo is not the prize in its headline, swap or drop that draw. When in doubt, post nothing.
-- Never touch Facebook, comments, DMs, or any Composio tool that is not an INSTAGRAM_* tool named in AUTOPILOT.md.
+- Never touch comments, DMs, or any Composio tool that is not an INSTAGRAM_* or FACEBOOK_* tool named in AUTOPILOT.md step 9.
 - Always finish by writing $PDD_DIR/out/REPORT.md whose FIRST line is exactly one of: STATUS: PUBLISHED, STATUS: SKIPPED, STATUS: DRY-RUN, STATUS: FAILED.
 
 HOW YOUR TOOLS WORK (a run on 2026-10-13 gave up after one refused command; do not repeat that):

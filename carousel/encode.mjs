@@ -1,5 +1,6 @@
 // carousel/encode.mjs — frames+audio → IG-contract mp4 (spec §4.4 encode contract).
-const FF = "/opt/homebrew/bin/ffmpeg", FP = "/opt/homebrew/bin/ffprobe";
+// On PATH on the Mac (launchd sets /opt/homebrew/bin) and on GitHub's Ubuntu runners (/usr/bin).
+const FF = Bun.which("ffmpeg") || "/opt/homebrew/bin/ffmpeg", FP = Bun.which("ffprobe") || "/opt/homebrew/bin/ffprobe";
 const AUDIO_DIR = new URL("./assets/audio/", import.meta.url).pathname;
 
 // spawnSync, not spawn: under a busy test run Bun 1.3 has missed an ffmpeg exit, leaving `.exited`

@@ -78,7 +78,7 @@ main() {
   mkdir -p "$PDD_DIR/out"; rm -f "$PDD_DIR/out/REPORT.md"
   echo "claude: start"
   # 90-minute ceiling (macOS has no `timeout`): perl's alarm kills a hung run.
-  { echo "$MODE"; echo "PDD_DIR=$PDD_DIR  (the work directory; already set in your environment)"; echo; cat carousel/autopilot/BOOTSTRAP.txt; } | perl -e 'alarm shift; exec @ARGV' 5400 \
+  { echo "HOST: the owner's Mac (Composio MCP)."; echo "$MODE"; echo "PDD_DIR=$PDD_DIR  (the work directory; already set in your environment)"; echo; cat carousel/autopilot/BOOTSTRAP.txt; } | perl -e 'alarm shift; exec @ARGV' 5400 \
     claude -p --model opus --permission-mode dontAsk --add-dir "$PDD_DIR" \
       --allowedTools "$ALLOW" --disallowedTools "$DENY" --output-format json \
       > "$LOGDIR/$DAY-claude.json"
@@ -112,6 +112,25 @@ run_slot() {
   SLOT=$(echo "$DUE" | head -1 | cut -d' ' -f2); DATE=$(echo "$DUE" | head -1 | cut -d' ' -f3)
   echo "slot: $SLOT (built $DATE) is due"
   if [[ $DRY == 1 ]]; then echo "$DUE"; echo "dry run: not posting"; return 0; fi
+  # With a Composio API key (in .env) the Mac posts exactly as the cloud backup does: one script, Instagram
+  # then Facebook, no Claude session. `due` above already claimed the row, so hand it back first.
+  if bun -e 'process.exit(process.env.COMPOSIO_API_KEY ? 0 : 1)'; then
+    bun carousel/autopilot/queue.mjs release "$SLOT" >/dev/null
+    local OUT RC; OUT=$(bun carousel/ig-publish.mjs reel "$SLOT" 2>&1); RC=$?
+    echo "$OUT"
+    local SSTATUS=PUBLISHED; [[ $RC -eq 3 ]] && { echo "slot: nothing to post after all"; return 0; }
+    [[ $RC -ne 0 ]] && SSTATUS=FAILED
+    printf 'STATUS: %s
+slot: %s
+```
+%s
+```
+' "$SSTATUS" "$SLOT" "$(echo "$OUT" | tail -6)" > "$Q/REPORT-$SLOT.md"
+    report "$DAY · $SLOT" "$SSTATUS" "" 0 "$Q/REPORT-$SLOT.md"
+    [[ $SSTATUS == FAILED ]] && alarm "Reel slot $SLOT FAILED: $(echo "$OUT" | tail -2 | tr '\n' ' ' | cut -c1-200)"
+    notify "Instagram Reel ($SLOT): $SSTATUS"
+    return 0
+  fi
   local REPORT="$Q/REPORT-$SLOT.md"; rm -f "$REPORT"
   local ALLOW="Read,Write,Bash(bun carousel/autopilot/queue.mjs *),mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL,mcp__composio__COMPOSIO_SEARCH_TOOLS,mcp__composio__COMPOSIO_GET_TOOL_SCHEMAS"
   local DENY="mcp__composio__COMPOSIO_REMOTE_BASH_TOOL,mcp__composio__COMPOSIO_REMOTE_WORKBENCH,mcp__composio__COMPOSIO_MANAGE_CONNECTIONS"
@@ -123,7 +142,10 @@ run_slot() {
   echo "claude: exit $?"
   local STATUS=PUBLISHED NOTE=""
   # The report is Claude's account; the state row is the evidence.
-  if ! bun carousel/autopilot/queue.mjs published "$SLOT" "$DATE"; then STATUS=FAILED; NOTE="the $SLOT row for $DATE is not published"; fi
+  if ! bun carousel/autopilot/queue.mjs published "$SLOT" "$DATE"; then
+    STATUS=FAILED; NOTE="the $SLOT row for $DATE is not published"
+    bun carousel/autopilot/queue.mjs release "$SLOT"   # the cloud backup may still post it inside the window
+  fi
   echo "status: $STATUS $NOTE"
   report "$DAY · $SLOT" "$STATUS" "$NOTE" 0 "$REPORT"
   [[ $STATUS == FAILED ]] && alarm "Reel slot $SLOT FAILED: $(sed -n '2,3p' "$REPORT" 2>/dev/null | tr '\n' ' ' | cut -c1-200) $NOTE"

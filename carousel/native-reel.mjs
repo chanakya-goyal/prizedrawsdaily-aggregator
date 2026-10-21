@@ -176,7 +176,7 @@ async function captureChild(jobPath) {
   }
 }
 
-const FF = "/opt/homebrew/bin/ffmpeg";
+const FF = Bun.which("ffmpeg") || "/opt/homebrew/bin/ffmpeg";
 async function ff(args) {
   const p = Bun.spawnSync([FF, "-y", "-loglevel", "error", ...args], { stdout: "pipe", stderr: "pipe" }); // see encode.mjs run()
   if (p.exitCode !== 0) throw new Error(`ffmpeg: ${p.stderr.toString().slice(-300)}`);

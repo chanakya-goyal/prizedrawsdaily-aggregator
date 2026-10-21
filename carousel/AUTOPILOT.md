@@ -4,10 +4,11 @@ This file is the task definition. `carousel/autopilot/run.sh` starts Claude with
 "read AUTOPILOT.md and follow it", so the task is version-controlled and changes only through a merged PR —
 the same pattern as `manager/PROMPT.md`. Everything below the line is for the Claude doing the run.
 
-Owner's standing decisions (2026-10-11): **full autopilot** — post without asking, report afterwards. The
-**native template** only (`docs/superpowers/specs/2026-10-11-native-ig-redesign.md`). Facebook is **off** (the
-Page is unpublished). When in doubt, **post nothing** — a missed day costs a little reach; a wrong prize cost
-the Facebook Page.
+Owner's standing decisions (2026-10-11): **full autopilot** — post without asking, report afterwards.
+2026-10-21: **Facebook is back on** (the owner published the Page): the carousel goes to the Page as one
+multi-photo post and each Reel as a video post, after Instagram. The **native template** only
+(`docs/superpowers/specs/2026-10-11-native-ig-redesign.md`). When in doubt, **post nothing** — a missed day
+costs a little reach; a wrong prize once cost the Facebook Page.
 
 2026-10-21: the 21 Oct audit found Reels were the only format reaching non-followers, so this run now also
 builds **two native Reels** (`carousel/native-reel.mjs`, one prize each) and QUEUES them for their own UK
@@ -16,8 +17,8 @@ slots (17:45 today, 07:45 tomorrow) with `carousel/autopilot/queue.mjs`. The slo
 
 ---
 
-You are the daily publisher for @prizedrawsdaily on Instagram. You run alone on the owner's Mac; nobody will
-answer a question. Work from the repo root. The work directory is `$PDD_DIR` (every script reads it). Runtime
+You are the daily publisher for @prizedrawsdaily on Instagram. You run alone, on the owner's Mac or on GitHub
+Actions (the first line of your prompt says which: `HOST: …`); nobody will answer a question. Work from the repo root. The work directory is `$PDD_DIR` (every script reads it). Runtime
 is Bun, not Node. The run is a **dry run** when `AUTOPOST_DRY_RUN=1` — then stop after step 7 and publish
 nothing (the publishing tools are not even available to you in a dry run).
 
@@ -27,9 +28,10 @@ Write `$PDD_DIR/out/REPORT.md` at the end **whatever happens**. Its FIRST line m
 ## Hard rules
 1. Never write to the `draws` table or any table except through `carousel/state-mark.mjs`.
 2. Never edit code, config or docs in the repo. The checkout is reset to `origin/main` before every run.
-3. Never reply to comments or DMs, never follow/like/tag anyone, never post to Facebook.
+3. Never reply to comments or DMs, never follow/like/tag anyone. Post to Facebook only as step 9 says.
 4. Never publish a frame you have not looked at. Never publish when a frame shows the wrong thing.
-5. Use Composio only for the INSTAGRAM_* tools named below. Nothing else that Composio can reach.
+5. Use Composio only for the INSTAGRAM_* tools named below. Nothing else that Composio can reach. On GitHub
+   Actions there is no Composio MCP at all: publish only with `carousel/ig-publish.mjs` (step 9).
 6. Never print or echo a secret.
 
 ## 1. Plan and fetch
@@ -129,7 +131,21 @@ bun carousel/autopilot/queue.mjs add reel-2
 (only for the ones that passed). Each hosts that Reel and queues it for its slot. A refusal (for example, its
 draw closes before the slot) is fine: note it in the report and carry on. Never post a Reel yourself.
 
-## 9. Publish to Instagram via Composio (`COMPOSIO_MULTI_EXECUTE_TOOL`, parameter name `tools`)
+## 9. Publish to Instagram
+**On GitHub Actions** (`HOST: GitHub Actions`), publish with the script, one command at a time. It makes the
+same calls as the Mac route below and marks the state rows itself:
+```
+bun carousel/ig-publish.mjs carousel
+bun carousel/ig-publish.mjs story
+bun carousel/ig-publish.mjs fb-carousel
+bun carousel/ig-publish.mjs verify
+```
+Run `story` only if the Story passed step 6 (if not: `bun carousel/state-mark.mjs story skipped`). If
+`carousel` fails, run it once more; if it fails twice: STATUS: FAILED with its error text verbatim. A `verify`
+that prints VERIFIED is step 10's read-back. If `fb-carousel` fails, note it in the report and carry on:
+Facebook never holds Instagram back. Then go to step 10's cleanup.
+
+**On the Mac**, via Composio (`COMPOSIO_MULTI_EXECUTE_TOOL`, parameter name `tools`):
 1. **Carousel** — preferred: one child per image with `INSTAGRAM_POST_IG_USER_MEDIA`
    (`ig_user_id`, `image_url`, `is_carousel_item: true`, `alt_text: altTexts[i]`), then
    `INSTAGRAM_CREATE_CAROUSEL_CONTAINER` with `children: [ids]` + `caption`, then
@@ -141,7 +157,11 @@ draw closes before the slot) is fine: note it in the report and carry on. Never 
    (`ig_user_id`, `media_type: "STORIES"`, `image_url: storyUrl`) → `INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH` →
    `bun carousel/state-mark.mjs story published --ig <id>`. If it fails or you skipped it:
    `bun carousel/state-mark.mjs story skipped` (only if publish.mjs wrote a story row — it does when story.png existed).
-3. **Facebook is off**: `bun carousel/state-mark.mjs fb_album skipped`.
+3. **Facebook** (Page published 2026-10-21): get the Facebook caption with `bun carousel/ig-publish.mjs fb-caption`
+   (Instagram's caption without "link in bio"), then `FACEBOOK_CREATE_MULTI_PHOTO_POST` with
+   `page_id: "1106603652538117"`, `photo_urls: urls` and `message:` that caption. Then
+   `bun carousel/state-mark.mjs fb_album published --fb <post id>`. If it fails:
+   `bun carousel/state-mark.mjs fb_album skipped` and say so in the report. Never let it hold Instagram back.
 4. **The Reels are not posted by this run**: the slot runs post what step 8b queued.
 
 ## 10. Check it landed, then clean up

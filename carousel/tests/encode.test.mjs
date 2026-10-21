@@ -3,11 +3,12 @@ import { encodeVideo, assertVideoContract } from "../encode.mjs";
 import { mkdir } from "node:fs/promises";
 
 const TMP = "carousel/tests/tmp/enc";
+const FFMPEG = Bun.which("ffmpeg") || "/opt/homebrew/bin/ffmpeg";
 
 test("encode meets the IG contract incl. faststart and sting mix", async () => {
   await mkdir(TMP, { recursive: true });
   // 30 dummy frames (1s @30fps)
-  Bun.spawnSync(["/opt/homebrew/bin/ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=orange:size=1080x1920:duration=1:rate=30", `${TMP}/f%05d.png`]);
+  Bun.spawnSync([FFMPEG, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=orange:size=1080x1920:duration=1:rate=30", `${TMP}/f%05d.png`]);
   const out = await encodeVideo({
     framesDir: TMP, fps: 30, out: `${TMP}/test.mp4`,
     audio: { file: "stamp-sting.wav", stingFile: "stamp-sting.wav", stingTimesMs: [200] },
@@ -20,6 +21,6 @@ test("encode meets the IG contract incl. faststart and sting mix", async () => {
 }, 120000);
 
 test("contract catches wrong dimensions", async () => {
-  Bun.spawnSync(["/opt/homebrew/bin/ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:size=640x480:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p", `${TMP}/bad.mp4`]);
+  Bun.spawnSync([FFMPEG, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:size=640x480:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p", `${TMP}/bad.mp4`]);
   await expect(assertVideoContract(`${TMP}/bad.mp4`, {})).rejects.toThrow(/1080|dimension/i);
 }, 60000);
