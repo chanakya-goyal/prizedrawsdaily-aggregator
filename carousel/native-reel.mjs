@@ -14,12 +14,12 @@
 // never opens a browser. `bun native-reel.mjs --capture job.json` is a child that launches once,
 // runs the layout gate at two moments, then screenshots every frame.
 import { mkdir, rm, readdir } from "node:fs/promises";
-import { workDir, GLOBAL, catCfg } from "./config.mjs";
+import { workDir, GLOBAL } from "./config.mjs";
 import { FONT_CSS, NATIVE_CSS, esc, wm, stickerSize, leadSize } from "./native.mjs";
 import { hashOf, SITE } from "./native-copy.mjs";
 import { pickHeroes, reelModel, reelStrings, reelCaption } from "./native-reel-copy.mjs";
 import { encodeVideo, assertVideoContract } from "./encode.mjs";
-import { pickAudio } from "./beat.mjs";
+import { reelAudio } from "./beat.mjs";
 import * as compliance from "./compliance.mjs";
 import { airTime } from "./autopilot/queue.mjs";
 
@@ -31,6 +31,9 @@ export const REEL_SAFE = { x: 65, y: 269, right: 1015, bottom: 1420, buttonsY: 1
 // When each beat lands (ms). The price slam carries the audio sting.
 export const T = { hook: 0, price: 250, lead: 1100, closes: 1900, operator: 2100, cash: 2900, out: 6500, end: 6800 };
 const STING_MS = T.price;
+// The prize photo's card. Every word sits in a band above or below it, never on the prize itself
+// (the gate in __layout refuses a Reel where one does). Centred left of the like/share column.
+export const CARD = { x: 230, y: 650, s: 620 };
 
 const tilt = (key, max = 2.5) => ((hashOf(key) % 1000) / 1000 * 2 - 1) * max;
 const lines = (arr) => arr.filter(Boolean).map((l) => `<span>${esc(l)}</span>`).join("<br>");
@@ -49,22 +52,23 @@ export function reelHtml(m) {
   const body = `
   <div class="bg" style="background-image:url('${m.photo}')"></div>${wm()}
   <div id="main" ${K([[0, { o: 1, y: 0 }], [T.out, { o: 1, y: 0 }], [T.out + 300, { o: 0, y: -80 }]])} style="position:absolute;inset:0">
-    <div class="photo" style="left:40px;top:560px;width:1000px;height:1000px;border-radius:28px;position:absolute">
-      <img src="${m.photo}" alt="" ${K([[0, { s: 1.16 }], [T.out, { s: 1.0 }]])}>
+    <div class="photo" style="left:${CARD.x}px;top:${CARD.y}px;width:${CARD.s}px;height:${CARD.s}px;border-radius:34px;border:8px solid #fff;position:absolute">
+      <img src="${m.photo}" alt="" ${K([[0, { s: 1.12 }], [T.out, { s: 1.0 }]])}>
     </div>
-    <div class="mark" data-t="mark" style="position:absolute;left:72px;right:auto;top:584px;bottom:auto">© ${SITE}</div>
+    <div class="mark" data-t="mark" style="position:absolute;left:${CARD.x + 26}px;right:auto;top:${CARD.y + 20}px;bottom:auto;font-size:20px">© ${SITE}</div>
     <div class="bub" data-t="hook" style="position:absolute;left:85px;width:910px;top:290px;font-size:${hookSize}px" ${K([[0, { o: 1, s: 1.12, r: r("hk", 1.4) }], [240, { o: 1, s: 1, r: r("hk", 1.4) }]])}>${lines([c.hook.text])}</div>
-    <div style="position:absolute;left:65px;width:950px;top:410px;display:flex;justify-content:center;align-items:center;gap:30px">
-      <div class="strong ${m.tone === "pink" ? "pink" : ""}" data-t="price" style="font-size:${Math.min(190, stickerSize(c.price.text) + 40)}px" ${slam(T.price, r("st", 5))}>${esc(c.price.text)}</div>
-    </div>
-    <div style="position:absolute;left:80px;width:780px;top:1140px;display:flex;flex-direction:column;align-items:flex-start;gap:18px">
-      <div class="bub left" data-t="lead" style="max-width:780px;font-size:${Math.min(50, leadSize(c.lead.text))}px" ${pop(T.lead, r("ld", 1.6), { from: 0.85, dy: 40 })}>${lines([c.lead.text])}</div>
-      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;max-width:780px">
-        <div class="cd" data-t="closes" style="padding:8px 22px 10px;flex:none" ${pop(T.closes, r("cd", 2.2))}><div class="t" style="font-size:22px">${esc(c.closesLabel.text)}</div><div class="v" style="font-size:44px">${parts.map((p) => `<b>${esc(p)}</b>`).join("")}</div></div>
-        <div class="loc sm" data-t="operator" style="max-width:780px" ${pop(T.operator, r("op", 1.4), { from: 0.9 })}><i>📍</i><span>${esc(c.operator.text)}</span></div>
+    <div style="position:absolute;left:65px;width:950px;top:405px;height:${CARD.y - 425}px;display:flex;justify-content:center;align-items:center;gap:26px">
+      <div class="strong ${m.tone === "pink" ? "pink" : ""}" data-t="price" style="font-size:${Math.min(150, stickerSize(c.price.text) + 10)}px" ${slam(T.price, r("st", 4))}>${esc(c.price.text)}</div>
+      <div style="display:flex;flex-direction:column;align-items:flex-start;gap:12px">
+        <div class="cd" data-t="closes" style="padding:6px 20px 8px" ${pop(T.closes, r("cd", 2))}><div class="t" style="font-size:19px">${esc(c.closesLabel.text)}</div><div class="v" style="font-size:40px">${parts.map((p) => `<b>${esc(p)}</b>`).join("")}</div></div>
+        <div class="loc sm" data-t="operator" style="max-width:560px" ${pop(T.operator, r("op", 1.2), { from: 0.9 })}><i>📍</i><span>${esc(c.operator.text)}</span></div>
+        ${c.cash ? `<div class="bub green" data-t="cash" style="font-size:34px" ${pop(T.cash, r("ca", 1.5))}>${lines([c.cash.text])}</div>` : ""}
       </div>
     </div>
-    ${c.cash ? `<div class="bub green" data-t="cash" style="position:absolute;right:84px;top:1010px;font-size:40px" ${pop(T.cash, r("ca", 2))}>${lines([c.cash.text])}</div>` : ""}
+    ${m.hookKey === "contrast" ? "" /* the hook already names the prize: a third mention is noise */ : `
+    <div style="position:absolute;left:170px;width:680px;top:${CARD.y + CARD.s + 22}px;display:flex;justify-content:center">
+      <div class="bub" data-t="lead" style="max-width:660px;font-size:${Math.min(42, leadSize(c.lead.text))}px" ${pop(T.lead, r("ld", 1.4), { from: 0.85, dy: 30 })}>${lines([c.lead.text])}</div>
+    </div>`}
   </div>
   <div id="end" ${K([[0, { o: 0, s: 0.92 }], [T.end, { o: 0, s: 0.92 }], [T.end + 380, { o: 1, s: 1 }]])} style="position:absolute;inset:0">
     <div class="pol" style="left:240px;top:300px;transform:rotate(${r("pl", 4).toFixed(2)}deg)"><img src="${m.photo}" alt="" style="width:600px;height:420px"></div>
@@ -113,6 +117,11 @@ const RUNTIME = `
       if (r.left < safe.x || r.top < safe.y || r.right > safe.right || r.bottom > safe.bottom) out.push(e.dataset.t + ' leaves the Reel safe zone (' + [r.left, r.top, r.right, r.bottom].map(Math.round).join(',') + ')');
       if (r.bottom > safe.buttonsY && r.right > safe.buttonsX) out.push(e.dataset.t + ' runs under the like/comment/share column');
       for (const c of [e, ...e.querySelectorAll('span')]) if (c.scrollWidth > c.clientWidth + 2 && getComputedStyle(c).whiteSpace === 'nowrap') out.push(e.dataset.t + ' overflows its box');
+    }
+    const ph = document.querySelector('#main .photo');
+    if (ph && window.__visible(ph)) {
+      const p = ph.getBoundingClientRect();
+      for (const [e, r] of els) if (e.dataset.t !== 'mark' && Math.min(r.right, p.right) - Math.max(r.left, p.left) > 0 && Math.min(r.bottom, p.bottom) - Math.max(r.top, p.top) > 0) out.push(e.dataset.t + ' covers the prize photo');
     }
     for (let i = 0; i < els.length; i++) for (let j = i + 1; j < els.length; j++) {
       const [a, ra] = els[i], [b, rb] = els[j];
@@ -193,7 +202,7 @@ async function main() {
   const heroes = pickHeroes(sel.draws, { riskOf: (d) => risk[d.slug] ?? 1, count: Number(process.env.REEL_COUNT || 2) })
     .sort((a, b) => +new Date(a.draw_date) - +new Date(b.draw_date));
   if (!heroes.length) { console.error("✗ native reel: no eligible hero in the deck"); process.exit(1); }
-  const audio = await pickAudio(catCfg(sel.slug).audioMood);
+  const manifest = await Bun.file(new URL("./assets/audio/manifest.json", import.meta.url)).json();
 
   for (const [i, d] of heroes.entries()) {
     // out/reel-N/, never out/reel.mp4: that legacy path makes publish.mjs host it as the old daily
@@ -203,6 +212,7 @@ async function main() {
     await mkdir(outDir, { recursive: true });
     await mkdir(work, { recursive: true });
     const at = airTime(i, now); // every date word below is worded for when this Reel airs
+    const audio = reelAudio(manifest, i, now.toLocaleDateString("en-CA", { timeZone: "Europe/London" }));
     const photo = await photoOf(d);
     if (!photo) { console.error(`✗ native reel ${i + 1}: ${d.slug} has no photograph`); process.exit(1); }
 
@@ -232,7 +242,7 @@ async function main() {
     if ((await child.exited) !== 0) { console.error(`✗ native reel ${i + 1}: capture refused (see above)`); process.exit(1); }
 
     const mp4 = `${outDir}/reel.mp4`;
-    await encodeVideo({ framesDir: job.outDir, fps: FPS, out: mp4, audio: { file: audio.file, trimToOnsetMs: audio.firstBeatOffsetMs || 0, stingFile: "stamp-sting.wav", stingTimesMs: [STING_MS] } });
+    await encodeVideo({ framesDir: job.outDir, fps: FPS, out: mp4, audio: { file: audio.file, trimToOnsetMs: audio.startMs, fadeInMs: 120, fadeOutMs: 450, stingFile: "stamp-sting.wav", stingTimesMs: [STING_MS] } });
     const contract = await assertVideoContract(mp4);
     // cover = the full prize beat (hook + price + photo + closing day + operator)
     await ff(["-i", frameAt(job.outDir, T.out - 200), "-q:v", "3", `${outDir}/cover.jpg`]);
@@ -243,7 +253,7 @@ async function main() {
     await Bun.write(`${outDir}/REEL_CAPTION.txt`, caption);
     await Bun.write(`${outDir}/reel-meta.json`, JSON.stringify({
       arm: "native", armSource: "native-reel", durationMs: Math.round(contract.durS * 1000), isLoop: false,
-      hero: d.slug, operator: op[0], hookKey: m.hookKey, hook: m.copy.hook.text, audio: { file: audio.file, mood: audio.mood },
+      hero: d.slug, operator: op[0], hookKey: m.hookKey, hook: m.copy.hook.text, audio: { file: audio.file, mood: audio.mood, startMs: audio.startMs },
       slot: i === 0 ? "reel" : `reel-${i + 1}`,
     }, null, 2));
     console.log(`✓ reel ${i + 1} (${m.hookKey}: "${m.copy.hook.text}") → ${mp4}  ${contract.durS.toFixed(1)}s  ${d.slug.slice(0, 50)}`);
