@@ -2,11 +2,12 @@
 const FF = "/opt/homebrew/bin/ffmpeg", FP = "/opt/homebrew/bin/ffprobe";
 const AUDIO_DIR = new URL("./assets/audio/", import.meta.url).pathname;
 
+// spawnSync, not spawn: under a busy test run Bun 1.3 has missed an ffmpeg exit, leaving `.exited`
+// pending forever with no child left (21 Oct 2026). A synchronous wait cannot miss it.
 async function run(cmd) {
-  const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
-  const [code, err] = await Promise.all([p.exited, new Response(p.stderr).text()]);
-  if (code !== 0) throw new Error(`${cmd[0]} failed (${code}): ${err.slice(-400)}`);
-  return new Response(p.stdout).text();
+  const p = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "pipe" });
+  if (p.exitCode !== 0) throw new Error(`${cmd[0]} failed (${p.exitCode}): ${p.stderr.toString().slice(-400)}`);
+  return p.stdout.toString();
 }
 
 import { readdir } from "node:fs/promises";
