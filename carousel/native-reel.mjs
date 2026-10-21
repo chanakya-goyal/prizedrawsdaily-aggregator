@@ -21,6 +21,7 @@ import { pickHeroes, reelModel, reelStrings, reelCaption } from "./native-reel-c
 import { encodeVideo, assertVideoContract } from "./encode.mjs";
 import { pickAudio } from "./beat.mjs";
 import * as compliance from "./compliance.mjs";
+import { airTime } from "./autopilot/queue.mjs";
 
 export const W = 1080, H = 1920, FPS = 30;
 export const DURATION_MS = 9600;
@@ -58,9 +59,9 @@ export function reelHtml(m) {
     </div>
     <div style="position:absolute;left:80px;width:780px;top:1140px;display:flex;flex-direction:column;align-items:flex-start;gap:18px">
       <div class="bub left" data-t="lead" style="max-width:780px;font-size:${Math.min(50, leadSize(c.lead.text))}px" ${pop(T.lead, r("ld", 1.6), { from: 0.85, dy: 40 })}>${lines([c.lead.text])}</div>
-      <div style="display:flex;gap:16px;align-items:center;flex-wrap:nowrap">
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;max-width:780px">
         <div class="cd" data-t="closes" style="padding:8px 22px 10px;flex:none" ${pop(T.closes, r("cd", 2.2))}><div class="t" style="font-size:22px">${esc(c.closesLabel.text)}</div><div class="v" style="font-size:44px">${parts.map((p) => `<b>${esc(p)}</b>`).join("")}</div></div>
-        <div class="loc sm" data-t="operator" style="max-width:440px" ${pop(T.operator, r("op", 1.4), { from: 0.9 })}><i>📍</i><span>${esc(c.operator.text)}</span></div>
+        <div class="loc sm" data-t="operator" style="max-width:780px" ${pop(T.operator, r("op", 1.4), { from: 0.9 })}><i>📍</i><span>${esc(c.operator.text)}</span></div>
       </div>
     </div>
     ${c.cash ? `<div class="bub green" data-t="cash" style="position:absolute;right:84px;top:1010px;font-size:40px" ${pop(T.cash, r("ca", 2))}>${lines([c.cash.text])}</div>` : ""}
@@ -188,7 +189,9 @@ async function main() {
     return d.image_url || null;
   };
   const now = process.env.REEL_NOW ? new Date(process.env.REEL_NOW) : new Date();
-  const heroes = pickHeroes(sel.draws, { riskOf: (d) => risk[d.slug] ?? 1, count: Number(process.env.REEL_COUNT || 2) });
+  // the hero that closes sooner takes the evening slot; the other still has a night of runway
+  const heroes = pickHeroes(sel.draws, { riskOf: (d) => risk[d.slug] ?? 1, count: Number(process.env.REEL_COUNT || 2) })
+    .sort((a, b) => +new Date(a.draw_date) - +new Date(b.draw_date));
   if (!heroes.length) { console.error("✗ native reel: no eligible hero in the deck"); process.exit(1); }
   const audio = await pickAudio(catCfg(sel.slug).audioMood);
 
@@ -199,24 +202,25 @@ async function main() {
     const work = `${DIR}/.reelwork/native-${i + 1}`;
     await mkdir(outDir, { recursive: true });
     await mkdir(work, { recursive: true });
+    const at = airTime(i, now); // every date word below is worded for when this Reel airs
     const photo = await photoOf(d);
     if (!photo) { console.error(`✗ native reel ${i + 1}: ${d.slug} has no photograph`); process.exit(1); }
 
     // the wording gate — the same predicates as the deck, with this Reel's own facts
     const facts = compliance.factsTable({
       drawsRendered: 1, prices: [String(d.ticket_price)], caps: [Number(d.total_entries)].filter(Boolean),
-      daysToClose: [Math.max(1, Math.ceil((+new Date(d.draw_date) - now.getTime()) / 86400000))],
+      daysToClose: [Math.max(1, Math.ceil((+new Date(d.draw_date) - at.getTime()) / 86400000))],
     });
     const op = [String(d.operators?.name || "").trim()].filter(Boolean);
     const gate = (text, surface = "asset") => [
       ...compliance.checkUnit(text, { facts, surface, bannedPhrases: GLOBAL.bannedPhrases, operatorNames: op }),
       ...(surface === "title" ? [] : compliance.checkQuestionUnit(text, facts)),
     ];
-    const m = reelModel({ d, sel, photo, now, gate: (line) => gate(line).filter((h) => h.class === compliance.CLASS.A) });
+    const m = reelModel({ d, sel, photo, now: at, gate: (line) => gate(line).filter((h) => h.class === compliance.CLASS.A) });
     const hits = reelStrings(m).flatMap(([field, text, surface]) => gate(text, surface).map((h) => ({ ...h, field })));
     const classA = hits.filter((h) => h.class === compliance.CLASS.A);
     if (classA.length) { console.error(`✗ native reel ${i + 1}: class A wording — ${classA.map((h) => `${h.field}: ${h.predicate}`).join(", ")}`); process.exit(1); }
-    const caption = reelCaption({ sel, m, d, now });
+    const caption = reelCaption({ sel, m, d, now: at });
     const capA = compliance.checkUnit(caption, { facts, surface: "caption", bannedPhrases: GLOBAL.bannedPhrases, operatorNames: op }).filter((h) => h.class === compliance.CLASS.A);
     if (capA.length) { console.error(`✗ native reel ${i + 1}: class A in the caption — ${capA.map((h) => h.predicate).join(", ")}`); process.exit(1); }
 

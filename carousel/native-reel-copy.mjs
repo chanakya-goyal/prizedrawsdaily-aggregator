@@ -50,7 +50,7 @@ export function pickHeroes(draws, { riskOf = () => 1, count = 2 } = {}) {
 // identity 20/25, cash-choice 17/25. A pattern only applies where the data makes it TRUE.
 export const HOOKS = {
   typo: (h) => (isPence(h.price) ? `not a typo. ${h.price}.` : null),
-  contrast: (h) => (h.short ? `${h.price}. for ${withArticle(h.short)}.` : null),
+  contrast: (h) => (h.short ? `${withArticle(h.short)} for ${h.price} 👀` : null),
   identity: (h) => (h.brand ? `${h.brand} people, look 👀` : null),
   cash: (h) => (h.cashAlt && h.short ? `${h.short} or ${shortMoney(h.cashAlt)} cash` : null),
 };

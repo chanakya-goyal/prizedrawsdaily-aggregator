@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { londonToUtc, slotWindow, dueVerdict, slotForNow, addDays, RUNWAY_MS } from "../autopilot/queue.mjs";
+import { londonToUtc, slotWindow, dueVerdict, slotForNow, addDays, airTime, RUNWAY_MS } from "../autopilot/queue.mjs";
 
 test("London wall-clock to UTC holds across both clock changes", () => {
   expect(londonToUtc("2026-10-21", "17:30").toISOString()).toBe("2026-10-21T16:30:00.000Z"); // BST
@@ -37,4 +37,13 @@ test("dueVerdict: only inside the window, only once, only while the draw is open
   const closing = { status: "active", draw_date: new Date(now.getTime() + RUNWAY_MS - 60000).toISOString() };
   expect(dueVerdict(item, { now, draw: closing }).expired).toBe(true);
   expect(dueVerdict(null).ok).toBe(false);
+});
+
+test("airTime: each built Reel is worded for the moment its own slot opens", () => {
+  const lunch = new Date("2026-10-21T11:15:00Z"); // 12:15 BST build
+  expect(airTime(0, lunch).toISOString()).toBe("2026-10-21T16:30:00.000Z");
+  expect(airTime(1, lunch).toISOString()).toBe("2026-10-22T06:30:00.000Z");
+  const late = new Date("2026-10-21T17:00:00Z"); // built inside the evening slot: now, not the past
+  expect(airTime(0, late)).toEqual(late);
+  expect(airTime(5, lunch)).toEqual(lunch);
 });

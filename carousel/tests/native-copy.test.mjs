@@ -108,6 +108,13 @@ describe("helpers", () => {
     expect(withArticle("Honda Civic Type-R GT")).toBe("a Honda Civic Type-R GT");
     expect(withArticle("Uniqlo Voucher")).toBe("a Uniqlo Voucher");
     expect(withArticle("Pokémon Cards")).toBe("Pokémon Cards");
+    // a leading measure names ONE thing and still takes an article; a count or a year does not
+    expect(withArticle("10g Gold Bar")).toBe("a 10g Gold Bar");
+    expect(withArticle("467bhp Subaru Impreza")).toBe("a 467bhp Subaru Impreza");
+    expect(withArticle("18ct Gold Chain")).toBe("an 18ct Gold Chain");
+    expect(withArticle("8kg Air Fryer")).toBe("an 8kg Air Fryer");
+    expect(withArticle("2 iPhones")).toBe("2 iPhones");
+    expect(withArticle("3 x PS5")).toBe("3 x PS5");
     expect(withArticle("1995 Nissan Silvia")).toBe("1995 Nissan Silvia");
     expect(withArticle("Porsche 718 & Defender 90")).toBe("Porsche 718 & Defender 90");
     expect(withArticle("Ford Focus RS")).toBe("a Ford Focus RS");
