@@ -43,11 +43,12 @@ export async function fetchEndingSoon(days = 7, minDays = 0, { requireProvenance
   const from = (fromDate ? londonDayBounds(fromDate).start : new Date(Date.now() + minDays * 86400000)).toISOString();
   const end = (toDate ? londonDayBounds(toDate).end : new Date(Date.now() + days * 86400000)).toISOString();
   const u = new URL(SUPABASE_URL() + "/rest/v1/draws");
-  // `operators(rating)` feeds the draw slide's Trust Score chip; the three provenance columns
+  // `operators(affiliate_url)` decides the "Ad · " label (native-copy.mjs isAd): a live affiliate
+  // link makes the post an ad under ASA/CAP. `operators(rating)` feeds the draw slide's Trust Score chip; the three provenance columns
   // feed the read-at stamp and the eligibility predicate below. They are selected only when
   // provenance is required, so a caller that opts out does not hit a 400 on a pre-migration DB.
   u.searchParams.set("select",
-    "slug,title,grand_prize,prize_description,image_url,ticket_price,total_prize_value,total_entries,draw_date,entry_url,categories(slug,name),operators(name,rating)"
+    "slug,title,grand_prize,prize_description,image_url,ticket_price,total_prize_value,total_entries,draw_date,entry_url,categories(slug,name),operators(name,rating,affiliate_url)"
     + (requireProvenance ? ",figures_checked_at,figures_source_url,total_entries_method" : ""));
   // free_entry_route is deliberately NOT selected. It ships in migration 0002, which this spec
   // classes as not a render blocker — so requiring it here would have made it one, which is

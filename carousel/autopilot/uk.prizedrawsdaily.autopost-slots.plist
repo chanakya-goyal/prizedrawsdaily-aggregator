@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template: install.sh replaces __HOME__ and writes it to ~/Library/LaunchAgents/. -->
+<!-- The Reel slots (carousel/autopilot/queue.mjs). Mac time (IST) → UK:
+       12:15 / 13:15 IST = 07:45 / 08:45 UK in summer, 06:45 / 07:45 in winter → reel-2 (07:30-09:30)
+       22:15 / 23:15 IST = 17:45 / 18:45 UK in summer, 16:45 / 17:45 in winter → reel   (17:30-19:30)
+     Each firing asks queue.mjs what is due at THIS UK hour; outside a slot, or already posted, it stops. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>uk.prizedrawsdaily.autopost-slots</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__HOME__/pdd-autopost/carousel/autopilot/run.sh</string>
+    <string>--slot</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>15</integer></dict>
+    <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>15</integer></dict>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>__HOME__</string>
+    <key>PATH</key><string>/opt/homebrew/bin:__HOME__/.bun/bin:__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StandardOutPath</key><string>__HOME__/Library/Logs/pdd-autopost/launchd-slots.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/Library/Logs/pdd-autopost/launchd-slots.log</string>
+  <key>RunAtLoad</key><false/>
+</dict>
+</plist>

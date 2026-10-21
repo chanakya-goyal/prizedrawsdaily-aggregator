@@ -1,9 +1,13 @@
 #!/bin/bash
-# carousel/autopilot/run.sh — the daily Instagram autopilot. launchd starts it at 16:15 IST
-# (uk.prizedrawsdaily.autopost); the task itself is carousel/AUTOPILOT.md, run by headless Claude.
+# carousel/autopilot/run.sh — the Instagram autopilot. launchd starts it at 16:45 and 17:45 IST
+# (uk.prizedrawsdaily.autopost; one of the two lands at 12:15 UK); the task itself is
+# carousel/AUTOPILOT.md, run by headless Claude. The Reel slots (uk.prizedrawsdaily.autopost-slots)
+# start it with --slot.
 #
-#   run.sh             live: may publish to Instagram
-#   run.sh --dry-run   everything up to the caption; the publishing tools are NOT granted to Claude
+#   run.sh                   live: may publish to Instagram
+#   run.sh --dry-run         everything up to the caption; the publishing tools are NOT granted to Claude
+#   run.sh --slot            post the queued Reel that is due at this UK hour (queue.mjs), if any
+#   run.sh --slot --dry-run  say what is due, post nothing
 #
 # Off switch: touch ~/.pdd-autopost-off   (on again: rm ~/.pdd-autopost-off)
 #
@@ -18,7 +22,7 @@ main() {
   export PDD_DIR="${PDD_DIR:-$HOME/pdd-autopost-work}"
   local LOGDIR="$HOME/Library/Logs/pdd-autopost"
   local DRY=0
-  [[ "${1:-}" == "--dry-run" || "${AUTOPOST_DRY_RUN:-0}" == "1" ]] && DRY=1
+  [[ " $* " == *" --dry-run "* || "${AUTOPOST_DRY_RUN:-0}" == "1" ]] && DRY=1
   export AUTOPOST_DRY_RUN=$DRY
   mkdir -p "$LOGDIR" "$PDD_DIR"
   local DAY; DAY=$(TZ=Europe/London date +%Y-%m-%d)
@@ -44,6 +48,9 @@ main() {
 
   bun install --frozen-lockfile >/dev/null || { alarm "bun install failed"; return 1; }
 
+  # The Reel slots (17:45 UK, 07:45 UK next morning): post one queued Reel, nothing else.
+  if [[ " $* " == *" --slot "* ]]; then run_slot "$DAY" "$DRY"; return $?; fi
+
   if [[ $DRY == 0 ]]; then
     bun carousel/autopilot/status.mjs window || { echo "outside the UK posting window: waiting for tomorrow"; return 0; }
     if bun carousel/autopilot/status.mjs published-today; then echo "today's carousel is already published"; return 0; fi
@@ -59,11 +66,12 @@ main() {
   # Tools Claude may use. dontAsk refuses everything else without prompting. In a dry run the
   # Composio execute tool and the publishing scripts are simply not available.
   local ALLOW="Read,Write,Edit,Glob,Grep,Bash(bun carousel/*),Bash(ONLY_CATEGORY=* bun carousel/plan.mjs),Bash(ls *),Bash(cat *),Bash(head *),Bash(tail *),Bash(wc *),Bash(sips *),mcp__composio__COMPOSIO_SEARCH_TOOLS,mcp__composio__COMPOSIO_GET_TOOL_SCHEMAS"
-  local DENY="Bash(bun carousel/publish.mjs*),Bash(bun carousel/state-mark.mjs*),Bash(bun carousel/cleanup.mjs*),mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL"
+  local DENY="Bash(bun carousel/publish.mjs*),Bash(bun carousel/state-mark.mjs*),Bash(bun carousel/cleanup.mjs*),Bash(bun carousel/autopilot/queue.mjs*),mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL"
   local MODE="MODE: DRY RUN (AUTOPOST_DRY_RUN=1). Stop where AUTOPILOT.md says DRY RUN STOPS HERE."
   if [[ $DRY == 0 ]]; then
     ALLOW="$ALLOW,mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL"
-    DENY="mcp__composio__COMPOSIO_REMOTE_BASH_TOOL,mcp__composio__COMPOSIO_REMOTE_WORKBENCH,mcp__composio__COMPOSIO_MANAGE_CONNECTIONS"
+    # the lunchtime run QUEUES Reels; only the slot run may mark one done or drop one
+    DENY="Bash(bun carousel/autopilot/queue.mjs done*),Bash(bun carousel/autopilot/queue.mjs drop*),mcp__composio__COMPOSIO_REMOTE_BASH_TOOL,mcp__composio__COMPOSIO_REMOTE_WORKBENCH,mcp__composio__COMPOSIO_MANAGE_CONNECTIONS"
     MODE="MODE: LIVE. Publish to Instagram when every check passes."
   fi
 
@@ -95,9 +103,37 @@ main() {
   echo "=== $(date -u +%FT%TZ) autopost end"
 }
 
+# One queued Reel (carousel/autopilot/queue.mjs). queue.mjs decides what is due at this UK hour and
+# whether its draw is still open; a short Claude run with ONLY the publish tools posts it.
+run_slot() {
+  local DAY=$1 DRY=$2 Q="${AUTOPOST_QUEUE:-$HOME/pdd-autopost-queue}" DUE SLOT DATE
+  mkdir -p "$Q"
+  if ! DUE=$(bun carousel/autopilot/queue.mjs due auto); then echo "slot: $DUE"; return 0; fi
+  SLOT=$(echo "$DUE" | head -1 | cut -d' ' -f2); DATE=$(echo "$DUE" | head -1 | cut -d' ' -f3)
+  echo "slot: $SLOT (built $DATE) is due"
+  if [[ $DRY == 1 ]]; then echo "$DUE"; echo "dry run: not posting"; return 0; fi
+  local REPORT="$Q/REPORT-$SLOT.md"; rm -f "$REPORT"
+  local ALLOW="Read,Write,Bash(bun carousel/autopilot/queue.mjs *),mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL,mcp__composio__COMPOSIO_SEARCH_TOOLS,mcp__composio__COMPOSIO_GET_TOOL_SCHEMAS"
+  local DENY="mcp__composio__COMPOSIO_REMOTE_BASH_TOOL,mcp__composio__COMPOSIO_REMOTE_WORKBENCH,mcp__composio__COMPOSIO_MANAGE_CONNECTIONS"
+  echo "claude: start ($SLOT)"
+  { echo "SLOT=$SLOT  DATE=$DATE  REPORT=$REPORT"; echo; echo "The item that is due:"; echo "$DUE" | tail -n +2; echo; cat carousel/autopilot/PUBLISH_SLOT.md; } \
+    | perl -e 'alarm shift; exec @ARGV' 1200 \
+    claude -p --model sonnet --permission-mode dontAsk --add-dir "$Q" \
+      --allowedTools "$ALLOW" --disallowedTools "$DENY" --output-format json > "$LOGDIR/$DAY-$SLOT-claude.json"
+  echo "claude: exit $?"
+  local STATUS=PUBLISHED NOTE=""
+  # The report is Claude's account; the state row is the evidence.
+  if ! bun carousel/autopilot/queue.mjs published "$SLOT" "$DATE"; then STATUS=FAILED; NOTE="the $SLOT row for $DATE is not published"; fi
+  echo "status: $STATUS $NOTE"
+  report "$DAY · $SLOT" "$STATUS" "$NOTE" 0 "$REPORT"
+  [[ $STATUS == FAILED ]] && alarm "Reel slot $SLOT FAILED: $(sed -n '2,3p' "$REPORT" 2>/dev/null | tr '\n' ' ' | cut -c1-200) $NOTE"
+  notify "Instagram Reel ($SLOT): $STATUS"
+  return 0
+}
+
 # Every run appends its REPORT.md to one pinned "Autopost log" issue: the history, readable on a phone.
 report() {
-  local day=$1 status=$2 note=$3 dry=$4 n
+  local day=$1 status=$2 note=$3 dry=$4 file=${5:-$PDD_DIR/out/REPORT.md} n
   gh label create autopost-log --repo "$GH_REPO" --color 0E8A16 --description "Instagram autopilot daily log" --force >/dev/null 2>&1
   n=$(gh issue list --repo "$GH_REPO" --label autopost-log --state open --json number --jq '.[0].number' 2>/dev/null)
   if [[ -z "$n" ]]; then
@@ -108,7 +144,7 @@ report() {
   {
     echo "**$day · $status**$([[ $dry == 1 ]] && echo ' (dry run)')${note:+ · $note}"
     echo
-    sed -n '2,40p' "$PDD_DIR/out/REPORT.md" 2>/dev/null
+    sed -n '2,40p' "$file" 2>/dev/null
   } | gh issue comment "$n" --repo "$GH_REPO" --body-file - >/dev/null 2>&1 && echo "report: posted to issue #$n"
 }
 

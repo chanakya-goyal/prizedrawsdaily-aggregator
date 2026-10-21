@@ -13,11 +13,13 @@ test("REPORT.md status is read from an exact first line only", () => {
 });
 
 test("the posting window is UK wall-clock hours, across both clock changes", () => {
-  // 16:15 IST = 10:45 UTC: 11:45 BST in summer, 10:45 GMT in winter — both inside the window
-  expect(ukHour(new Date("2026-07-01T10:45:00Z"))).toBe(11);
-  expect(ukHour(new Date("2026-12-01T10:45:00Z"))).toBe(10);
-  expect(inWindow(new Date("2026-07-01T10:45:00Z"))).toBe(true);
-  expect(inWindow(new Date("2026-12-01T10:45:00Z"))).toBe(true);
+  // launchd fires at 16:45 and 17:45 IST. Summer: 12:15 / 13:15 BST. Winter: 11:15 / 12:15 GMT.
+  // The window opens at 12:00 UK, so exactly one of the two lands at lunchtime in each season.
+  expect(ukHour(new Date("2026-07-01T11:15:00Z"))).toBe(12);
+  expect(ukHour(new Date("2026-12-01T11:15:00Z"))).toBe(11);
+  expect(inWindow(new Date("2026-07-01T11:15:00Z"))).toBe(true);   // 16:45 IST in summer
+  expect(inWindow(new Date("2026-12-01T11:15:00Z"))).toBe(false);  // 16:45 IST in winter: too early
+  expect(inWindow(new Date("2026-12-01T12:15:00Z"))).toBe(true);   // 17:45 IST in winter
   // a catch-up when the Mac wakes at 3am UK must not post
   expect(inWindow(new Date("2026-07-01T02:00:00Z"))).toBe(false);
   expect(inWindow(new Date("2026-12-01T20:30:00Z"))).toBe(false);

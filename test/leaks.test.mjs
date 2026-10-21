@@ -1,6 +1,6 @@
 // Wrong figures on live operators, each pinned with a trimmed copy of the real page it was
 // found on (2026-10-15). Every fixture reproduces the wrong value on the parser before the fix.
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, setSystemTime } from "bun:test";
 import { fieldsFromHtml, withoutNeighbours } from "../lib/parse.mjs";
 import { ltyFinished, saysFinished } from "../lib/liveness.mjs";
 
@@ -11,7 +11,13 @@ describe("neighbour blocks never supply this draw's figures", () => {
     // The page's own date line is "18th Oct @ 8:30pm"; the carousel showed the Wednesday edition.
     const html = await page("lavish-life.revvi.product.html");
     expect(html).toContain("DAILY EDITION! *WEDNESDAY 14.10.26*");
-    const d = fieldsFromHtml({ html, url: "https://lavishlifecompetitions.co.uk/competition/revvi-18-electric-balance-bike/", op: { base: "https://lavishlifecompetitions.co.uk" }, knownPrice: 0.99 });
+    // "18th Oct" has no year, so the parser picks the next 18 Oct from TODAY. Pin today to the day the
+    // fixture was captured: from 21 Oct 2026 on, an unpinned clock read it as 2027 and reddened CI.
+    setSystemTime(new Date("2026-10-15T12:00:00Z"));
+    let d;
+    try {
+      d = fieldsFromHtml({ html, url: "https://lavishlifecompetitions.co.uk/competition/revvi-18-electric-balance-bike/", op: { base: "https://lavishlifecompetitions.co.uk" }, knownPrice: 0.99 });
+    } finally { setSystemTime(); }
     expect(d.draw_date).toBe("2026-10-18T20:30:00+01:00");
     expect(d.total_entries).toBe(1499);
   });
