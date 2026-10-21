@@ -21,6 +21,47 @@
       "#ukcompetition",
       "#ukprizedraws"
     ],
+    "fbHashtags": {
+      "_comment": "Facebook only, ADDED to the Instagram tags (fixedHashtags + the category's 2). Instagram stays at 5. Niche UK comping tags only: no giveaway/win/free tags, nothing aimed at children. Max 12 tags per Facebook post (configProblems).",
+      "*": [
+        "#competitionsuk",
+        "#ukcomping",
+        "#prizedraw",
+        "#compingcommunity"
+      ],
+      "car-draws": [
+        "#carcomps",
+        "#dreamcar"
+      ],
+      "cash-prizes": [
+        "#cashcomps",
+        "#taxfreecash"
+      ],
+      "house-draws": [
+        "#housecompetition",
+        "#propertyuk"
+      ],
+      "tech-giveaways": [
+        "#techcomps",
+        "#gadgets"
+      ],
+      "luxury": [
+        "#luxurycomps",
+        "#luxurylifestyle"
+      ],
+      "collectibles": [
+        "#collectables",
+        "#memorabilia"
+      ],
+      "sports-outdoors": [
+        "#golfcomps",
+        "#sportscomps"
+      ],
+      "home-garden": [
+        "#homecomps",
+        "#homeimprovement"
+      ]
+    },
     "bannedPhrases": [
       "don't miss out",
       "amazing prizes",
