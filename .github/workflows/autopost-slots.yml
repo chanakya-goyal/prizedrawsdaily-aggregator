@@ -72,6 +72,8 @@ jobs:
           for v in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY COMPOSIO_API_KEY; do
             [ -n "${!v}" ] || { gh workflow run autopost-watchdog.yml -f reason="Reel slot could not start: missing secret $v" || true; exit 1; }
           done
+          # a dry run first proves the key in THIS environment reaches Instagram and the Page (read-only)
+          [ "$DRY" = 1 ] && bun carousel/ig-publish.mjs ping
           set +e
           out=$(bun carousel/ig-publish.mjs reel "$SLOT" $([ "$DRY" = 1 ] && echo --dry-run) 2>&1); rc=$?
           set -e
