@@ -7,7 +7,17 @@
     "dropMs": null,
     "source": "Pixabay Music — https://pixabay.com/music/beats-drift-phonk-383124/",
     "licence": "Pixabay Content License (free for commercial use, no attribution required)",
-    "durationMs": 124943
+    "durationMs": 124943,
+    "quietMs": [
+      [
+        0,
+        1500
+      ],
+      [
+        124000,
+        125000
+      ]
+    ]
   },
   {
     "file": "synth.mp3",
@@ -17,7 +27,21 @@
     "dropMs": null,
     "source": "Pixabay Music — https://pixabay.com/music/chase-scene-techno-cyberpunk-powerful-action-workout-gaming-sport-music-347602/",
     "licence": "Pixabay Content License (free for commercial use, no attribution required)",
-    "durationMs": 266496
+    "durationMs": 266496,
+    "quietMs": [
+      [
+        0,
+        4500
+      ],
+      [
+        252500,
+        257500
+      ],
+      [
+        258500,
+        266500
+      ]
+    ]
   },
   {
     "file": "elegant.mp3",
@@ -27,7 +51,13 @@
     "dropMs": null,
     "source": "Pixabay Music — https://pixabay.com/music/beats-fashion-fashion-show-vogue-524106/",
     "licence": "Pixabay Content License (free for commercial use, no attribution required)",
-    "durationMs": 132480
+    "durationMs": 132480,
+    "quietMs": [
+      [
+        120000,
+        132500
+      ]
+    ]
   },
   {
     "file": "win.mp3",
@@ -37,7 +67,29 @@
     "dropMs": null,
     "source": "Pixabay Music — https://pixabay.com/music/rock-energetic-sports-rock-music-1-min-37-sec-378022/",
     "licence": "Pixabay Content License (free for commercial use, no attribution required)",
-    "durationMs": 97332
+    "durationMs": 97332,
+    "quietMs": [
+      [
+        87500,
+        88500
+      ],
+      [
+        89500,
+        91000
+      ],
+      [
+        92000,
+        93500
+      ],
+      [
+        94500,
+        95500
+      ],
+      [
+        96500,
+        97500
+      ]
+    ]
   },
   {
     "file": "warm.mp3",
@@ -47,7 +99,17 @@
     "dropMs": null,
     "source": "Pixabay Music — https://pixabay.com/music/upbeat-fashion-tropical-house-323529/",
     "licence": "Pixabay Content License (free for commercial use, no attribution required)",
-    "durationMs": 109740
+    "durationMs": 109740,
+    "quietMs": [
+      [
+        65500,
+        66500
+      ],
+      [
+        105000,
+        110000
+      ]
+    ]
   },
   {
     "file": "pop.mp3",
@@ -57,7 +119,216 @@
     "dropMs": null,
     "source": "Pixabay Music — https://pixabay.com/music/funk-fun-upbeat-pop-funk-pop-groove-party-215688/",
     "licence": "Pixabay Content License (free for commercial use, no attribution required)",
-    "durationMs": 91402
+    "durationMs": 91402,
+    "quietMs": [
+      [
+        89000,
+        91500
+      ]
+    ]
+  },
+  {
+    "file": "trap.mp3",
+    "mood": "trap",
+    "bpm": 112,
+    "firstBeatOffsetMs": 0,
+    "dropMs": null,
+    "source": "Pixabay Music — https://pixabay.com/music/trap-intoxicant-hiphop-fatfox-club-bass-instrumental-181695/",
+    "licence": "Pixabay Content License (free for commercial use, no attribution required)",
+    "durationMs": 150021,
+    "quietMs": []
+  },
+  {
+    "file": "tribal.mp3",
+    "mood": "tribal",
+    "bpm": 118,
+    "firstBeatOffsetMs": 0,
+    "dropMs": null,
+    "source": "Pixabay Music — https://pixabay.com/music/upbeat-play-house-tribal-groove-337745/",
+    "licence": "Pixabay Content License (free for commercial use, no attribution required)",
+    "durationMs": 150021,
+    "quietMs": [
+      [
+        29500,
+        30500
+      ]
+    ]
+  },
+  {
+    "file": "dnb.mp3",
+    "mood": "dnb",
+    "bpm": 86,
+    "firstBeatOffsetMs": 513,
+    "dropMs": null,
+    "source": "Pixabay Music — https://pixabay.com/music/drum-n-bass-extreme-waves-403381/",
+    "licence": "Pixabay Content License (free for commercial use, no attribution required)",
+    "durationMs": 101903,
+    "quietMs": [
+      [
+        0,
+        1000
+      ],
+      [
+        94000,
+        102000
+      ]
+    ]
+  },
+  {
+    "file": "newjack.mp3",
+    "mood": "newjack",
+    "bpm": 118,
+    "firstBeatOffsetMs": 0,
+    "dropMs": null,
+    "source": "Pixabay Music — https://pixabay.com/music/upbeat-90s-new-jack-swing-funky-club-beat-for-commercial-use-379602/",
+    "licence": "Pixabay Content License (free for commercial use, no attribution required)",
+    "durationMs": 156144,
+    "quietMs": [
+      [
+        5000,
+        6000
+      ],
+      [
+        67000,
+        68000
+      ],
+      [
+        149500,
+        156500
+      ]
+    ]
+  },
+  {
+    "file": "dubstep.mp3",
+    "mood": "dubstep",
+    "bpm": 103,
+    "firstBeatOffsetMs": 809,
+    "dropMs": null,
+    "source": "Pixabay Music — https://pixabay.com/music/dubstep-action-173045/",
+    "licence": "Pixabay Content License (free for commercial use, no attribution required)",
+    "durationMs": 120032,
+    "quietMs": [
+      [
+        0,
+        1000
+      ],
+      [
+        47500,
+        57500
+      ],
+      [
+        60000,
+        61000
+      ],
+      [
+        110500,
+        120500
+      ]
+    ]
+  },
+  {
+    "file": "slaphouse.mp3",
+    "mood": "slaphouse",
+    "bpm": 112,
+    "firstBeatOffsetMs": 0,
+    "dropMs": null,
+    "source": "Pixabay Music — https://pixabay.com/music/upbeat-weekend-in-las-vegas-slap-house-background-music-for-video-stories-382430/",
+    "licence": "Pixabay Content License (free for commercial use, no attribution required)",
+    "durationMs": 81031,
+    "quietMs": [
+      [
+        30000,
+        33000
+      ],
+      [
+        78500,
+        81500
+      ]
+    ]
+  },
+  {
+    "file": "boombap.mp3",
+    "mood": "boombap",
+    "bpm": 96,
+    "firstBeatOffsetMs": 647,
+    "dropMs": null,
+    "source": "Pixabay Music — https://pixabay.com/music/old-school-hip-hop-workout-workout-music-540854/",
+    "licence": "Pixabay Content License (free for commercial use, no attribution required)",
+    "durationMs": 93440,
+    "quietMs": [
+      [
+        0,
+        1000
+      ],
+      [
+        50500,
+        53000
+      ],
+      [
+        53500,
+        54500
+      ],
+      [
+        90000,
+        93500
+      ]
+    ]
+  },
+  {
+    "file": "breakbeat.mp3",
+    "mood": "breakbeat",
+    "bpm": 118,
+    "firstBeatOffsetMs": 154,
+    "dropMs": null,
+    "source": "Pixabay Music — https://pixabay.com/music/upbeat-to-the-moon-acid-breakbeat-281152/",
+    "licence": "Pixabay Content License (free for commercial use, no attribution required)",
+    "durationMs": 118648,
+    "quietMs": [
+      [
+        15500,
+        16500
+      ],
+      [
+        113500,
+        119000
+      ]
+    ]
+  },
+  {
+    "file": "futurebass.mp3",
+    "mood": "futurebass",
+    "bpm": 96,
+    "firstBeatOffsetMs": 63,
+    "dropMs": null,
+    "source": "Pixabay Music — https://pixabay.com/music/future-bass-vlog-fast-car-259484/",
+    "licence": "Pixabay Content License (free for commercial use, no attribution required)",
+    "durationMs": 115278,
+    "quietMs": [
+      [
+        112000,
+        115500
+      ]
+    ]
+  },
+  {
+    "file": "hiphop.mp3",
+    "mood": "hiphop",
+    "bpm": 89,
+    "firstBeatOffsetMs": 918,
+    "dropMs": null,
+    "source": "Pixabay Music — https://pixabay.com/music/beats-epic-hip-hop-beat-334870/",
+    "licence": "Pixabay Content License (free for commercial use, no attribution required)",
+    "durationMs": 137613,
+    "quietMs": [
+      [
+        0,
+        1500
+      ],
+      [
+        135000,
+        138000
+      ]
+    ]
   },
   {
     "file": "stamp-sting.wav",

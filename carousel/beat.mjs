@@ -18,7 +18,7 @@ export async function pickAudio(mood) {
 }
 
 // A Reel's soundtrack. Every Reel in a row gets a different track (the day's two Reels, then the next
-// day's), and each pass through the library moves to a later 4-bar phrase, so the feed does not hear
+// day's), and each pass through the library moves to a later loud 4-bar phrase, so the feed does not hear
 // the same clip twice until every phrase of every track has played. Pure: same day + slot, same clip.
 export function reelAudio(manifest, i, day) {
   const tracks = manifest.filter((t) => t.bpm && t.durationMs);
@@ -27,7 +27,11 @@ export function reelAudio(manifest, i, day) {
   const t = tracks[k % tracks.length];
   const phrase = 16 * 60000 / t.bpm;                              // 4 bars of 4 beats
   const onset = t.firstBeatOffsetMs || 0;
-  const phrases = Math.max(1, Math.floor((t.durationMs - 12000 - onset) / phrase) + 1);
-  const pass = Math.floor(k / tracks.length);
-  return { ...t, startMs: Math.round(onset + (pass % phrases) * phrase) };
+  const count = Math.max(1, Math.floor((t.durationMs - 12000 - onset) / phrase) + 1);
+  // Only phrases whose 9.6 s clip misses every quiet stretch (manifest quietMs: intros, breakdowns,
+  // outros more than 8 dB under the track's median), so no Reel lands in a lull.
+  const starts = Array.from({ length: count }, (_, j) => Math.round(onset + j * phrase));
+  const loud = starts.filter((a) => !(t.quietMs || []).some(([q0, q1]) => a < q1 && a + 9600 > q0));
+  const pool = loud.length ? loud : starts;
+  return { ...t, startMs: pool[Math.floor(k / tracks.length) % pool.length] };
 }

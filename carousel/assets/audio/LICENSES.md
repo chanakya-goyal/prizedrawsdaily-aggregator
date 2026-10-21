@@ -1,6 +1,6 @@
 # Carousel audio kit — licence & provenance record
 
-All 6 music tracks are **Pixabay Content License** (Pixabay's own free-commercial-use
+All 16 music tracks are **Pixabay Content License** (Pixabay's own free-commercial-use
 licence — no attribution required, no royalties, usable in monetised social content).
 See https://pixabay.com/service/license-summary/ for the full licence text.
 
@@ -79,6 +79,21 @@ this remains an optional refinement, not required by `beat.mjs`/tests.
 ---
 
 ## Tracks
+
+> **v3 (2026-10-21): 10 tracks added for the Reel rotation (reelAudio in beat.mjs)** —
+> sections 8–17 below (`trap`, `tribal`, `dnb`, `newjack`, `dubstep`, `slaphouse`,
+> `boombap`, `breakbeat`, `futurebass`, `hiphop`). Same acquisition, BPM and
+> `firstBeatOffsetMs` method as v2 (one practical note: Wayback serves many archived
+> Pixabay pages gzip-compressed, so fetch them with `curl --compressed`). Download date
+> for all 10: **2026-10-21**. Every v3 track also passed two energy gates measured
+> against `win.mp3` (mean volume, first 30 s = -13.2 dB) and `driving.mp3` (-8.2 dB):
+> (1) `ffmpeg -t 30 -af volumedetect` mean volume ≥ -14.0 dB; (2) no slow intro —
+> fewer than 4 s of the first 10 s sitting ≥ 8 dB below the track's median RMS
+> (librosa RMS in 2 s windows), the 0–10 s vs rest RMS gap no worse than -7 dB, and
+> 0–10 s onset strength ≥ 0.6× the rest of the track. `trap.mp3` and `tribal.mp3`
+> are the first 150 s of their originals (lossless `ffmpeg -t 150 -c copy` cut, no
+> re-encode; the Pixabay licence permits edits) to keep the 10 new files under
+> ~40 MB in total (39.2 MB); `reelAudio` only ever uses up to `durationMs - 12 s`.
 
 ### 1. `driving.mp3` — mood: `driving` (car-draws)
 - **Title:** Drift Phonk
@@ -197,3 +212,177 @@ this remains an optional refinement, not required by `beat.mjs`/tests.
 - **Licence:** n/a (fully synthesized, no third-party material)
 - **Duration:** 0.4s, 48kHz, stereo, `pcm_s16le` (verified via ffprobe)
 - **BPM / firstBeatOffsetMs / dropMs:** null / 0 / null (not a music bed)
+
+### 8. `trap.mp3` — mood: `trap`
+- **Title:** Intoxicant Hiphop (FATFOX) Club Bass Instrumental
+- **Author:** FATFoxBeat
+- **Source:** https://pixabay.com/music/trap-intoxicant-hiphop-fatfox-club-bass-instrumental-181695/
+- **Licence:** Pixabay Content License
+- **Genre tags (Pixabay):** Trap, Beats, Electronic
+- **Duration:** 150.0s as shipped (verified via ffprobe) — first 150 s of the 217.2s
+  original, lossless `-c copy` cut (see v3 note).
+- **BPM:** 112 — librosa onset-strength + beat-track (median inter-beat interval
+  = 112.3 BPM exactly; tempogram top candidates [172.3, 83.4, 56.2, 161.5, 112.3]
+  BPM — the beat grid is self-consistent at 112.3 across the track).
+- **firstBeatOffsetMs:** 0 — no leading silence detected (full volume from t=0).
+- **dropMs:** null
+- **Energy:** mean volume first 30 s = -6.6 dB (the loudest track in the kit);
+  no intro at all — 0–10 s is as loud as the rest (+1.8 dB).
+- **Why it fits the brief:** a club-bass trap instrumental (Pixabay tags: Trap,
+  Beats) at full level from the first bar — swagger for car / luxury-watch / cash Reels.
+
+### 9. `tribal.mp3` — mood: `tribal`
+- **Title:** Play House - Tribal Groove
+- **Author:** PlayHouseSound
+- **Source:** https://pixabay.com/music/upbeat-play-house-tribal-groove-337745/
+- **Licence:** Pixabay Content License
+- **Genre tags (Pixabay):** Upbeat, Electronic, House
+- **Duration:** 150.0s as shipped (verified via ffprobe) — first 150 s of the 212.0s
+  original, lossless `-c copy` cut (see v3 note).
+- **BPM:** 118 — librosa onset-strength + beat-track (median inter-beat interval
+  = 117.5 BPM exactly; tempogram top candidates [234.9, 161.5, 60.1, 95.7, 80.7]
+  BPM — 234.9 is the double-time hi-hat echo of 117.5).
+- **firstBeatOffsetMs:** 0 — no leading silence detected.
+- **dropMs:** null
+- **Energy:** mean volume first 30 s = -7.7 dB; percussion-led four-on-the-floor
+  from t=0 (0–10 s onset strength 1.4× the rest of the track).
+- **Why it fits the brief:** percussion-heavy tribal house — club energy that is
+  different from the existing tropical-house `warm` bed.
+
+### 10. `dnb.mp3` — mood: `dnb`
+- **Title:** Extreme Waves
+- **Author:** JoyInSound
+- **Source:** https://pixabay.com/music/drum-n-bass-extreme-waves-403381/
+- **Licence:** Pixabay Content License
+- **Genre tags (Pixabay):** Drum N Bass, Electronic, Chasing
+- **Duration:** 101.9s (verified via ffprobe)
+- **BPM:** 86 — librosa onset-strength + beat-track (median inter-beat interval
+  = 86.1 BPM exactly; tempogram top candidates [86.1, 172.3, 43.1, 57.4, 117.5]
+  BPM). 86.1 is the half-time pulse of a 172 BPM drum & bass track; it is kept
+  because the grid is self-consistent and a 4-bar phrase at 86 BPM still lands on
+  a real phrase boundary (8 bars at 172).
+- **firstBeatOffsetMs:** 513 (first `silence_end` = 0.512857s).
+- **dropMs:** null
+- **Energy:** mean volume first 30 s = -9.5 dB; the beat is in from the start and the
+  full section arrives by ~10 s.
+- **Why it fits the brief:** drum & bass tagged "Chasing" — the highest-tempo feel
+  in the kit, for fast-paced draws.
+
+### 11. `newjack.mp3` — mood: `newjack`
+- **Title:** 90s New Jack Swing – Funky Club Beat for Commercial Use
+- **Author:** Deion_Productions
+- **Source:** https://pixabay.com/music/upbeat-90s-new-jack-swing-funky-club-beat-for-commercial-use-379602/
+- **Licence:** Pixabay Content License
+- **Genre tags (Pixabay):** Upbeat, Beats, Electronic
+- **Duration:** 156.1s (verified via ffprobe)
+- **BPM:** 118 — librosa onset-strength + beat-track (median inter-beat interval
+  = 117.5 BPM exactly; tempogram top candidates [57.4, 117.5, 112.3, 215.3, 234.9]
+  BPM — 57.4 is the half-time sub-harmonic).
+- **firstBeatOffsetMs:** 0 — no leading silence detected.
+- **dropMs:** null
+- **Energy:** mean volume first 30 s = -12.1 dB; the swing beat plays from bar 1
+  (0–10 s onset strength 1.4× the rest of the track).
+- **Why it fits the brief:** bouncy, confident 90s club swing beat — a feel-good
+  "you could win this" groove that sounds like no other track in the kit.
+
+### 12. `dubstep.mp3` — mood: `dubstep`
+- **Title:** Action
+- **Author:** Rockot
+- **Source:** https://pixabay.com/music/dubstep-action-173045/
+- **Licence:** Pixabay Content License
+- **Genre tags (Pixabay):** Dubstep, Electronic, Action
+- **Duration:** 120.0s (verified via ffprobe)
+- **BPM:** 103 — librosa onset-strength + beat-track (median inter-beat interval
+  = 103.4 BPM exactly; tempogram top candidates [103.4, 76.0, 61.5, 152.0, 50.7]
+  BPM — 103.4 is the single dominant peak).
+- **firstBeatOffsetMs:** 809 (first `silence_end` = 0.809002s).
+- **dropMs:** null
+- **Energy:** mean volume first 30 s = -11.9 dB; strong hits from the first
+  seconds (0–10 s onset strength 1.15× the rest).
+- **Why it fits the brief:** action dubstep (tags: Dubstep, Action) — big, punchy
+  energy for tech and gaming prizes.
+
+### 13. `slaphouse.mp3` — mood: `slaphouse`
+- **Title:** Weekend in Las Vegas. Slap House background music for video stories
+- **Author:** White_Records
+- **Source:** https://pixabay.com/music/upbeat-weekend-in-las-vegas-slap-house-background-music-for-video-stories-382430/
+- **Licence:** Pixabay Content License
+- **Genre tags (Pixabay):** Upbeat, Electronic, Dance
+- **Duration:** 81.0s (verified via ffprobe)
+- **BPM:** 112 — librosa onset-strength + beat-track (median inter-beat interval
+  = 112.3 BPM exactly; tempogram top candidates [55.0, 215.3, 73.8, 143.6, 112.3]
+  BPM).
+- **firstBeatOffsetMs:** 0 — no leading silence detected.
+- **dropMs:** null
+- **Energy:** mean volume first 30 s = -10.0 dB; the beat runs from t=0 and the
+  full slap-bass section is in by ~10 s.
+- **Why it fits the brief:** slap house, the bouncy-bass sound common on Reels, and
+  a "Weekend in Las Vegas" theme that suits cash prizes.
+
+### 14. `boombap.mp3` — mood: `boombap`
+- **Title:** Workout - Workout Music
+- **Author:** prettyjohn1
+- **Source:** https://pixabay.com/music/old-school-hip-hop-workout-workout-music-540854/
+- **Licence:** Pixabay Content License
+- **Genre tags (Pixabay):** Old School Hip Hop, Beats, Electronic
+- **Duration:** 93.4s (verified via ffprobe)
+- **BPM:** 96 — librosa onset-strength + beat-track (median inter-beat interval
+  = 95.7 BPM exactly; tempogram top candidates [198.8, 64.6, 48.8, 95.7, 129.2]
+  BPM — 198.8 is the double-time hat echo of the 95.7 grid).
+- **firstBeatOffsetMs:** 647 (first `silence_end` = 0.646803s).
+- **dropMs:** null
+- **Energy:** mean volume first 30 s = -10.3 dB; the drums are in from the first
+  bar (0–10 s onset strength 1.03× the rest).
+- **Why it fits the brief:** an old-school hip-hop workout beat — confident and
+  punchy, for collectibles and streetwear-style prizes.
+
+### 15. `breakbeat.mp3` — mood: `breakbeat`
+- **Title:** To The Moon (acid breakbeat)
+- **Author:** Kulakovka
+- **Source:** https://pixabay.com/music/upbeat-to-the-moon-acid-breakbeat-281152/
+- **Licence:** Pixabay Content License
+- **Genre tags (Pixabay):** Upbeat, Electronic, Action
+- **Duration:** 118.6s (verified via ffprobe)
+- **BPM:** 118 — librosa onset-strength + beat-track (median inter-beat interval
+  = 117.5 BPM exactly; tempogram top candidates [161.5, 117.5, 234.9, 95.7, 68.0]
+  BPM — 234.9 is its double-time echo).
+- **firstBeatOffsetMs:** 154 (first `silence_end` = 0.15356s).
+- **dropMs:** null
+- **Energy:** mean volume first 30 s = -11.1 dB; the breaks start at t=0 (0–10 s
+  onset strength 1.0× the rest).
+- **Why it fits the brief:** acid breakbeat tagged "Action" — a rave-style
+  "to the moon" lift for big-ticket draws.
+
+### 16. `futurebass.mp3` — mood: `futurebass`
+- **Title:** Vlog Fast Car
+- **Author:** Novifi
+- **Source:** https://pixabay.com/music/future-bass-vlog-fast-car-259484/
+- **Licence:** Pixabay Content License
+- **Genre tags (Pixabay):** Future Bass, Electronic, Pop
+- **Duration:** 115.3s (verified via ffprobe)
+- **BPM:** 96 — librosa onset-strength + beat-track (median inter-beat interval
+  = 95.7 BPM exactly; tempogram top candidates [95.7, 76.0, 184.6, 198.8, 55.0]
+  BPM — 95.7 is the dominant peak).
+- **firstBeatOffsetMs:** 63 (first `silence_end` = 0.0629705s).
+- **dropMs:** null
+- **Energy:** mean volume first 30 s = -13.7 dB (on a par with `win.mp3`, -13.2 dB);
+  the beat runs from the start and the full section is in by ~10 s.
+- **Why it fits the brief:** future bass made for fast-car vlog edits (tags: Future
+  Bass, Pop) — upbeat and glossy for car and tech draws.
+
+### 17. `hiphop.mp3` — mood: `hiphop`
+- **Title:** Epic Hip Hop Beat
+- **Author:** BackgroundMusicForVideos
+- **Source:** https://pixabay.com/music/beats-epic-hip-hop-beat-334870/
+- **Licence:** Pixabay Content License
+- **Genre tags (Pixabay):** Beats, Electronic, Alternative Hip Hop
+- **Duration:** 137.6s (verified via ffprobe)
+- **BPM:** 89 — librosa onset-strength + beat-track (median inter-beat interval
+  = 89.1 BPM exactly; tempogram top candidates [89.1, 172.3, 184.6, 44.6, 58.7]
+  BPM — 89.1 is the dominant peak).
+- **firstBeatOffsetMs:** 918 (first `silence_end` = 0.918005s).
+- **dropMs:** null
+- **Energy:** mean volume first 30 s = -13.5 dB; the beat drops by ~2 s (0–10 s
+  onset strength 1.08× the rest).
+- **Why it fits the brief:** an "epic" hip-hop instrumental — big, confident energy
+  for the grand-prize Reels, different in feel from the old-school `boombap` beat.
