@@ -14,8 +14,8 @@ import { chromium } from "playwright";
 import { fontFaceCss } from "./fonts.mjs";
 import { SITE, hashOf } from "./native-copy.mjs";
 
-const FONT_CSS = await fontFaceCss();
-const esc = (s = "") => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+export const FONT_CSS = await fontFaceCss();
+export const esc = (s = "") => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const IG_GRAD = "linear-gradient(90deg,#7b2ff7 0%,#e1306c 55%,#f77737 100%)";
 export const W = 1080;
 export const H = 1350;
@@ -30,10 +30,10 @@ const tilt = (key, max = 2.5) => ((hashOf(key) % 1000) / 1000 * 2 - 1) * max;
 const rot = (key, max) => `transform:rotate(${tilt(key, max).toFixed(2)}deg)`;
 
 // Bubble type size steps down with length so a long prize name stays two lines at most.
-const leadSize = (t) => (t.length <= 18 ? 58 : t.length <= 28 ? 50 : t.length <= 38 ? 44 : 38);
-const stickerSize = (t) => (t.length <= 3 ? 150 : t.length <= 5 ? 124 : t.length <= 8 ? 104 : 88);
+export const leadSize = (t) => (t.length <= 18 ? 58 : t.length <= 28 ? 50 : t.length <= 38 ? 44 : 38);
+export const stickerSize = (t) => (t.length <= 3 ? 150 : t.length <= 5 ? 124 : t.length <= 8 ? 104 : 88);
 
-const CSS = `
+export const NATIVE_CSS = `
 *{box-sizing:border-box;margin:0}
 html,body{width:${W}px;height:var(--h)}
 body{overflow:hidden;position:relative;font-family:Inter,system-ui,'Apple Color Emoji',sans-serif;background:#141414;-webkit-font-smoothing:antialiased}
@@ -118,10 +118,10 @@ window.__layout = () => {
 };
 `;
 
-const wm = () => `<div class="wm" aria-hidden="true">${Array.from({ length: 16 }, () =>
+export const wm = () => `<div class="wm" aria-hidden="true">${Array.from({ length: 16 }, () =>
   `<div>${Array.from({ length: 6 }, () => SITE).join("&nbsp;&nbsp;·&nbsp;&nbsp;")}</div>`).join("")}</div>`;
 const lines = (arr) => arr.filter(Boolean).map((l) => `<span>${esc(l)}</span>`).join("<br>");
-const page = (body, h = H) => `<!doctype html><html><head><meta charset="utf-8"><style>${FONT_CSS}\n:root{--h:${h}px}\n${CSS}</style></head><body>${body}<script>${SCRIPT}</script></body></html>`;
+const page = (body, h = H) => `<!doctype html><html><head><meta charset="utf-8"><style>${FONT_CSS}\n:root{--h:${h}px}\n${NATIVE_CSS}</style></head><body>${body}<script>${SCRIPT}</script></body></html>`;
 const bg = (src) => (src ? `<div class="bg" style="background-image:url('${src}')"></div>` : "");
 
 function coverHtml(s) {
