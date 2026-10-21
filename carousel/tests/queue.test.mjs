@@ -47,3 +47,12 @@ test("airTime: each built Reel is worded for the moment its own slot opens", () 
   expect(airTime(0, late)).toEqual(late);
   expect(airTime(5, lunch)).toEqual(lunch);
 });
+
+test("the queued Reel's row passes carousel_posts' arm_source check (migrations/0003)", async () => {
+  const { reelPostRow } = await import("../autopilot/queue.mjs");
+  const sql = await Bun.file(new URL("../../migrations/0003-instrumentation.sql", import.meta.url)).text();
+  const allowed = sql.match(/arm_source is null or arm_source in \(([^)]*)\)/)[1].match(/'([^']+)'/g).map((x) => x.slice(1, -1));
+  const row = reelPostRow({ date: "2026-10-21", slot: "reel", category: "luxury", hero: "x", caption: "c", meta: {}, videoUrl: "v", coverUrl: "j" });
+  expect(row.arm_source === null || allowed.includes(row.arm_source)).toBe(true);
+  expect(row.format).toBe("reel");
+});

@@ -104,6 +104,15 @@ async function readDraw(slug) {
   return (await r.json())[0] || null;
 }
 
+// The carousel_posts row for a queued Reel. Pure, so its values are tested against the table's checks.
+// arm_source records a FORCED arm and is checked to ('rotation','env_override') or null
+// (migrations/0003, carousel_posts_arm_source_chk). A native Reel is not forced: null.
+export const reelPostRow = ({ date, slot, category, hero, caption, meta, videoUrl, coverUrl }) => ({
+  date, format: slot, status: "assets_uploaded", category, draw_slugs: [hero], caption,
+  reel_arm: "arm-native", arm_source: null, duration_ms: meta.durationMs ?? null, is_loop: false,
+  asset_urls: [videoUrl, coverUrl],
+});
+
 async function add(slot) {
   if (!SLOTS[slot]) throw new Error(`unknown slot "${slot}"`);
   if (!KEY()) throw new Error("SUPABASE_SERVICE_ROLE_KEY missing");
@@ -129,9 +138,7 @@ async function add(slot) {
   const coverUrl = await withRetry(() => upload(`${base}-cover.jpg`, jpg, "image/jpeg"), { label: `upload ${slot} cover` });
   const item = { slot, date, category: sel.slug, hero: d.slug, operator: meta.operator, drawDate: d.draw_date,
     from: win.from.toISOString(), to: win.to.toISOString(), videoUrl, coverUrl, caption, hook: meta.hook, igUserId: GLOBAL.igUserId };
-  await upsertPost({ date, format: slot, status: "assets_uploaded", category: sel.slug, draw_slugs: [d.slug], caption,
-    reel_arm: "arm-native", arm_source: meta.armSource || "native-reel", duration_ms: meta.durationMs ?? null, is_loop: false,
-    asset_urls: [videoUrl, coverUrl] });
+  await upsertPost(reelPostRow({ date, slot, category: sel.slug, hero: d.slug, caption, meta, videoUrl, coverUrl }));
   await mkdir(QUEUE_DIR, { recursive: true });
   await Bun.write(qPath(slot), JSON.stringify(item, null, 2));
   console.log(`✓ ${slot} queued for ${win.from.toISOString()} → ${win.to.toISOString()}: "${meta.hook}" (${d.slug})`);
