@@ -189,6 +189,14 @@ export async function fbReel(item, { dry = false } = {}) {
   return String(id);
 }
 
+export const sameCaption = (a, b) => norm(a) === norm(b);
+async function alreadyPosted(ig, item) {
+  const res = await execute("INSTAGRAM_GET_IG_USER_MEDIA", { ig_user_id: ig, limit: 5, fields: "id,caption,media_product_type,timestamp" });
+  const list = res?.data?.data ?? res?.data?.response_data?.data ?? res?.data ?? [];
+  const hit = (Array.isArray(list) ? list : []).find((m) => sameCaption(m.caption, item.caption) && new Date(m.timestamp) >= new Date(item.from) - 3600e3);
+  return hit ? String(hit.id) : null;
+}
+
 // One queued Reel. queue.mjs decides whether it is due (slot window, posted already, draw still open), so
 // this posts exactly what the lunchtime run built and checked: its video, cover and caption byte for byte.
 // Exit codes for the workflow: 0 posted, 3 nothing due (not an error), 1 failed.
@@ -198,7 +206,10 @@ export async function reel(which = "auto", { dry = false } = {}) {
   const { slot, item } = r;
   const ig = item.igUserId || IG_USER;
   let media = null, lastErr = null;
-  for (let attempt = 1; attempt <= 2 && !media; attempt++) {   // a fresh container once, as PUBLISH_SLOT.md did
+  for (let attempt = 1; attempt <= 3 && !media; attempt++) {   // a fresh container on a retry, as PUBLISH_SLOT.md did
+    // A publish whose answer was lost (a timeout after Instagram accepted it) must not post twice: before every
+    // attempt, look for this exact caption among the newest posts and take that id if it is there.
+    if (!dry) { media = await alreadyPosted(ig, item).catch(() => null); if (media) { console.log(`  already on Instagram: ${media}`); break; } }
     try {
       const container = idOf(await execute("INSTAGRAM_POST_IG_USER_MEDIA", { ig_user_id: ig, media_type: "REELS",
         video_url: item.videoUrl, cover_url: item.coverUrl, caption: item.caption, share_to_feed: true }, { dry }));
