@@ -9,30 +9,13 @@
 // compliance gate as the deck (no "you", no clock times, no superlatives, no "?" without two
 // verified figures, the operator named on the frame).
 import { cleanTitle, priceLabel, cashExtras, shortMoney } from "./format.mjs";
-import { hashOf, withArticle, closesParts, cashLine, SITE, FINE_PRINT, wordsFor } from "./native-copy.mjs";
+import { hashOf, withArticle, closesParts, cashLine, SITE, FINE_PRINT, wordsFor, brandOf, CHILD_APPEAL, captionDay, isAd } from "./native-copy.mjs";
+export { brandOf, BRANDS } from "./native-copy.mjs";
 import { GLOBAL, catCfg } from "./config.mjs";
 
 const titleOf = (d) => cleanTitle(d.grand_prize || d.title);
 const operatorOf = (d) => String(d.operators?.name || "").trim() || null;
 const isPence = (label) => /^\d{1,2}p$/.test(label);
-
-// Brands a viewer self-identifies with ("Subaru people"). A prize whose title names none of these
-// simply never gets the identity hook — a guessed brand would be a false statement on screen.
-export const BRANDS = [
-  "Alfa Romeo", "Aston Martin", "Land Rover", "Range Rover", "Louis Vuitton", "Audemars Piguet", "Patek Philippe",
-  "Tag Heuer", "Van Cleef", "Harley-Davidson", "Mercedes", "Porsche", "Ferrari", "Lamborghini", "McLaren", "Bentley",
-  "BMW", "Audi", "VW", "Volkswagen", "Ford", "Subaru", "Nissan", "Toyota", "Honda", "Mazda", "Mini", "Jeep", "Tesla",
-  "Volvo", "Skoda", "Seat", "Cupra", "Kia", "Hyundai", "Vauxhall", "Renault", "Peugeot", "Suzuki", "Ducati",
-  "Kawasaki", "Yamaha", "Triumph", "Rolex", "Omega", "Breitling", "Cartier", "Tudor", "Hermes", "Chanel", "Dior",
-  "Gucci", "Apple", "iPhone", "MacBook", "PlayStation", "Xbox", "Nintendo", "Samsung", "Dyson", "Pokémon", "LEGO",
-];
-// Child-appeal brands never lead a Reel (compliance audit, 21 Oct: a paid draw led by LEGO/Pokémon).
-const CHILD_APPEAL = new Set(["Pokémon", "LEGO", "Nintendo"]);
-
-export function brandOf(title) {
-  const t = ` ${String(title)} `.toLowerCase();
-  return BRANDS.find((b) => t.includes(` ${b.toLowerCase()} `) || t.includes(` ${b.toLowerCase()}-`)) || null;
-}
 
 // The prize name as a hook may say it: the WHOLE name when it is three words or fewer, else null.
 // Never a truncation: "VW Golf R Line" cut to "VW Golf R" names a different car (caught on the
@@ -134,10 +117,10 @@ export function reelStrings(m) {
 export const INDEPENDENCE = "We list draws. We run none. This one is the operator's own.";
 export const TERMS = "Age limits and free-entry routes: in the operator's own terms.";
 
-export function reelCaption({ sel, m, d, now = new Date(), adLabel = false }) {
+export function reelCaption({ sel, m, d, now = new Date(), adLabel = isAd([d]) }) {
   const brand = brandOf(m.title);
-  const head = `${m.price} for ${withArticle(m.title)} 👀`;
-  const prize = [m.title, m.price, `ends ${closesParts(d.draw_date, now).join(" ")}`, `via ${operatorOf(d)}`].join(" · ");
+  const head = `${m.price} for ${withArticle(m.title)}, via ${operatorOf(d)} 👀`;
+  const prize = [m.title, m.price, `ends ${captionDay(d.draw_date, now)}`, `via ${operatorOf(d)}`].join(" · ");
   const cash = m.copy.cash ? m.copy.cash.text : null;
   const who = brand ? `one for the ${brand} lot` : null;
   const tags = [...GLOBAL.fixedHashtags, ...catCfg(sel.slug).hashtags].join(" ");

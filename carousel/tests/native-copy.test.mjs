@@ -168,3 +168,19 @@ test("caption: one line per prize naming its operator, plus the independence lin
   const tags = cap.trim().split("\n").pop().split(" ");
   expect(tags.length).toBe(5);
 });
+
+test("caption line 1 leads with the cheapest ticket, dates every close, and drops the save ask (21 Oct audit)", async () => {
+  const { captionDay, isAd } = await import("../native-copy.mjs");
+  const deck = deckOf();
+  const cap = nativeCaption({ sel: SEL, deck, draws: DRAWS, now: NOW });
+  expect(cap.split("\n")[0]).toBe("20p for a Volkswagen Tiguan R, via 7Days Performance 🔥");
+  expect(cap).not.toMatch(/save this/i);
+  expect(cap).not.toMatch(/—/);
+  expect(cap).not.toMatch(/\bends tomorrow\b/);
+  expect(cap).toContain("one for the Volkswagen lot");
+  expect(captionDay("2026-09-22T21:00:00+01:00", NOW)).toBe("tue 22 sep");
+  expect(isAd(DRAWS)).toBe(false);
+  const ad = DRAWS.map((d, i) => (i ? d : { ...d, operators: { ...d.operators, affiliate_url: "https://op.example/?ref=pdd" } }));
+  expect(isAd(ad)).toBe(true);
+  expect(nativeCaption({ sel: SEL, deck, draws: ad, now: NOW }).startsWith("Ad · ")).toBe(true);
+});

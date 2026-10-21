@@ -47,7 +47,7 @@
       "seoKeyword": "UK car competitions",
       "hashtags": [
         "#ukraffle",
-        "#cargiveaway"
+        "#carcompetition"
       ],
       "valueLineMin": 20000,
       "audioMood": "driving"
@@ -57,7 +57,7 @@
       "visualWeight": 0.4,
       "seoKeyword": "UK cash competitions",
       "hashtags": [
-        "#cashgiveaway",
+        "#cashcompetition",
         "#ukcomps"
       ],
       "valueLineMin": 5000,
@@ -79,7 +79,7 @@
       "visualWeight": 0.92,
       "seoKeyword": "UK tech giveaways",
       "hashtags": [
-        "#techgiveaway",
+        "#techcompetition",
         "#ukcomps"
       ],
       "valueLineMin": 3000,
@@ -101,7 +101,7 @@
       "visualWeight": 0.85,
       "seoKeyword": "UK Pokemon and LEGO competitions",
       "hashtags": [
-        "#collectibles",
+        "#ukcomps",
         "#ukraffle"
       ],
       "valueLineMin": 8000,

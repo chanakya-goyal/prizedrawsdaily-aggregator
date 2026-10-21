@@ -58,7 +58,7 @@ test("the Reel names the operator and its caption carries no em dash, no 'you', 
   expect(m.copy.operator.text).toBe("via LLF Games");
   expect(reelStrings(m).some(([f]) => f === "fine")).toBe(true);
   const cap = reelCaption({ sel, m, d, now });
-  expect(cap).toContain("via LLF Games");
+  expect(cap.split("\n")[0]).toContain("via LLF Games");
   expect(cap).not.toMatch(/—/);
   expect(cap).not.toMatch(/\byou\b/i);
   expect(cap).not.toMatch(/\b(share|tag|send)\b/i);

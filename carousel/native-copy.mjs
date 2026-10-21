@@ -66,6 +66,24 @@ export function withArticle(title) {
   return `${vowelSound ? "an" : "a"} ${t}`;
 }
 
+// Brands a viewer self-identifies with ("Subaru people"). A prize whose title names none of these
+// simply never gets the identity hook — a guessed brand would be a false statement on screen.
+export const BRANDS = [
+  "Alfa Romeo", "Aston Martin", "Land Rover", "Range Rover", "Louis Vuitton", "Audemars Piguet", "Patek Philippe",
+  "Tag Heuer", "Van Cleef", "Harley-Davidson", "Mercedes", "Porsche", "Ferrari", "Lamborghini", "McLaren", "Bentley",
+  "BMW", "Audi", "VW", "Volkswagen", "Ford", "Subaru", "Nissan", "Toyota", "Honda", "Mazda", "Mini", "Jeep", "Tesla",
+  "Volvo", "Skoda", "Seat", "Cupra", "Kia", "Hyundai", "Vauxhall", "Renault", "Peugeot", "Suzuki", "Ducati",
+  "Kawasaki", "Yamaha", "Triumph", "Rolex", "Omega", "Breitling", "Cartier", "Tudor", "Hermes", "Chanel", "Dior",
+  "Gucci", "Apple", "iPhone", "MacBook", "PlayStation", "Xbox", "Nintendo", "Samsung", "Dyson", "Pokémon", "LEGO",
+];
+// Child-appeal brands never lead a Reel (compliance audit, 21 Oct: a paid draw led by LEGO/Pokémon).
+export const CHILD_APPEAL = new Set(["Pokémon", "LEGO", "Nintendo"]);
+
+export function brandOf(title) {
+  const t = ` ${String(title)} `.toLowerCase();
+  return BRANDS.find((b) => t.includes(` ${b.toLowerCase()} `) || t.includes(` ${b.toLowerCase()}-`)) || null;
+}
+
 // "twenty. pence." — only for a pence price, where saying it out loud IS the joke.
 const ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
   "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
@@ -230,17 +248,42 @@ export function deckStrings(deck) {
 // Short and scannable. Every prize line still names the operator (the impersonation lesson), and
 // the independence line and the terms pointer travel with the caption because a caption is read
 // without its images in notifications and shares.
-export const INDEPENDENCE = "We list draws. We run none — each one above is the operator's own.";
+// No em dash (21 Oct audit: one sat in every autopilot caption).
+export const INDEPENDENCE = "We list draws. We run none. Each one above is the operator's own.";
 export const TERMS = "Age limits and free-entry routes: in each operator's own terms.";
 
+// The day a caption names, always as a date: a caption is read after the day it posts, and
+// "ends tomorrow" read on Thursday about a Wednesday post is wrong (21 Oct audit).
+export function captionDay(iso, now = new Date()) {
+  const p = closesParts(iso, now);
+  if (p[0] !== "tomorrow") return p.join(" ");
+  const next = closesParts(iso, new Date(now.getTime() - 86400000));
+  return next.join(" ");
+}
+
+// Any featured operator with a live affiliate link makes the post an ad (ASA/CAP: obviously
+// identifiable). Read from the operator row the selection already carries.
+export const isAd = (draws) => draws.some((d) => /^https?:\/\//.test(String(d.operators?.affiliate_url || "")));
+
+// Line 1 is the caption preview, so it carries the most striking fact of the deck: the cheapest
+// ticket and its prize, with its operator like every prize line (21 Oct audit: the old "5 motors up for grabs" opener never earned a save,
+// and the best price-vs-prize gap sat on line 5). "save this for later" earned 0 saves in 46 posts,
+// so it is gone; a "one for the X lot" line points the post at a kind of person without asking
+// anyone to share, tag or send (Meta's engagement-bait rules target the ask).
 export function nativeCaption({ sel, deck, draws, now = new Date() }) {
-  const head = `${deck.cover.copy.line.text} ${wordsFor(sel.slug).emoji}`;
+  const lead = [...draws].sort((a, b) => Number(a.ticket_price) - Number(b.ticket_price))[0];
+  const { noun, emoji } = wordsFor(sel.slug);
+  const head = lead
+    ? `${priceLabel(lead.ticket_price)} for ${withArticle(titleOf(lead))}, via ${operatorOf(lead)} ${emoji}\n+ more ${noun} below, all closing soon`
+    : `${deck.cover.copy.line.text} ${emoji}`;
   const lines = draws.map((d) => {
     const ex = cashExtras(d.grand_prize, d.title);
     const cash = ex.alternative ? ` (or ${shortMoney(ex.alternative.amount)} cash)` : "";
-    return [`${titleOf(d)}${cash}`, priceLabel(d.ticket_price), `ends ${closesParts(d.draw_date, now).join(" ")}`, operatorOf(d)]
+    return [`${titleOf(d)}${cash}`, priceLabel(d.ticket_price), `ends ${captionDay(d.draw_date, now)}`, operatorOf(d)]
       .filter(Boolean).join(" · ");
   });
+  const brand = lead && brandOf(titleOf(lead));
+  const who = brand && !CHILD_APPEAL.has(brand) ? `one for the ${brand} lot\n\n` : "";
   const tags = [...GLOBAL.fixedHashtags, ...catCfg(sel.slug).hashtags].join(" ");
-  return `${head}\n\n${lines.join("\n")}\n\n${deck.end.copy.prompt.text}\n\n${INDEPENDENCE}\n${TERMS}\nlink in bio\n\n${tags}`;
+  return `${isAd(draws) ? "Ad · " : ""}${head}\n\n${lines.join("\n")}\n\n${who}${INDEPENDENCE}\n${TERMS}\nlink in bio\n\n${tags}`;
 }
