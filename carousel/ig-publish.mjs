@@ -22,7 +22,7 @@
 // Composio's hosted MCP, where the owner's Instagram and Facebook are connected) is REFUSED by the REST API
 // (401 "Missing dashboard JWT", 21 Oct 2026), so it goes through the hosted MCP endpoint instead, calling the
 // same tools via COMPOSIO_MULTI_EXECUTE_TOOL.
-import { GLOBAL, workDir } from "./config.mjs";
+import { GLOBAL, workDir, fbExtraTags } from "./config.mjs";
 import { markStatus, todayLondon, getPost, patchPost } from "./state.mjs";
 import { dueItem, done, release } from "./autopilot/queue.mjs";
 
@@ -31,8 +31,19 @@ const IG_USER = GLOBAL.igUserId;
 const FB_PAGE = GLOBAL.fbPageId;
 
 // Facebook takes a link in the post itself, so "link in bio" (an Instagram-only phrase) goes; the site
-// address already in the caption is what a reader taps. Everything else, operator credit included, stays.
-export const fbCaption = (s) => String(s || "").replace(/,?[ \t]*\n?[ \t]*link in bio\b/gi, "").replace(/\n{3,}/g, "\n\n").trim();
+// address already in the caption is what a reader taps. Facebook does not cap hashtags at five, so the
+// category's extra Facebook tags (config.json global.fbHashtags) join the tag line. Everything else,
+// operator credit included, stays.
+export function fbCaption(s, category = null) {
+  let t = String(s || "").replace(/,?[ \t]*\n?[ \t]*link in bio\b/gi, "").replace(/\n{3,}/g, "\n\n").trim();
+  const extra = category ? fbExtraTags(category) : [];
+  if (!extra.length) return t;
+  const lines = t.split("\n"), i = lines.findLastIndex((l) => /^#\w/.test(l.trim()));
+  const have = i >= 0 ? lines[i].trim().split(/\s+/) : [];
+  const tags = [...new Set([...have, ...extra])].join(" ");
+  if (i >= 0) lines[i] = tags; else lines.push("", tags);
+  return lines.join("\n");
+}
 
 export function authHeaders(key = process.env.COMPOSIO_API_KEY || "") {
   if (!key) throw new Error("COMPOSIO_API_KEY is not set");
@@ -184,7 +195,8 @@ export async function fbCarousel({ dry = false } = {}) {
   const p = await pub();
   const row = dry ? null : await getPost(todayLondon(), "fb_album").catch(() => null);
   if (row?.status === "published") { console.log(`FB ALREADY ${row.fb_post_id}`); return row.fb_post_id; }
-  const res = await execute("FACEBOOK_CREATE_MULTI_PHOTO_POST", { page_id: FB_PAGE, photo_urls: p.urls, message: fbCaption(p.caption) }, { dry });
+  const category = (await Bun.file(`${workDir()}/selection.json`).json().catch(() => ({}))).slug || null;
+  const res = await execute("FACEBOOK_CREATE_MULTI_PHOTO_POST", { page_id: FB_PAGE, photo_urls: p.urls, message: fbCaption(p.caption, category) }, { dry });
   const id = fbIdOf(res);
   if (!id) throw new Error(`facebook multi-photo post returned no id: ${JSON.stringify(res).slice(0, 300)}`);
   if (!dry) await markStatus(todayLondon(), "fb_album", "published", { fb_post_id: String(id) });
@@ -193,7 +205,7 @@ export async function fbCarousel({ dry = false } = {}) {
 }
 
 export async function fbReel(item, { dry = false } = {}) {
-  const res = await execute("FACEBOOK_CREATE_VIDEO_POST", { page_id: FB_PAGE, file_url: item.videoUrl, description: fbCaption(item.caption), published: true }, { dry });
+  const res = await execute("FACEBOOK_CREATE_VIDEO_POST", { page_id: FB_PAGE, file_url: item.videoUrl, description: fbCaption(item.caption, item.category), published: true }, { dry });
   const id = fbIdOf(res);
   if (!id) throw new Error(`facebook video post returned no id: ${JSON.stringify(res).slice(0, 300)}`);
   return String(id);
@@ -263,7 +275,7 @@ if (import.meta.main) {
     else if (cmd === "verify") process.exit((await verify({ dry })) ? 0 : 1);
     else if (cmd === "ping") await ping();
     else if (cmd === "fb-carousel") await fbCarousel({ dry });
-    else if (cmd === "fb-caption") console.log(fbCaption((await pub()).caption));
+    else if (cmd === "fb-caption") console.log(fbCaption((await pub()).caption, (await Bun.file(`${workDir()}/selection.json`).json().catch(() => ({}))).slug));
     else if (cmd === "reel") process.exit(await reel(Bun.argv[3] && !Bun.argv[3].startsWith("--") ? Bun.argv[3] : "auto", { dry }));
     else { console.error("usage: ig-publish.mjs accounts | carousel | story | verify | fb-carousel | fb-caption | reel [auto|reel|reel-2] [--dry-run]"); process.exit(64); }
   } catch (e) {

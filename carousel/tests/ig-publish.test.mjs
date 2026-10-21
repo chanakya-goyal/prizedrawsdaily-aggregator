@@ -36,3 +36,29 @@ test("a consumer-key call's answer is unwrapped from the MCP envelope; a failed 
   expect(() => parseMcpResult(bad, "X")).toThrow(/Media ID is not available/);
   expect(() => parseMcpResult({ error: { message: "nope" } }, "X")).toThrow(/nope/);
 });
+
+test("Facebook gets the Instagram tags plus its own; Instagram's line is untouched elsewhere", async () => {
+  const { fbCaption } = await import("../ig-publish.mjs");
+  const ig = "£20 for a Rolex, via Bonkers Competitions 👀\n\nmore on prizedrawsdaily.co.uk, link in bio\n\n#prizedrawsdaily #ukcompetition #ukprizedraws #luxury #ukraffle";
+  const fb = fbCaption(ig, "luxury");
+  const tags = fb.split("\n").pop().split(" ");
+  expect(tags.slice(0, 5)).toEqual(["#prizedrawsdaily", "#ukcompetition", "#ukprizedraws", "#luxury", "#ukraffle"]);
+  expect(tags).toContain("#luxurycomps");
+  expect(new Set(tags).size).toBe(tags.length);
+  expect(tags.length).toBeLessThanOrEqual(12);
+  expect(fb).not.toMatch(/link in bio/);
+  expect(fbCaption(ig)).toBe(fbCaption(ig, null)); // no category: no extra tags
+});
+
+test("every category's Facebook tags pass the caption gate and the config check", async () => {
+  const { fbCaption } = await import("../ig-publish.mjs");
+  const { CFG, GLOBAL, configProblems } = await import("../config.mjs");
+  const c = await import("../compliance.mjs");
+  expect(configProblems()).toEqual([]);
+  for (const slug of Object.keys(CFG.categories)) {
+    const ig = `£1 for a prize, via Op 👀\n\n${[...GLOBAL.fixedHashtags, ...CFG.categories[slug].hashtags].join(" ")}`;
+    const hits = c.checkUnit(fbCaption(ig, slug), { surface: "caption", bannedPhrases: GLOBAL.bannedPhrases, operatorNames: ["Op"],
+      facts: c.factsTable({ drawsRendered: 1, prices: ["1"] }) }).filter((h) => h.class === c.CLASS.A);
+    expect({ slug, hits: hits.map((h) => h.predicate) }).toEqual({ slug, hits: [] });
+  }
+});

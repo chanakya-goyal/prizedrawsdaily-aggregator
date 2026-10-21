@@ -41,6 +41,9 @@ export function catCfg(slug) {
 // count and the cover's proof line are all derived from what actually RENDERED.
 export const drawsPerDeck = () => Number(GLOBAL.drawsPerDeck);
 
+// Facebook's extra tags for a category: the shared set, then the category's own.
+export const fbExtraTags = (slug) => [...(GLOBAL.fbHashtags?.["*"] || []), ...(GLOBAL.fbHashtags?.[slug] || [])];
+
 export function workDir() {
   if (process.env.PDD_DIR) return process.env.PDD_DIR;
   return GLOBAL.workDir.replace(/^~/, process.env.HOME || "/Users/chanakyagoyal");
@@ -66,6 +69,15 @@ export function configProblems() {
       if (!/^#[a-z0-9]+$/.test(h)) problems.push(`${slug}: hashtag ${h} is not lowercase alphanumeric`);
       if (GLOBAL.fixedHashtags?.includes(h)) problems.push(`${slug}: hashtag ${h} collides with a global fixed tag`);
     }
+  }
+  for (const [k, tags] of Object.entries(GLOBAL.fbHashtags || {})) {
+    if (k === "_comment") continue;
+    if (k !== "*" && !CFG.categories[k]) problems.push(`fbHashtags: ${k} is not a category`);
+    for (const h of tags) if (!/^#[a-z0-9]+$/.test(h)) problems.push(`fbHashtags.${k}: ${h} is not lowercase alphanumeric`);
+  }
+  for (const slug of slugs) {
+    const n = new Set([...GLOBAL.fixedHashtags, ...CFG.categories[slug].hashtags, ...fbExtraTags(slug)]).size;
+    if (n > 12) problems.push(`${slug}: ${n} Facebook hashtags, over the 12 cap`);
   }
   if (!(drawsPerDeck() >= 4)) problems.push(`global.drawsPerDeck ${GLOBAL.drawsPerDeck} below the 4-draw floor`);
   return problems;
