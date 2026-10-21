@@ -1,0 +1,85 @@
+# Posts the Instagram Reel that the lunchtime run queued for this UK hour: no Mac, no Claude, one script.
+#
+# carousel/ig-publish.mjs reel asks carousel/autopilot/queue.mjs what is due (the carousel_posts row the lunchtime
+# run wrote: slot window, not yet posted, draw still open), then makes the same three Instagram calls the Mac's
+# slot run made, marks the row published and reads the post back. It posts exactly the video, cover and caption
+# that were built and checked at lunchtime.
+#
+# ON/OFF: scheduled runs do nothing unless the repo variable AUTOPOST_CLOUD is "1" (turn the Mac's slot job off
+# at the same time; carousel/AUTOPILOT.md, "Moving to the cloud"). A manual start is a dry run unless unticked.
+#
+# Schedule (UTC): three starts per slot so one lands inside each UK window in summer and in winter, with a
+# spare in case GitHub starts one late. A start outside the window does nothing; a start after it unqueues a
+# Reel that never posted (status skipped), exactly like the Mac.
+#   evening slot, 17:30–19:30 UK: 16:40, 17:40, 18:40 UTC
+#   morning slot, 07:30–09:30 UK: 06:40, 07:40, 08:40 UTC
+name: Instagram Reel slots
+
+on:
+  schedule:
+    - cron: "40 16 * * *"
+    - cron: "40 17 * * *"
+    - cron: "40 18 * * *"
+    - cron: "40 6 * * *"
+    - cron: "40 7 * * *"
+    - cron: "40 8 * * *"
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: "Which slot (auto = whichever is open at this UK hour)"
+        type: choice
+        options: [auto, reel, reel-2]
+        default: auto
+      dry_run:
+        description: "Dry run: say what is due, post nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+concurrency:
+  group: instagram-reel-slots
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
+      COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+      SLOT: ${{ github.event_name == 'workflow_dispatch' && inputs.slot || 'auto' }}
+      DRY: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '1' || '0' }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+
+      - name: Post the Reel that is due
+        run: |
+          if [ "${{ github.event_name }}" = schedule ] && [ "${{ vars.AUTOPOST_CLOUD }}" != "1" ]; then echo "cloud autopilot is off (AUTOPOST_CLOUD != 1): the Mac posts"; exit 0; fi
+          if [ "${{ vars.AUTOPOST_OFF }}" = "1" ] && [ "$DRY" != 1 ]; then echo "AUTOPOST_OFF=1: paused"; exit 0; fi
+          for v in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY COMPOSIO_API_KEY; do
+            [ -n "${!v}" ] || { gh workflow run autopost-watchdog.yml -f reason="Reel slot could not start: missing secret $v" || true; exit 1; }
+          done
+          set +e
+          out=$(bun carousel/ig-publish.mjs reel "$SLOT" $([ "$DRY" = 1 ] && echo --dry-run) 2>&1); rc=$?
+          set -e
+          echo "$out"
+          [ $rc -eq 3 ] && exit 0            # nothing due at this hour: not an error, no report
+          day=$(TZ=Europe/London date +%Y-%m-%d)
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          status=$([ $rc -eq 0 ] && echo PUBLISHED || echo FAILED); [ "$DRY" = 1 ] && status="$status (dry run)"
+          log=$(gh issue list --label autopost-log --state open --json number --jq '.[0].number')
+          [ -n "$log" ] && printf '**%s · Reel · %s** (cloud) · [run](%s)\n\n```\n%s\n```\n' "$day" "$status" "$run_url" "$(echo "$out" | tail -6)" | gh issue comment "$log" --body-file - || true
+          if [ $rc -ne 0 ]; then
+            gh workflow run autopost-watchdog.yml -f reason="Reel slot FAILED: $(echo "$out" | tail -2 | tr '\n' ' ' | cut -c1-220)" || true
+            exit 1
+          fi

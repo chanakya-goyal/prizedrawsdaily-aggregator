@@ -78,7 +78,7 @@ main() {
   mkdir -p "$PDD_DIR/out"; rm -f "$PDD_DIR/out/REPORT.md"
   echo "claude: start"
   # 90-minute ceiling (macOS has no `timeout`): perl's alarm kills a hung run.
-  { echo "$MODE"; echo "PDD_DIR=$PDD_DIR  (the work directory; already set in your environment)"; echo; cat carousel/autopilot/BOOTSTRAP.txt; } | perl -e 'alarm shift; exec @ARGV' 5400 \
+  { echo "HOST: the owner's Mac (Composio MCP)."; echo "$MODE"; echo "PDD_DIR=$PDD_DIR  (the work directory; already set in your environment)"; echo; cat carousel/autopilot/BOOTSTRAP.txt; } | perl -e 'alarm shift; exec @ARGV' 5400 \
     claude -p --model opus --permission-mode dontAsk --add-dir "$PDD_DIR" \
       --allowedTools "$ALLOW" --disallowedTools "$DENY" --output-format json \
       > "$LOGDIR/$DAY-claude.json"

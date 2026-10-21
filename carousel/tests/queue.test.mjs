@@ -56,3 +56,16 @@ test("the queued Reel's row passes carousel_posts' arm_source check (migrations/
   expect(row.arm_source === null || allowed.includes(row.arm_source)).toBe(true);
   expect(row.format).toBe("reel");
 });
+
+test("a cloud run, with no queue folder, rebuilds the queued Reel from its carousel_posts row", async () => {
+  const { itemFromRow, buildDateFor } = await import("../autopilot/queue.mjs");
+  const row = { date: "2026-10-21", format: "reel-2", status: "assets_uploaded", category: "luxury", draw_slugs: ["x"], caption: "c", asset_urls: ["v.mp4", "c.jpg"] };
+  const item = itemFromRow(row, "reel-2");
+  expect(item).toMatchObject({ slot: "reel-2", date: "2026-10-21", hero: "x", videoUrl: "v.mp4", coverUrl: "c.jpg", caption: "c" });
+  expect(item.from).toBe("2026-10-22T06:30:00.000Z");                     // next morning, BST
+  expect(itemFromRow({ ...row, status: "published" }, "reel-2")).toBe(null); // never re-post
+  expect(itemFromRow({ ...row, asset_urls: [] }, "reel-2")).toBe(null);
+  // reel posts the day it was built; reel-2 the morning after
+  expect(buildDateFor("reel", new Date("2026-10-21T17:00:00Z"))).toBe("2026-10-21");
+  expect(buildDateFor("reel-2", new Date("2026-10-22T07:00:00Z"))).toBe("2026-10-21");
+});

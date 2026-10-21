@@ -85,7 +85,22 @@ export const slotForNow = (now = new Date()) => {
 
 // ── I/O ───────────────────────────────────────────────────────────────────────────────────────
 const qPath = (slot) => `${QUEUE_DIR}/${slot}.json`;
-const readItem = (slot) => Bun.file(qPath(slot)).json().catch(() => null);
+// The queued item: the Mac's local file, else rebuilt from the carousel_posts row `add` wrote. A cloud run
+// starts on a fresh machine with no queue folder, so the row is what carries a Reel from the lunchtime run
+// to its slot. reel is built the same London day as its slot; reel-2 the day before.
+export function itemFromRow(row, slot) {
+  if (!row || row.status !== "assets_uploaded" || !Array.isArray(row.asset_urls) || row.asset_urls.length < 2) return null;
+  const win = slotWindow(slot, row.date);
+  return { slot, date: row.date, category: row.category, hero: row.draw_slugs?.[0], videoUrl: row.asset_urls[0], coverUrl: row.asset_urls[1],
+    caption: row.caption, from: win.from.toISOString(), to: win.to.toISOString(), igUserId: GLOBAL.igUserId };
+}
+export const buildDateFor = (slot, now = new Date()) =>
+  addDays(now.toLocaleDateString("en-CA", { timeZone: "Europe/London" }), -SLOTS[slot].dayOffset);
+async function readItem(slot, now = new Date()) {
+  const local = await Bun.file(qPath(slot)).json().catch(() => null);
+  if (local) return local;
+  return itemFromRow(await getPost(buildDateFor(slot, now), slot).catch(() => null), slot);
+}
 const KEY = () => process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 async function upload(path, buf, contentType) {
@@ -144,26 +159,34 @@ async function add(slot) {
   console.log(`✓ ${slot} queued for ${win.from.toISOString()} → ${win.to.toISOString()}: "${meta.hook}" (${d.slug})`);
 }
 
-async function due(which) {
+// What may post now: { ok, slot, item } or { ok: false, why }. A missed or closed item is unqueued here,
+// except in a dry run, which changes nothing.
+export async function dueItem(which, { dry = false } = {}) {
   const slot = which === "auto" || !which ? slotForNow() : which;
-  if (!slot) { console.log("no slot at this UK hour"); return 1; }
+  if (!slot) return { ok: false, why: "no slot at this UK hour" };
   const item = await readItem(slot);
-  if (!item) { console.log(`${slot}: nothing queued`); return 1; }
+  if (!item) return { ok: false, slot, why: `${slot}: nothing queued` };
   const row = await getPost(item.date, slot).catch(() => null);
   const draw = await readDraw(item.hero).catch((e) => { console.error(`⚠ ${e.message}`); return null; });
   const v = dueVerdict(item, { row, draw });
   if (!v.ok) {
-    console.log(`${slot}: ${v.why}`);
-    if (v.done) await rm(qPath(slot), { force: true });
-    if (v.expired) await drop(slot, v.why);
-    return 1;
+    if (v.done && !dry) await rm(qPath(slot), { force: true });
+    if (v.expired && !dry) await drop(slot, v.why);
+    return { ok: false, slot, why: `${slot}: ${v.why}` };
   }
+  return { ok: true, slot, item };
+}
+
+async function due(which) {
+  const r = await dueItem(which);
+  if (!r.ok) { console.log(r.why); return 1; }
+  const { slot, item } = r;
   console.log(`SLOT ${slot} ${item.date}`);
   console.log(JSON.stringify({ slot, igUserId: item.igUserId, video_url: item.videoUrl, cover_url: item.coverUrl, caption: item.caption, date: item.date, hero: item.hero }, null, 2));
   return 0;
 }
 
-async function done(slot, ig) {
+export async function done(slot, ig) {
   const item = await readItem(slot);
   if (!item) throw new Error(`${slot}: nothing queued`);
   if (!/^\d{6,}$/.test(String(ig || ""))) throw new Error("done needs --ig <published media id>");
@@ -175,7 +198,7 @@ async function done(slot, ig) {
   await p.exited;
 }
 
-async function drop(slot, reason = "dropped") {
+export async function drop(slot, reason = "dropped") {
   const item = await readItem(slot);
   if (item) await markStatus(item.date, slot, "skipped").catch((e) => console.error(`⚠ ${e.message}`));
   await rm(qPath(slot), { force: true });
