@@ -42,6 +42,29 @@ export async function markStatus(date, format, status, patch = {}) {
   return rows;
 }
 
+// Two machines (the Mac and GitHub Actions) may try to post the same queued Reel. Exactly one wins this
+// conditional update: assets_uploaded → posting, or a STALE posting claim (its runner died) taken over.
+// Returns true for the winner. A failed post hands the row back with releasePost.
+export async function claimPost(date, format, ttlMs = 25 * 60e3) {
+  const stale = encodeURIComponent(new Date(Date.now() - ttlMs).toISOString());
+  const rows = await rest(`carousel_posts?date=eq.${date}&format=eq.${format}&or=(status.eq.assets_uploaded,and(status.eq.posting,updated_at.lt.${stale}))`, {
+    method: "PATCH", headers: hdrs({ Prefer: "return=representation" }), body: JSON.stringify({ status: "posting", updated_at: new Date().toISOString() }),
+  }, "claimPost");
+  return Array.isArray(rows) && rows.length === 1;
+}
+export async function releasePost(date, format) {
+  await rest(`carousel_posts?date=eq.${date}&format=eq.${format}&status=eq.posting`, {
+    method: "PATCH", headers: hdrs(), body: JSON.stringify({ status: "assets_uploaded", updated_at: new Date().toISOString() }),
+  }, "releasePost");
+}
+
+// Set columns on a row without touching its status (e.g. the Facebook id of an already-published Reel).
+export async function patchPost(date, format, patch) {
+  await rest(`carousel_posts?date=eq.${date}&format=eq.${format}`, {
+    method: "PATCH", headers: hdrs(), body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }),
+  }, "patchPost");
+}
+
 export async function getPost(date, format) {
   const rows = await rest(`carousel_posts?date=eq.${date}&format=eq.${format}&limit=1`, { headers: hdrs() }, "getPost");
   return rows?.[0] || null;

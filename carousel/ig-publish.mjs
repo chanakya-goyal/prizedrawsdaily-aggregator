@@ -7,6 +7,9 @@
 //   bun carousel/ig-publish.mjs reel [auto|reel|reel-2]
 //                                             the queued Reel due at this UK hour (autopilot/queue.mjs) →
 //                                             REELS container → publish → mark done → read it back
+//   bun carousel/ig-publish.mjs fb-carousel   today's slides as ONE Facebook Page multi-photo post → fb_album row
+//   bun carousel/ig-publish.mjs fb-caption    print the Facebook version of today's caption
+//   A posted Reel is also posted to the Facebook Page (video post) right after Instagram.
 //   add --dry-run to print the calls without making them
 //
 // WHY A SCRIPT. The daily run used to publish by calling Composio's MCP tools from inside a Claude session.
@@ -17,11 +20,16 @@
 // Keys: a project key (ak_…) goes in `x-api-key`; a consumer key (ck_…, the project behind Composio's hosted
 // MCP) goes in `x-consumer-api-key`. Accounts connected through the MCP live in the consumer project.
 import { GLOBAL, workDir } from "./config.mjs";
-import { markStatus, todayLondon } from "./state.mjs";
-import { dueItem, done } from "./autopilot/queue.mjs";
+import { markStatus, todayLondon, getPost, patchPost } from "./state.mjs";
+import { dueItem, done, release } from "./autopilot/queue.mjs";
 
 export const BASE = "https://backend.composio.dev/api/v3.1";
 const IG_USER = GLOBAL.igUserId;
+const FB_PAGE = GLOBAL.fbPageId;
+
+// Facebook takes a link in the post itself, so "link in bio" (an Instagram-only phrase) goes; the site
+// address already in the caption is what a reader taps. Everything else, operator credit included, stays.
+export const fbCaption = (s) => String(s || "").replace(/,?[ \t]*\n?[ \t]*link in bio\b/gi, "").replace(/\n{3,}/g, "\n\n").trim();
 
 export function authHeaders(key = process.env.COMPOSIO_API_KEY || "") {
   if (!key) throw new Error("COMPOSIO_API_KEY is not set");
@@ -121,6 +129,29 @@ export async function story({ dry = false } = {}) {
 
 const norm = (s) => String(s || "").replace(/\s+/g, " ").trim();
 
+const fbIdOf = (res) => { const d = res?.data ?? res; return d?.post_id ?? d?.id ?? d?.data?.post_id ?? d?.data?.id ?? null; };
+
+// The carousel's slides as one Facebook multi-photo post. Facebook is a second home: a failure here is
+// reported, never a reason to hold Instagram back.
+export async function fbCarousel({ dry = false } = {}) {
+  const p = await pub();
+  const row = dry ? null : await getPost(todayLondon(), "fb_album").catch(() => null);
+  if (row?.status === "published") { console.log(`FB ALREADY ${row.fb_post_id}`); return row.fb_post_id; }
+  const res = await execute("FACEBOOK_CREATE_MULTI_PHOTO_POST", { page_id: FB_PAGE, photo_urls: p.urls, message: fbCaption(p.caption) }, { dry });
+  const id = fbIdOf(res);
+  if (!id) throw new Error(`facebook multi-photo post returned no id: ${JSON.stringify(res).slice(0, 300)}`);
+  if (!dry) await markStatus(todayLondon(), "fb_album", "published", { fb_post_id: String(id) });
+  console.log(`FB PUBLISHED ${id}`);
+  return id;
+}
+
+export async function fbReel(item, { dry = false } = {}) {
+  const res = await execute("FACEBOOK_CREATE_VIDEO_POST", { page_id: FB_PAGE, file_url: item.videoUrl, description: fbCaption(item.caption), published: true }, { dry });
+  const id = fbIdOf(res);
+  if (!id) throw new Error(`facebook video post returned no id: ${JSON.stringify(res).slice(0, 300)}`);
+  return String(id);
+}
+
 // One queued Reel. queue.mjs decides whether it is due (slot window, posted already, draw still open), so
 // this posts exactly what the lunchtime run built and checked: its video, cover and caption byte for byte.
 // Exit codes for the workflow: 0 posted, 3 nothing due (not an error), 1 failed.
@@ -138,9 +169,15 @@ export async function reel(which = "auto", { dry = false } = {}) {
       media = await publishContainer(container, dry);
     } catch (e) { lastErr = e; console.error(`  attempt ${attempt}: ${e.message.slice(0, 300)}`); }
   }
-  if (!media) throw new Error(`${slot} not published: ${lastErr?.message?.slice(0, 300)}`);
-  if (dry) { console.log(`[dry] would publish ${slot} (${item.hero})`); return 0; }
+  if (!media) {
+    if (!dry) await release(slot).catch(() => {});   // hand it back: the Mac or a later start may still make it
+    throw new Error(`${slot} not published: ${lastErr?.message?.slice(0, 300)}`);
+  }
+  if (dry) { await fbReel(item, { dry }); console.log(`[dry] would publish ${slot} (${item.hero}) to Instagram and Facebook`); return 0; }
   await done(slot, media);
+  // Facebook after Instagram, once: the claim means only this runner reaches here for this Reel.
+  try { const fb = await fbReel(item); await patchPost(item.date, slot, { fb_post_id: fb }); console.log(`FB PUBLISHED ${slot} ${fb}`); }
+  catch (e) { console.error(`FB FAILED ${slot}: ${e.message.slice(0, 300)}`); }
   const res = await execute("INSTAGRAM_GET_IG_USER_MEDIA", { ig_user_id: ig, limit: 3, fields: "id,media_product_type,permalink,timestamp" });
   const items = res?.data?.data ?? res?.data?.response_data?.data ?? res?.data ?? [];
   const mine = (Array.isArray(items) ? items : []).find((m) => String(m.id) === String(media));
@@ -166,8 +203,10 @@ if (import.meta.main) {
     else if (cmd === "carousel") await carousel({ dry });
     else if (cmd === "story") await story({ dry });
     else if (cmd === "verify") process.exit((await verify({ dry })) ? 0 : 1);
+    else if (cmd === "fb-carousel") await fbCarousel({ dry });
+    else if (cmd === "fb-caption") console.log(fbCaption((await pub()).caption));
     else if (cmd === "reel") process.exit(await reel(Bun.argv[3] && !Bun.argv[3].startsWith("--") ? Bun.argv[3] : "auto", { dry }));
-    else { console.error("usage: ig-publish.mjs accounts | carousel | story | verify | reel [auto|reel|reel-2] [--dry-run]"); process.exit(64); }
+    else { console.error("usage: ig-publish.mjs accounts | carousel | story | verify | fb-carousel | fb-caption | reel [auto|reel|reel-2] [--dry-run]"); process.exit(64); }
   } catch (e) {
     console.error(`✗ ${e.message}`);
     process.exit(1);

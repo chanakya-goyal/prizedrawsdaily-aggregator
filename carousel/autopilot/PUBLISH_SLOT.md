@@ -7,7 +7,9 @@ and that its draw is still open.
 - Post exactly this item: its `video_url`, its `cover_url` and its `caption`, byte for byte. Do not
   edit, shorten or add to the caption.
 - Use Composio only through `COMPOSIO_MULTI_EXECUTE_TOOL` (parameter name `tools`), and only for the
-  three INSTAGRAM_* tools below. Never touch Facebook, comments, DMs, likes or follows.
+  three INSTAGRAM_* tools below. Never touch comments, DMs, likes or follows. (This is the Mac's fallback
+  route when it has no COMPOSIO_API_KEY; the script route, `bun carousel/ig-publish.mjs reel`, also posts the
+  Reel to Facebook.)
 - Bash is allowed only as single commands of the form `bun carousel/autopilot/queue.mjs …`. A refused
   command applies to that command only; rephrase it and carry on.
 - Never print or echo a secret.

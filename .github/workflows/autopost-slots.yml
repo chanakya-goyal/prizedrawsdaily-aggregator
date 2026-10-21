@@ -5,24 +5,27 @@
 # slot run made, marks the row published and reads the post back. It posts exactly the video, cover and caption
 # that were built and checked at lunchtime.
 #
-# ON/OFF: scheduled runs do nothing unless the repo variable AUTOPOST_CLOUD is "1" (turn the Mac's slot job off
-# at the same time; carousel/AUTOPILOT.md, "Moving to the cloud"). A manual start is a dry run unless unticked.
+# THE MAC'S BACKUP. The Mac posts first (its slot job fires 17:45 and 18:45 UK, 07:45 and 08:45 UK); this
+# fires LATER in the same window and posts only what the Mac did not. Both claim the row before posting
+# (state.mjs claimPost), so the two can never post the same Reel. Scheduled runs need the repo variable
+# AUTOPOST_CLOUD set to "backup" (or "1"); AUTOPOST_OFF=1 pauses. A manual start is a dry run unless unticked.
 #
-# Schedule (UTC): three starts per slot so one lands inside each UK window in summer and in winter, with a
-# spare in case GitHub starts one late. A start outside the window does nothing; a start after it unqueues a
-# Reel that never posted (status skipped), exactly like the Mac.
-#   evening slot, 17:30–19:30 UK: 16:40, 17:40, 18:40 UTC
-#   morning slot, 07:30–09:30 UK: 06:40, 07:40, 08:40 UTC
+# Schedule (UTC), chosen so two starts land in each UK window, after the Mac's, in summer AND winter. A start
+# outside a window does nothing; one after it unqueues a Reel that never posted (status skipped).
+#   evening slot, 17:30–19:30 UK: 17:20, 18:00, 18:20, 19:00 UTC
+#   morning slot, 07:30–09:30 UK: 07:20, 08:00, 08:20, 09:00 UTC
 name: Instagram Reel slots
 
 on:
   schedule:
-    - cron: "40 16 * * *"
-    - cron: "40 17 * * *"
-    - cron: "40 18 * * *"
-    - cron: "40 6 * * *"
-    - cron: "40 7 * * *"
-    - cron: "40 8 * * *"
+    - cron: "20 17 * * *"
+    - cron: "0 18 * * *"
+    - cron: "20 18 * * *"
+    - cron: "0 19 * * *"
+    - cron: "20 7 * * *"
+    - cron: "0 8 * * *"
+    - cron: "20 8 * * *"
+    - cron: "0 9 * * *"
   workflow_dispatch:
     inputs:
       slot:
@@ -64,7 +67,7 @@ jobs:
 
       - name: Post the Reel that is due
         run: |
-          if [ "${{ github.event_name }}" = schedule ] && [ "${{ vars.AUTOPOST_CLOUD }}" != "1" ]; then echo "cloud autopilot is off (AUTOPOST_CLOUD != 1): the Mac posts"; exit 0; fi
+          case "${{ vars.AUTOPOST_CLOUD }}" in 1|backup) ;; *) [ "${{ github.event_name }}" = schedule ] && { echo "cloud backup is off (AUTOPOST_CLOUD unset): the Mac posts"; exit 0; } ;; esac
           if [ "${{ vars.AUTOPOST_OFF }}" = "1" ] && [ "$DRY" != 1 ]; then echo "AUTOPOST_OFF=1: paused"; exit 0; fi
           for v in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY COMPOSIO_API_KEY; do
             [ -n "${!v}" ] || { gh workflow run autopost-watchdog.yml -f reason="Reel slot could not start: missing secret $v" || true; exit 1; }

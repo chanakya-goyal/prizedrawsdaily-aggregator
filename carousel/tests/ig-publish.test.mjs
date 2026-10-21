@@ -17,3 +17,12 @@ test("the Graph id is found at any of Composio's wrapping depths", () => {
 test("calls go to the v3.1 API, where an omitted toolkit version means latest", () => {
   expect(BASE).toBe("https://backend.composio.dev/api/v3.1");
 });
+
+test("the Facebook caption drops the Instagram-only 'link in bio' and keeps everything else", async () => {
+  const { fbCaption } = await import("../ig-publish.mjs");
+  const reel = "£20 for a Rolex, via Bonkers Competitions 👀\n\nmore luxury prizes closing soon on prizedrawsdaily.co.uk, link in bio\n\nWe list draws. We run none.\n\n#ukcompetition";
+  expect(fbCaption(reel)).toBe("£20 for a Rolex, via Bonkers Competitions 👀\n\nmore luxury prizes closing soon on prizedrawsdaily.co.uk\n\nWe list draws. We run none.\n\n#ukcompetition");
+  const deck = "head\n\nlines\n\nwho\nT&Cs on each site\nlink in bio\n\n#tags";
+  expect(fbCaption(deck)).toBe("head\n\nlines\n\nwho\nT&Cs on each site\n\n#tags");
+  expect(fbCaption(reel)).toContain("via Bonkers Competitions");
+});

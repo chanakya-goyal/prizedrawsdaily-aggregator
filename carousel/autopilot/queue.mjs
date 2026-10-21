@@ -18,7 +18,7 @@
 // The queue lives OUTSIDE $PDD_DIR: plan.mjs archives everything in the work dir each morning.
 import { mkdir, rm } from "node:fs/promises";
 import { GLOBAL, workDir } from "../config.mjs";
-import { upsertPost, markStatus, getPost, todayLondon } from "../state.mjs";
+import { upsertPost, markStatus, getPost, todayLondon, claimPost, releasePost } from "../state.mjs";
 import { supabaseUrl } from "../../lib/sb.mjs";
 import { uploadHeaders } from "../../lib/storage.mjs";
 import { withRetry } from "../util.mjs";
@@ -89,7 +89,7 @@ const qPath = (slot) => `${QUEUE_DIR}/${slot}.json`;
 // starts on a fresh machine with no queue folder, so the row is what carries a Reel from the lunchtime run
 // to its slot. reel is built the same London day as its slot; reel-2 the day before.
 export function itemFromRow(row, slot) {
-  if (!row || row.status !== "assets_uploaded" || !Array.isArray(row.asset_urls) || row.asset_urls.length < 2) return null;
+  if (!row || !["assets_uploaded", "posting"].includes(row.status) || !Array.isArray(row.asset_urls) || row.asset_urls.length < 2) return null;
   const win = slotWindow(slot, row.date);
   return { slot, date: row.date, category: row.category, hero: row.draw_slugs?.[0], videoUrl: row.asset_urls[0], coverUrl: row.asset_urls[1],
     caption: row.caption, from: win.from.toISOString(), to: win.to.toISOString(), igUserId: GLOBAL.igUserId };
@@ -160,7 +160,8 @@ async function add(slot) {
 }
 
 // What may post now: { ok, slot, item } or { ok: false, why }. A missed or closed item is unqueued here,
-// except in a dry run, which changes nothing.
+// except in a dry run, which changes nothing. A live caller also CLAIMS the row (state.mjs claimPost), so
+// when the Mac and the cloud backup both start, only one of them posts.
 export async function dueItem(which, { dry = false } = {}) {
   const slot = which === "auto" || !which ? slotForNow() : which;
   if (!slot) return { ok: false, why: "no slot at this UK hour" };
@@ -174,11 +175,12 @@ export async function dueItem(which, { dry = false } = {}) {
     if (v.expired && !dry) await drop(slot, v.why);
     return { ok: false, slot, why: `${slot}: ${v.why}` };
   }
+  if (!dry && !(await claimPost(item.date, slot))) return { ok: false, slot, why: `${slot}: another runner is posting it` };
   return { ok: true, slot, item };
 }
 
 async function due(which) {
-  const r = await dueItem(which);
+  const r = await dueItem(which, { dry: process.env.AUTOPOST_DRY_RUN === "1" }); // run.sh exports it
   if (!r.ok) { console.log(r.why); return 1; }
   const { slot, item } = r;
   console.log(`SLOT ${slot} ${item.date}`);
@@ -198,6 +200,13 @@ export async function done(slot, ig) {
   await p.exited;
 }
 
+// A post that failed hands its claim back at once, so the other runner can try inside the same window.
+export async function release(slot) {
+  const item = await readItem(slot);
+  if (item) await releasePost(item.date, slot);
+  console.log(`✓ ${slot} released`);
+}
+
 export async function drop(slot, reason = "dropped") {
   const item = await readItem(slot);
   if (item) await markStatus(item.date, slot, "skipped").catch((e) => console.error(`⚠ ${e.message}`));
@@ -212,6 +221,7 @@ if (import.meta.main) {
     else if (cmd === "due") process.exit(await due(slot));
     else if (cmd === "done") await done(slot, rest[rest.indexOf("--ig") + 1]);
     else if (cmd === "drop") await drop(slot, rest.join(" ") || "dropped");
+    else if (cmd === "release") await release(slot);
     else if (cmd === "published") process.exit((await getPost(rest[0] || todayLondon(), slot))?.status === "published" ? 0 : 1);
     else { console.error("usage: queue.mjs add <slot> | due [auto|<slot>] | done <slot> --ig ID | drop <slot> <reason>"); process.exit(64); }
   } catch (e) { console.error(`✗ ${e.message}`); process.exit(1); }
