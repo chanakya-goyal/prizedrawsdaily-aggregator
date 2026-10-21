@@ -62,3 +62,30 @@ test("every category's Facebook tags pass the caption gate and the config check"
     expect({ slug, hits: hits.map((h) => h.predicate) }).toEqual({ slug, hits: [] });
   }
 });
+
+test("Facebook posts carry a tracked link under the prize block: a Reel's draw page, a carousel's category page", async () => {
+  const { fbCaption } = await import("../ig-publish.mjs");
+  const { postLink } = await import("../links.mjs");
+  const reelLink = postLink({ source: "facebook", kind: "reel", category: "luxury", hero: "fortnum-and-mason-beauty-advent-croc-comps", date: "2026-10-21" });
+  expect(reelLink).toBe("https://prizedrawsdaily.co.uk/draws/fortnum-and-mason-beauty-advent-croc-comps?utm_source=facebook&utm_medium=social&utm_campaign=reel&utm_content=2026-10-21");
+  const reel = "£1 for Fortnum & Mason Beauty Advent, via Croc Comps 👀\n\nFortnum & Mason Beauty Advent · £1 · ends sun 25 oct · via Croc Comps\n\nmore luxury prizes closing soon on prizedrawsdaily.co.uk, link in bio\n\nWe list draws. We run none.\n\n#prizedrawsdaily #luxury";
+  const fb = fbCaption(reel, "luxury", reelLink);
+  expect(fb.split("\n\n")[1]).toBe(`Fortnum & Mason Beauty Advent · £1 · ends sun 25 oct · via Croc Comps\n👉 ${reelLink}`);
+  expect(fbCaption(fb, "luxury", reelLink).split(reelLink).length).toBe(2); // never twice
+
+  const deckLink = postLink({ source: "facebook", kind: "carousel", category: "car-draws", date: "2026-10-22" });
+  expect(deckLink).toBe("https://prizedrawsdaily.co.uk/category/car-draws?utm_source=facebook&utm_medium=social&utm_campaign=carousel&utm_content=2026-10-22");
+  const deck = "head ✨\n+ more below\n\nA · £1 · Op\nB · £2 · Op\n\nsave this for later 📌\n\nWe list draws.\nlink in bio\n\n#tags";
+  expect(fbCaption(deck, null, deckLink).split("\n\n")[1]).toBe(`A · £1 · Op\nB · £2 · Op\n👉 ${deckLink}`);
+  // a short caption still gets the link, above the tags
+  expect(fbCaption("head\n\n#tags", null, deckLink)).toBe(`head\n👉 ${deckLink}\n\n#tags`);
+  // no link given: the caption is exactly what it was
+  expect(fbCaption(deck)).not.toContain("👉");
+});
+
+test("a category without a site page, or a Reel without a draw, links to the home page", async () => {
+  const { postLink, trackedUrl } = await import("../links.mjs");
+  expect(postLink({ source: "facebook", kind: "carousel", category: "nope" })).toBe("https://prizedrawsdaily.co.uk/?utm_source=facebook&utm_medium=social&utm_campaign=carousel");
+  expect(postLink({ source: "pinterest", kind: "reel", category: "luxury" })).toBe("https://prizedrawsdaily.co.uk/category/luxury?utm_source=pinterest&utm_medium=social&utm_campaign=reel");
+  expect(() => trackedUrl("/")).toThrow(/source/);
+});

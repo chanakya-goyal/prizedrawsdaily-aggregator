@@ -23,6 +23,7 @@
 // (401 "Missing dashboard JWT", 21 Oct 2026), so it goes through the hosted MCP endpoint instead, calling the
 // same tools via COMPOSIO_MULTI_EXECUTE_TOOL.
 import { GLOBAL, workDir, fbExtraTags } from "./config.mjs";
+import { postLink } from "./links.mjs";
 import { markStatus, todayLondon, getPost, patchPost } from "./state.mjs";
 import { dueItem, done, release } from "./autopilot/queue.mjs";
 
@@ -30,12 +31,18 @@ export const BASE = "https://backend.composio.dev/api/v3.1";
 const IG_USER = GLOBAL.igUserId;
 const FB_PAGE = GLOBAL.fbPageId;
 
-// Facebook takes a link in the post itself, so "link in bio" (an Instagram-only phrase) goes; the site
-// address already in the caption is what a reader taps. Facebook does not cap hashtags at five, so the
-// category's extra Facebook tags (config.json global.fbHashtags) join the tag line. Everything else,
-// operator credit included, stays.
-export function fbCaption(s, category = null) {
+// Facebook takes a link in the post itself, so "link in bio" (an Instagram-only phrase) goes and the
+// tracked link (links.mjs) takes its place as a line under the prize block: the Reel's draw line, or the
+// carousel's list. Facebook does not cap hashtags at five, so the category's extra Facebook tags
+// (config.json global.fbHashtags) join the tag line. Everything else, operator credit included, stays.
+export function fbCaption(s, category = null, link = null) {
   let t = String(s || "").replace(/,?[ \t]*\n?[ \t]*link in bio\b/gi, "").replace(/\n{3,}/g, "\n\n").trim();
+  if (link && !t.includes(link)) {
+    const blocks = t.split("\n\n"), tagAt = blocks.findIndex((b) => /^#\w/.test(b.trim()));
+    const at = Math.max(0, Math.min(1, (tagAt < 0 ? blocks.length : tagAt) - 1));
+    blocks[at] += `\n👉 ${link}`;
+    t = blocks.join("\n\n");
+  }
   const extra = category ? fbExtraTags(category) : [];
   if (!extra.length) return t;
   const lines = t.split("\n"), i = lines.findLastIndex((l) => /^#\w/.test(l.trim()));
@@ -196,7 +203,7 @@ export async function fbCarousel({ dry = false } = {}) {
   const row = dry ? null : await getPost(todayLondon(), "fb_album").catch(() => null);
   if (row?.status === "published") { console.log(`FB ALREADY ${row.fb_post_id}`); return row.fb_post_id; }
   const category = (await Bun.file(`${workDir()}/selection.json`).json().catch(() => ({}))).slug || null;
-  const res = await execute("FACEBOOK_CREATE_MULTI_PHOTO_POST", { page_id: FB_PAGE, photo_urls: p.urls, message: fbCaption(p.caption, category) }, { dry });
+  const res = await execute("FACEBOOK_CREATE_MULTI_PHOTO_POST", { page_id: FB_PAGE, photo_urls: p.urls, message: fbCaption(p.caption, category, postLink({ source: "facebook", kind: "carousel", category, date: todayLondon() })) }, { dry });
   const id = fbIdOf(res);
   if (!id) throw new Error(`facebook multi-photo post returned no id: ${JSON.stringify(res).slice(0, 300)}`);
   if (!dry) await markStatus(todayLondon(), "fb_album", "published", { fb_post_id: String(id) });
@@ -205,7 +212,7 @@ export async function fbCarousel({ dry = false } = {}) {
 }
 
 export async function fbReel(item, { dry = false } = {}) {
-  const res = await execute("FACEBOOK_CREATE_VIDEO_POST", { page_id: FB_PAGE, file_url: item.videoUrl, description: fbCaption(item.caption, item.category), published: true }, { dry });
+  const res = await execute("FACEBOOK_CREATE_VIDEO_POST", { page_id: FB_PAGE, file_url: item.videoUrl, description: fbCaption(item.caption, item.category, postLink({ source: "facebook", kind: "reel", category: item.category, hero: item.hero, date: item.date })), published: true }, { dry });
   const id = fbIdOf(res);
   if (!id) throw new Error(`facebook video post returned no id: ${JSON.stringify(res).slice(0, 300)}`);
   return String(id);
@@ -275,7 +282,10 @@ if (import.meta.main) {
     else if (cmd === "verify") process.exit((await verify({ dry })) ? 0 : 1);
     else if (cmd === "ping") await ping();
     else if (cmd === "fb-carousel") await fbCarousel({ dry });
-    else if (cmd === "fb-caption") console.log(fbCaption((await pub()).caption, (await Bun.file(`${workDir()}/selection.json`).json().catch(() => ({}))).slug));
+    else if (cmd === "fb-caption") {
+      const category = (await Bun.file(`${workDir()}/selection.json`).json().catch(() => ({}))).slug || null;
+      console.log(fbCaption((await pub()).caption, category, postLink({ source: "facebook", kind: "carousel", category, date: todayLondon() })));
+    }
     else if (cmd === "reel") process.exit(await reel(Bun.argv[3] && !Bun.argv[3].startsWith("--") ? Bun.argv[3] : "auto", { dry }));
     else { console.error("usage: ig-publish.mjs accounts | carousel | story | verify | fb-carousel | fb-caption | reel [auto|reel|reel-2] [--dry-run]"); process.exit(64); }
   } catch (e) {
