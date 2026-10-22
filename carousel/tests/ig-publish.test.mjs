@@ -89,3 +89,12 @@ test("a category without a site page, or a Reel without a draw, links to the hom
   expect(postLink({ source: "pinterest", kind: "reel", category: "luxury" })).toBe("https://prizedrawsdaily.co.uk/category/luxury?utm_source=pinterest&utm_medium=social&utm_campaign=reel");
   expect(() => trackedUrl("/")).toThrow(/source/);
 });
+
+test("a Reel's hosted video is freed only after the Facebook post has fetched it", async () => {
+  const src = await Bun.file(new URL("../ig-publish.mjs", import.meta.url)).text();
+  const body = src.slice(src.indexOf("export async function reel("), src.indexOf("export async function verify("));
+  expect(body).toContain("done(slot, media, { free: false })");
+  const fb = body.indexOf("await fbReel(item)"), free = body.indexOf("await freeDay(item.date)");
+  expect(fb).toBeGreaterThan(0);
+  expect(free).toBeGreaterThan(fb);
+});

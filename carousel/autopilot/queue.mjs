@@ -188,15 +188,21 @@ async function due(which) {
   return 0;
 }
 
-export async function done(slot, ig) {
+// A caller that still needs the hosted video after Instagram (ig-publish.mjs reel: Facebook fetches the same
+// URL) passes { free: false } and calls freeDay itself once it is done with it.
+export async function done(slot, ig, { free = true } = {}) {
   const item = await readItem(slot);
   if (!item) throw new Error(`${slot}: nothing queued`);
   if (!/^\d{6,}$/.test(String(ig || ""))) throw new Error("done needs --ig <published media id>");
   await markStatus(item.date, slot, "published", { ig_media_id: ig });
   await rm(qPath(slot), { force: true });
   console.log(`✓ ${item.date} ${slot} → published (${ig})`);
-  // the last Reel of a day releases that day's hosted assets
-  const p = Bun.spawn(["bun", new URL("../cleanup.mjs", import.meta.url).pathname], { env: { ...process.env, CLEANUP_DATE: item.date }, stdout: "inherit", stderr: "inherit" });
+  if (free) await freeDay(item.date);
+}
+
+// the last Reel of a day releases that day's hosted assets
+export async function freeDay(date) {
+  const p = Bun.spawn(["bun", new URL("../cleanup.mjs", import.meta.url).pathname], { env: { ...process.env, CLEANUP_DATE: date }, stdout: "inherit", stderr: "inherit" });
   await p.exited;
 }
 
