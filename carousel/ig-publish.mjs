@@ -25,7 +25,7 @@
 import { GLOBAL, workDir, fbExtraTags } from "./config.mjs";
 import { postLink } from "./links.mjs";
 import { markStatus, todayLondon, getPost, patchPost } from "./state.mjs";
-import { dueItem, done, release } from "./autopilot/queue.mjs";
+import { dueItem, done, release, freeDay } from "./autopilot/queue.mjs";
 
 export const BASE = "https://backend.composio.dev/api/v3.1";
 const IG_USER = GLOBAL.igUserId;
@@ -251,10 +251,13 @@ export async function reel(which = "auto", { dry = false } = {}) {
     throw new Error(`${slot} not published: ${lastErr?.message?.slice(0, 300)}`);
   }
   if (dry) { await fbReel(item, { dry }); console.log(`[dry] would publish ${slot} (${item.hero}) to Instagram and Facebook`); return 0; }
-  await done(slot, media);
+  // Not freed yet: Facebook fetches the same hosted video. On 22 Oct the day's last Reel freed it first and
+  // Facebook answered "Unable to fetch video file from URL".
+  await done(slot, media, { free: false });
   // Facebook after Instagram, once: the claim means only this runner reaches here for this Reel.
   try { const fb = await fbReel(item); await patchPost(item.date, slot, { fb_post_id: fb }); console.log(`FB PUBLISHED ${slot} ${fb}`); }
   catch (e) { console.error(`FB FAILED ${slot}: ${e.message.slice(0, 300)}`); }
+  await freeDay(item.date);
   const res = await execute("INSTAGRAM_GET_IG_USER_MEDIA", { ig_user_id: ig, limit: 3, fields: "id,media_product_type,permalink,timestamp" });
   const items = res?.data?.data ?? res?.data?.response_data?.data ?? res?.data ?? [];
   const mine = (Array.isArray(items) ? items : []).find((m) => String(m.id) === String(media));
