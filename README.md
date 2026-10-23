@@ -83,6 +83,32 @@ SUPABASE_SERVICE_ROLE_KEY=... DRY_RUN=false METHODS=render bun run.mjs
 (`name`, `slug`, `base`, `method`, plus optional `listing`, `drawMatch`, `exclude`,
 `selectors`, `patterns`, `category`, `enabled`). To exclude one, set `"enabled": false`.
 
+### Operator logos
+
+Every operator should show its own mark, served from our storage (never a hotlink).
+`fix-operator-logos.mjs` finds the ones that need work, ranks candidates from the operator's
+own site (`lib/logos.mjs`: square marks first, nothing under 96px, no banners, no payment or
+social icons) and stores the winner as a dated 256px transparent square. `publish-images.mjs`
+then mirrors it to Pages. `monthly-logos.yml` runs it in dry mode on the 1st and opens a
+`logo-sheet` issue with the contact sheet attached.
+
+```bash
+# 1. Dry run (writes nothing; the anon key is enough): contact sheet + picks file
+REHOST_ALL=true bun fix-operator-logos.mjs --sheet out/logos.html
+#    open out/logos.html, delete any line you reject from out/logo-picks-<date>.json
+# 2. Write the approved picks (OWNER RUN; refused without IMAGE_PROVIDER=cloudinary|r2)
+IMAGE_PROVIDER=cloudinary DRY_RUN=false PICKS=out/logo-picks-<date>.json bun fix-operator-logos.mjs
+# One operator by hand:
+IMAGE_PROVIDER=cloudinary DRY_RUN=false ONLY=<slug> LOGO_URL=<image url> bun fix-operator-logos.mjs
+# 3. Mirror to Pages now instead of waiting for the next scrape or 22:30 UTC
+bun publish-images.mjs
+```
+
+A write is refused before any network call unless `IMAGE_PROVIDER` is `cloudinary` or `r2`
+(the default would write to the frozen Supabase bucket) and the run names `ONLY` or `PICKS`.
+Stored keys are dated (`operator-logos/<slug>-<yyyymmdd>.webp`) because Pages serves `/i/*` as
+immutable for 30 days: overwriting one key would leave browsers on the old logo.
+
 ### Methods
 
 | `method` | How it reads the operator |
