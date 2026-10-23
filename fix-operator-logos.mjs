@@ -1,119 +1,205 @@
-// Repair operator logos. Two faults this fixes:
-//   1. 17 logos still point at the DEAD Supabase project (kkuuwksgyypicnblwubs) and return
-//      HTTP 402 since the Aug-2026 org migration — the migration re-hosted DRAW images but
-//      never operator logos.
-//   2. A handful are missing outright, 404/403 at source, or serve HTML instead of an image.
+// Repair operator logos so every operator in the directory shows its own mark, served from
+// OUR storage. What counts as needing work:
+//   - missing, unreachable, or not image bytes (always)
+//   - hotlinked from a host we do not own: Google image thumbnails, app-store icons,
+//     LinkedIn, Trustpilot... (with REHOST_ALL=true). These break the day the host blocks us.
 //
-// For each broken operator we discover a logo on their own live site (apple-touch-icon →
-// og:image → <img> with "logo" in it → favicon), then re-host it onto OUR storage via the
-// same lib/rehost.mjs path the draw-image pipeline uses, so the site never hotlinks again.
+// For each one we gather candidates (owner pick → the operator's own site: apple-touch-icon,
+// <img> logo, icon links, og:image → icon services → the current hotlink), measure each, and
+// rank them (lib/logos.mjs): sharp square marks first, nothing under 96px, no banners. The winner
+// is stored as a 256px transparent square, padded and never cropped, because the site draws
+// logos in a square tile with object-cover. publish-images.mjs then mirrors it to Pages.
 //
-//   DRY_RUN defaults TRUE.  bun fix-operator-logos.mjs            # report only
-//                           DRY_RUN=false bun fix-operator-logos.mjs
-//   ONLY=slug1,slug2 limits the run.
-import { rehostImage } from "./lib/rehost.mjs";
-import { UA } from "./lib/parse.mjs";
+//   DRY_RUN defaults TRUE (nothing is written; works with the anon key).
+//     bun fix-operator-logos.mjs                         # broken/missing only
+//     REHOST_ALL=true bun fix-operator-logos.mjs --sheet out/logos.html   # + every hotlink, contact sheet
+//   ONLY=slug1,slug2           limit the run
+//   LOGO_URL=<url> ONLY=<slug> hand-picked mark for one operator
+//   logos.json {slug: url}     hand-picked marks, used before discovery (repo root, optional)
+//   PICKS=<file>               owner-approved picks from a dry run's out/logo-picks-<date>.json
+//   Write (OWNER RUN):  IMAGE_PROVIDER=cloudinary DRY_RUN=false PICKS=out/logo-picks-<date>.json bun fix-operator-logos.mjs
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import {
+  sniff, imageDims, discoverFromHtml, rankCandidates, judge, needsWork, squareLogoUrl,
+  writeRefusal, parsePicks, contactSheet, dataUri,
+} from "./lib/logos.mjs";
 
-const { SUPABASE_URL: supabaseUrl, SUPABASE_SERVICE_ROLE_KEY: serviceKey } = process.env;
-if (!supabaseUrl || !serviceKey) { console.error("✗ SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing"); process.exit(1); }
+// Refuse an unsafe write BEFORE any network call or storage import side effects.
+const refusal = writeRefusal(process.env);
+if (refusal) { console.error(`✗ refusing to write: ${refusal}`); process.exit(1); }
+
+const { UA } = await import("./lib/parse.mjs");
+const { putObject, publicBases, deleteObjects, sameObject, IMAGE_PROVIDER } = await import("./lib/storage.mjs");
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const readKey = serviceKey || process.env.SUPABASE_ANON_KEY;
+if (!supabaseUrl || !readKey) { console.error("✗ SUPABASE_URL and SUPABASE_ANON_KEY (or SUPABASE_SERVICE_ROLE_KEY) are required"); process.exit(1); }
 const DRY = process.env.DRY_RUN !== "false";
-const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
-const H = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` };
+const REHOST_ALL = process.env.REHOST_ALL === "true";
+const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",").map((s) => s.trim()).filter(Boolean)) : null;
+const argSheet = (() => { const i = process.argv.indexOf("--sheet"); return i > 0 ? process.argv[i + 1] : null; })();
+const today = new Date().toISOString().slice(0, 10);
+const H = { apikey: readKey, Authorization: `Bearer ${readKey}` };
 
-// A stored logo is BROKEN when it is absent, unreachable, or not actually image bytes.
-// Content-type alone is not enough: Trustpilot serves real JPEG/AVIF as octet-stream, while a
-// hotlink-blocked host serves an HTML error page with a 200. Sniff the magic bytes.
-const MAGIC = [[0xff,0xd8,0xff],[0x89,0x50,0x4e,0x47],[0x47,0x49,0x46],[0x52,0x49,0x46,0x46]]; // jpg png gif webp/riff
-function looksLikeImage(buf, type) {
-  if (type === "image/svg+xml" || /^\s*<svg/i.test(new TextDecoder().decode(buf.slice(0, 64)))) return true;
-  const head = [...buf.slice(0, 4)];
-  if (MAGIC.some((m) => m.every((b, i) => head[i] === b))) return true;
-  return buf.length > 12 && new TextDecoder().decode(buf.slice(4, 12)) === "ftypavif";
+// Hand-picked marks: LOGO_URL (one slug) > PICKS file > logos.json.
+const overrides = {};
+const loadPicks = (file) => {
+  const { picks, bad } = parsePicks(readFileSync(file, "utf8"));
+  if (bad.length) console.log(`! ${file}: ignored entries without an http(s) URL: ${bad.join(", ")}`);
+  Object.assign(overrides, picks);
+};
+if (existsSync("logos.json")) loadPicks("logos.json");
+if (process.env.PICKS) loadPicks(process.env.PICKS);
+if (process.env.LOGO_URL) {
+  if (!ONLY || ONLY.size !== 1) { console.error("✗ LOGO_URL needs exactly one ONLY=<slug>"); process.exit(1); }
+  overrides[[...ONLY][0]] = process.env.LOGO_URL;
 }
-async function checkLogo(url) {
-  if (!url || !/^https?:\/\//i.test(url)) return { ok: false, why: "missing" };
+
+async function probe(url, source) {
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA }, redirect: "follow", signal: AbortSignal.timeout(15000) });
-    if (!r.ok) return { ok: false, why: `HTTP ${r.status}` };
+    const r = await fetch(url, { headers: { "User-Agent": UA, Accept: "image/*,*/*;q=0.5" }, redirect: "follow", signal: AbortSignal.timeout(15000) });
+    if (!r.ok) return { url, source, ok: false, why: `HTTP ${r.status}` };
     const buf = new Uint8Array(await r.arrayBuffer());
-    if (buf.byteLength < 512) return { ok: false, why: `only ${buf.byteLength}B` };
-    const type = (r.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-    return looksLikeImage(buf, type) ? { ok: true } : { ok: false, why: `not an image (${type || "?"})` };
-  } catch (e) { return { ok: false, why: e.name === "TimeoutError" ? "timeout" : (e.message || "error").slice(0, 40) }; }
+    const dims = sniff(buf) ? imageDims(buf) : null;
+    return { url, source, ok: !!dims, why: dims ? undefined : "not an image", bytes: buf.byteLength, dims, buf };
+  } catch (e) { return { url, source, ok: false, why: e.name === "TimeoutError" ? "timeout" : String(e.message || e).slice(0, 40) }; }
 }
 
-const abs = (href, base) => { try { return new URL(href, base).href; } catch { return null; } };
-
-// Images that contain "logo" but are NOT the operator's brand mark. Picking one of these is
-// worse than picking nothing: croc-comps' first match was the Visa/Mastercard payment strip.
-const JUNK = /payment|visa|mastercard|paypal|klarna|stripe|amex|trustpilot|trustbox|partner|sponsor|affiliat|age-?(?:verif|18)|18plus|gamble|gamstop|bacta|cookie|placeholder|spinner|loading|blank/i;
-
-// Discover logo candidates on the operator's own site, best first. apple-touch-icon leads:
-// it is purpose-built square artwork, unlike og:image (often a promo banner) or a 16px favicon.
-async function discoverLogos(site) {
-  const out = [];
-  const push = (u) => { const a = abs(u, site); if (a && !out.includes(a)) out.push(a); };
-  let html = "";
-  try {
-    const r = await fetch(site, { headers: { "User-Agent": UA }, redirect: "follow", signal: AbortSignal.timeout(20000) });
-    html = await r.text();
-    site = r.url || site; // follow redirects before resolving relative hrefs
-  } catch { /* site unreachable — fall through to well-known paths + icon services below */ }
-  for (const re of [
-    /<link[^>]+rel=["'][^"']*apple-touch-icon[^"']*["'][^>]*href=["']([^"']+)["']/gi,
-    /<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']/gi,
-    /<img[^>]+(?:class|id|alt|src)=["'][^"']*logo[^"']*["'][^>]*src=["']([^"']+)["']/gi,
-    /<img[^>]+src=["']([^"']*logo[^"']*)["']/gi,
-    /<link[^>]+rel=["'][^"']*icon[^"']*["'][^>]*href=["']([^"']+)["']/gi,
-  ]) { let m; while ((m = re.exec(html))) push(m[1]); }
-  // Well-known paths: many sites serve these even when their HTML is bot-walled.
-  for (const p of ["/apple-touch-icon.png", "/apple-touch-icon-precomposed.png", "/favicon.ico"]) push(p);
-  // Last resort — public icon services fetch the site server-side, so they still work when the
-  // origin 403s us. We re-host the bytes, so this is never a live hotlink.
-  try {
-    const host = new URL(site).hostname;
-    push(`https://icons.duckduckgo.com/ip3/${host}.ico`);
-    push(`https://www.google.com/s2/favicons?domain=${host}&sz=256`);
-  } catch {}
-  return out
-    .filter((u) => !JUNK.test(u))
-    .filter((u) => !/\.svg($|\?)/i.test(u) || out.length === 1); // weserv can't rasterise every svg
-}
-
-const ops = await (await fetch(
-  `${supabaseUrl}/rest/v1/operators?select=id,slug,name,logo_url,website_url&order=slug`, { headers: H }
-)).json();
-
-console.log(`${ops.length} operators · DRY_RUN=${DRY}${ONLY ? ` · ONLY=${[...ONLY].join(",")}` : ""}\n`);
-const broken = [];
-for (const o of ops) {
-  if (ONLY && !ONLY.has(o.slug)) continue;
-  const v = await checkLogo(o.logo_url);
-  if (!v.ok) broken.push({ ...o, why: v.why });
-}
-console.log(`${broken.length} operator(s) need a logo:\n${broken.map((b) => `  • ${b.slug} — ${b.why}`).join("\n")}\n`);
-
-let fixed = 0, failed = [];
-for (const o of broken) {
-  const site = o.website_url || `https://${o.slug.replace(/-/g, "")}.co.uk`;
-  const cands = await discoverLogos(site);
-  let done = null;
-  for (const c of cands.slice(0, 10)) {
-    const probe = await checkLogo(c);
-    if (!probe.ok) continue;
-    if (DRY) { done = { url: c, via: "dry" }; break; }
-    try {
-      const res = await rehostImage(c, "operator-logos", o.slug, { supabaseUrl, serviceKey });
-      if (!res.changed) continue;
-      const p = await fetch(`${supabaseUrl}/rest/v1/operators?id=eq.${o.id}`, {
-        method: "PATCH", headers: { ...H, "Content-Type": "application/json" },
-        body: JSON.stringify({ logo_url: res.url }),
-      });
-      if (!p.ok) throw new Error(`PATCH ${p.status}`);
-      done = res; break;
-    } catch (e) { console.log(`    ! ${o.slug}: ${(e.message || e).toString().slice(0, 70)}`); }
+async function candidatesFor(o) {
+  const list = [];
+  if (overrides[o.slug]) list.push({ url: overrides[o.slug], source: "override" });
+  else {
+    // The stored logo goes first so the 12-probe cap can never drop it from the comparison.
+    if (o.logo_url) list.push({ url: o.logo_url, source: "current" });
+    let html = "", site = o.website_url;
+    if (site) {
+      try {
+        const r = await fetch(site, { headers: { "User-Agent": UA }, redirect: "follow", signal: AbortSignal.timeout(20000) });
+        html = await r.text(); site = r.url || site;
+      } catch { /* bot-walled or down: well-known paths and icon services below still work */ }
+      list.push(...discoverFromHtml(html, site));
+    }
   }
-  if (done) { fixed++; console.log(`  ✅ ${o.slug} ← ${done.url.slice(0, 96)}`); }
-  else { failed.push(o.slug); console.log(`  ❌ ${o.slug} — no usable logo found on ${site} (${cands.length} candidates)`); }
+  const seen = new Set();
+  const probes = [];
+  for (const c of list) {
+    if (seen.has(c.url) || probes.length >= 12) continue;
+    seen.add(c.url);
+    probes.push(await probe(c.url, c.source));
+  }
+  return probes;
+}
+
+// The stored form of a candidate: weserv squares, pads and re-encodes it. Null when weserv
+// cannot reach the origin (some operator hosts block it).
+async function viaWeserv(src) {
+  const u = squareLogoUrl(src);
+  if (!u) return null;
+  try {
+    const r = await fetch(u, { signal: AbortSignal.timeout(30000) });
+    if (!r.ok) return null;
+    const buf = new Uint8Array(await r.arrayBuffer());
+    return sniff(buf) === "webp" && buf.byteLength >= 100 ? buf : null;
+  } catch { return null; }
+}
+
+// Store the pick as a dated 256px square webp. Dated key: Pages serves /i/* as immutable for
+// 30 days, so overwriting one key would leave browsers on the old logo.
+async function store(o, pick) {
+  const key = `operator-logos/${o.slug}-${today.replace(/-/g, "")}.webp`;
+  const creds = { supabaseUrl, serviceKey };
+  let bytes = await viaWeserv(pick.url);
+  if (!bytes) {
+    // weserv could not reach the origin: upload the raw bytes, square them from OUR copy.
+    const ext = { png: "png", jpeg: "jpg", gif: "gif", webp: "webp", svg: "svg", ico: "ico", avif: "avif" }[pick.dims?.kind] || "img";
+    const interim = `operator-logos/${o.slug}-src-${today.replace(/-/g, "")}.${ext}`;
+    const type = { svg: "image/svg+xml", ico: "image/x-icon" }[pick.dims?.kind] || `image/${pick.dims?.kind || "png"}`;
+    const interimUrl = await putObject({ path: interim, bytes: pick.buf, contentType: type, ...creds, bucket: "draw-images" });
+    bytes = await viaWeserv(interimUrl);
+    if (!sameObject(interim, key)) { try { await deleteObjects([interim]); } catch { /* orphan is waste, not breakage */ } }
+    if (!bytes) throw new Error("could not square the image (weserv failed on our own copy too)");
+  }
+  const url = await putObject({ path: key, bytes, contentType: "image/webp", ...creds, bucket: "draw-images" });
+  const p = await fetch(`${supabaseUrl}/rest/v1/operators?id=eq.${o.id}`, {
+    method: "PATCH", headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ logo_url: url }),
+  });
+  if (!p.ok) throw new Error(`PATCH ${p.status}`);
+  return url;
+}
+
+const res = await fetch(`${supabaseUrl}/rest/v1/operators?select=id,slug,name,logo_url,website_url&order=slug`, { headers: H });
+if (!res.ok) { console.error(`✗ reading operators: HTTP ${res.status}`); process.exit(1); }
+const ops = await res.json();
+const bases = publicBases({ supabaseUrl, bucket: "draw-images" });
+console.log(`${ops.length} operators · DRY_RUN=${DRY} · REHOST_ALL=${REHOST_ALL} · provider=${IMAGE_PROVIDER}${ONLY ? ` · ONLY=${[...ONLY].join(",")}` : ""}${process.env.PICKS ? ` · PICKS=${Object.keys(overrides).length}` : ""}\n`);
+
+// Six operators at a time: polite to operator sites, and the monthly job fits in CI.
+async function pool(items, n, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (next < items.length) { const i = next++; out[i] = await fn(items[i], i); }
+  }));
+  return out;
+}
+
+const scope = ops.filter((o) => (!ONLY || ONLY.has(o.slug)) && (!process.env.PICKS || overrides[o.slug])); // a picks run touches only approved slugs
+const todo = (await pool(scope, 6, async (o) => {
+  let check = null;
+  if (o.logo_url) {
+    const p = await probe(o.logo_url, "current");
+    const v = judge(p);
+    check = p.ok ? { ok: true } : { ok: false, why: p.why };
+    if (p.ok && !v.keep) check = { ok: true, weak: v.why };
+  }
+  const why = overrides[o.slug] && (ONLY || process.env.PICKS) ? "owner pick" : needsWork(o, bases, check, { rehostAll: REHOST_ALL });
+  return why ? { ...o, why } : null;
+})).filter(Boolean);
+console.log(`${todo.length} operator(s) need a logo:\n${todo.map((t) => `  • ${t.slug} — ${t.why}`).join("\n")}\n`);
+
+const rows = [], picksOut = { _note: `dry run ${today}: delete any line you reject, then run the write with PICKS=<this file>` };
+let fixed = 0; const failed = [];
+// Discovery in parallel; reporting and writes stay in slug order, one at a time.
+const found = await pool(todo, 6, (o) => candidatesFor(o));
+for (const [i, o] of todo.entries()) {
+  const probes = found[i];
+  const ranked = rankCandidates(probes);
+  const pick = ranked[0] || null;
+  if (DRY && pick) {
+    // Preview the exact stored bytes when weserv can make them; else the raw candidate.
+    const sq = await viaWeserv(pick.url);
+    pick.squared = !!sq;
+    pick.src = sq ? dataUri(sq, "webp") : dataUri(pick.buf, pick.dims?.kind);
+    for (const a of ranked.slice(1, 4)) a.src = dataUri(a.buf, a.dims?.kind);
+  }
+  const rejected = probes.filter((p) => !judge(p).keep).map((p) => `${p.source}: ${judge(p).why}`).slice(0, 4).join("; ");
+  const cur = probes.find((p) => p.source === "current" && p.ok);
+  rows.push({ slug: o.slug, name: o.name, why: o.why, current: (cur && dataUri(cur.buf, cur.dims?.kind)) || o.logo_url, pick, alternates: ranked.slice(1), rejected });
+  if (!pick) { failed.push(o.slug); console.log(`  ❌ ${o.slug} — no usable logo (${probes.length} candidates; ${rejected || "none fetched"})`); continue; }
+  picksOut[o.slug] = pick.url;
+  const label = `${pick.source} ${pick.dims?.w ?? "?"}x${pick.dims?.h ?? "?"}${pick.verdict.square ? "" : " wide→padded"}`;
+  if (DRY) { fixed++; console.log(`  ✅ ${o.slug} ← ${label} ${pick.url.slice(0, 90)}`); continue; }
+  try { const url = await store(o, pick); fixed++; console.log(`  ✅ ${o.slug} ← ${label} → ${url}`); }
+  catch (e) { failed.push(o.slug); console.log(`  ❌ ${o.slug} — ${String(e.message || e).slice(0, 90)}`); }
+}
+
+if (DRY && todo.length) {
+  // A partial run (ONLY) must never overwrite the full sheet's picks file.
+  const file = `out/logo-picks-${today}${ONLY ? "-partial" : ""}.json`;
+  mkdirSync("out", { recursive: true });
+  writeFileSync(file, JSON.stringify(picksOut, null, 2) + "\n");
+  console.log(`\npicks → ${file}`);
+}
+if (argSheet) {
+  mkdirSync(dirname(argSheet), { recursive: true });
+  writeFileSync(argSheet, contactSheet(rows, { date: today }));
+  console.log(`contact sheet → ${argSheet}`);
 }
 console.log(`\n${DRY ? "would fix" : "fixed"}=${fixed}  failed=${failed.length}${failed.length ? " → " + failed.join(", ") : ""}`);
+if (process.env.GITHUB_OUTPUT) {
+  const { appendFileSync } = await import("node:fs");
+  appendFileSync(process.env.GITHUB_OUTPUT, `need=${todo.length}\nfailed=${failed.length}\n`);
+}

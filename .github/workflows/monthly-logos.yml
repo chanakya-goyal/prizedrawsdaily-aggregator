@@ -1,0 +1,70 @@
+name: Monthly operator logo check (dry run)
+
+# Lists every operator whose logo is missing, broken, too small or hotlinked, with the best
+# candidate from its own site, and attaches a contact sheet for the owner to approve.
+# DRY RUN ONLY: this job never writes. The owner runs the write locally (README "Operator logos").
+on:
+  schedule:
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
+
+concurrency:
+  group: monthly-logos
+  cancel-in-progress: false
+
+jobs:
+  logos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      # The service key is used to READ the operators table only. DRY_RUN is pinned true and
+      # IMAGE_PROVIDER is not passed, so lib/logos.mjs writeRefusal() would stop any write.
+      - name: Dry run
+        id: dry
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: "true"
+          REHOST_ALL: "true"
+        run: |
+          set -o pipefail
+          bun fix-operator-logos.mjs --sheet out/logos.html 2>&1 | tee logos.log
+
+      - name: Upload contact sheet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logo-sheet
+          path: |
+            out/logos.html
+            out/logo-picks-*.json
+            logos.log
+          if-no-files-found: ignore
+
+      - name: Open or update the logo-sheet issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEED: ${{ steps.dry.outputs.need }}
+          OUTCOME: ${{ steps.dry.outcome }}
+        run: |
+          EXISTING=$(gh issue list --label logo-sheet --state open --json number -q '.[0].number' || true)
+          if [ "$OUTCOME" != "success" ] || [ "${NEED:-0}" != "0" ]; then
+            { echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} (contact sheet in the run's artifacts)"; echo; echo "Outcome: $OUTCOME. Operators needing a logo: ${NEED:-unknown}."; echo; echo '```'; grep -E "^  (•|✅|❌)|would fix" logos.log 2>/dev/null | head -150; echo '```'; echo; echo "Approve: README, section Operator logos."; } > body.md
+            if [ -n "$EXISTING" ]; then gh issue comment "$EXISTING" --body-file body.md
+            else gh label create logo-sheet --color FBCA04 --force >/dev/null 2>&1 || true; gh issue create --title "Operator logos need review" --label logo-sheet --body-file body.md; fi
+          elif [ -n "$EXISTING" ]; then
+            gh issue close "$EXISTING" --comment "Every operator has a good logo on our storage."
+          fi
