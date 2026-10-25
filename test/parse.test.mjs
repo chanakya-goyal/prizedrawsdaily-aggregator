@@ -121,6 +121,9 @@ describe("inferCategory", () => {
   // were then draft-held by fieldFlags for "category may not match prize".
   test("appliance → tech", () => expect(inferCategory({ title: "Eufy Robot Vacuum Cleaner And Mop" })).toBe("tech-giveaways"));
   test("dyson → tech", () => expect(inferCategory({ title: "Win a Dyson V15 Detect" })).toBe("tech-giveaways"));
+  test("xTool M2 laser cutter is tech, not a BMW M2", () =>
+    expect(inferCategory({ title: "xTool M2 Color Craft Laser Cutter & Engraver", url: "https://example.com/xtool-m2-color-craft-laser-cutter" })).toBe("tech-giveaways"));
+  test("a real BMW M2 is still a car", () => expect(inferCategory({ title: "Win a BMW M2 Competition" })).toBe("car-draws"));
   test("air fryer → tech", () => expect(inferCategory({ title: "Ninja Air Fryer Bundle" })).toBe("tech-giveaways"));
   // Task 6: hot tubs moved from luxury to home-garden (see CAT_RULES comment).
   test("hot tub → home-garden (moved from luxury)", () => expect(inferCategory({ title: "Lay-Z-Spa Miami Hot Tub" })).toBe("home-garden"));
