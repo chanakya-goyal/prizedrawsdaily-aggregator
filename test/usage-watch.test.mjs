@@ -4,7 +4,7 @@
 // thresholds, including the two ways the counter lies: a stats reset, and a first run with no
 // previous snapshot.
 import { test, expect, describe } from "bun:test";
-import { requestRates, assessUsage, toSnapshot, DEFAULTS } from "../lib/usage-watch.mjs";
+import { requestRates, assessUsage, toSnapshot, DEFAULTS, LOGS } from "../lib/usage-watch.mjs";
 
 const T0 = Date.parse("2026-10-01T07:00:00Z");
 const DAY = 864e5;
@@ -124,5 +124,16 @@ describe("toSnapshot", () => {
   test("maps the RPC row to a snapshot row with numbers", () => {
     const s = toSnapshot({ rest_anon: "10", rest_service: "2", rest_authenticated: "1", storage: "3", stats_reset: "2026-10-08T21:58:16Z" }, new Date(T0));
     expect(s).toEqual({ taken_at: new Date(T0).toISOString(), rest_anon: 10, rest_service: 2, rest_authenticated: 1, storage: 3, stats_reset: "2026-10-08T21:58:16Z" });
+  });
+});
+
+describe("log ingestion projection", () => {
+  const logs = (rest) =>
+    assessUsage({ rates: { rest, anon: rest, service: 0, authenticated: 0, basis: "window", days: 7 }, bytesPerRequest: LOGS.bytesPerRequest, quotaBytes: LOGS.quotaBytes });
+  test("the 2026-10 rate (~30k requests a day) projects over the 1 GB quota", () => {
+    expect(logs(30_000).monthlyBytes).toBeGreaterThan(LOGS.quotaBytes);
+  });
+  test("under ~16k requests a day stays inside it", () => {
+    expect(logs(16_000).monthlyBytes).toBeLessThan(LOGS.quotaBytes);
   });
 });

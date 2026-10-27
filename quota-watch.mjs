@@ -13,7 +13,7 @@
 // row). Everything else is read-only.
 import { listBuckets, listBucketDeep, cloudinaryConfig, cloudinaryUsage, IMAGE_PROVIDER } from "./lib/storage.mjs";
 import { assessStorage } from "./lib/storage-watch.mjs";
-import { requestRates, assessUsage, toSnapshot, DEFAULTS as EGRESS } from "./lib/usage-watch.mjs";
+import { requestRates, assessUsage, toSnapshot, DEFAULTS as EGRESS, LOGS } from "./lib/usage-watch.mjs";
 import { pagesSite } from "./lib/pages.mjs";
 import { assessQuotas } from "./lib/quota.mjs";
 
@@ -100,8 +100,15 @@ try {
     forecast: false, warnShare: EGRESS.warnAt, redShare: EGRESS.redAt,
     hint: "Is the site's edge cache serving (x-vercel-cache: HIT on a repeat hit)? Did a deploy or a crawler surge multiply page renders? Then the Supabase dashboard's Usage → Egress for the real figure (this is an estimate)." });
   details.push(...u.lines.map((l) => `Egress: ${l.replace(/^\S+\s/, "")}`).slice(0, 1));
+  // Same request rate, Supabase's log bytes per request (calibration in lib/usage-watch.mjs).
+  const logs = assessUsage({ rates: requestRates(history), bytesPerRequest: Number(process.env.LOG_BYTES_PER_REQUEST || LOGS.bytesPerRequest), quotaBytes: LOGS.quotaBytes });
+  metrics.push({ key: "supabase_logs", label: "Supabase log ingestion (month, projected)", value: logs.monthlyBytes, limit: LOGS.quotaBytes, unit: "bytes",
+    forecast: false, warnShare: LOGS.warnAt, redShare: LOGS.redAt,
+    hint: "Every Supabase API request writes a log line. Same suspects as egress: is the edge cache serving, did a crawler surge or a scraper loop multiply requests? Real figure: Supabase dashboard → Usage → Log Ingestion." });
 } catch (e) {
-  metrics.push({ key: "supabase_egress", label: "Supabase data transfer (month, projected)", ...(notInstalled(e) ? { note: `not set up: ${SETUP}` } : e.soft ? { note: e.message } : { error: short(e) }) });
+  for (const [key, label] of [["supabase_egress", "Supabase data transfer (month, projected)"], ["supabase_logs", "Supabase log ingestion (month, projected)"]]) {
+    metrics.push({ key, label, ...(notInstalled(e) ? { note: `not set up: ${SETUP}` } : e.soft ? { note: e.message } : { error: short(e) }) });
+  }
 }
 
 // ── GitHub Actions cache (the staged Pages site lives there) ──────────────────────────
