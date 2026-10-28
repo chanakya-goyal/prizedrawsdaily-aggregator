@@ -232,7 +232,7 @@ export async function renderOperator(ctx, op, perOp = 6, { onFinished, mode = re
         console.log(`  🏁 ${url.slice(-42)} says finished${mode === "enforce" ? " — dropped" : " — kept (report mode)"}`);
         if (mode === "enforce") continue;
       }
-      draws.push(fieldsFromHtml({ html: d.html, url, op, knownImage: d.ogImage }));
+      draws.push(fieldsFromHtml({ html: d.html, url, op, knownImage: d.ogImage, fetchedAt: Date.now() }));
     } catch (e) {
       console.log(`  ! ${url.slice(-42)} failed: ${(e.message || "").slice(0, 60)}`);
     }

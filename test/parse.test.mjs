@@ -1,6 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { readFileSync } from "fs";
-import { extractEntries, extractDate, inferCategory, extractPrice, mapOperatorCategory, parseJsonLd, findProductLd, pickTitleImage, load, textOf, fieldsFromHtml, normalizeUkDate, isGenericTitle, cleanPrizeLine, extractGrandPrize, extractPrizeSection, categoryEvidence, CATEGORIES, resolveShortYear } from "../lib/parse.mjs";
+import { extractEntries, extractDate, inferCategory, extractPrice, mapOperatorCategory, parseJsonLd, findProductLd, pickTitleImage, load, textOf, fieldsFromHtml, normalizeUkDate, isGenericTitle, cleanPrizeLine, extractGrandPrize, extractPrizeSection, categoryEvidence, CATEGORIES, resolveShortYear, resolveCategory } from "../lib/parse.mjs";
 
 // extractEntries returns `{ value, method }` so the extraction tier can travel with the
 // number into the renderer (spec §10.4 — an odds figure is a CAP 3.7 claim and a tier-3 bare
@@ -151,6 +151,11 @@ describe("extractPrice", () => {
   test("ld fallback", () => expect(extractPrice({ ld: { price: 2.49 }, text: "" })).toBe(2.49));
   test("regex fallback", () => expect(extractPrice({ text: "Tickets are £4.99 each" })).toBe(4.99));
   test("none", () => expect(extractPrice({ text: "free" })).toBeNull());
+  // Rev Comps (Oct 2026): "per ticket" closes the price before it; the £ after it is cashback.
+  test("a cashback figure after 'per ticket' is not the price", () =>
+    expect(extractPrice({ text: "£12.27 £10.97 per ticket £0.11 cashback Max 20 tickets per person" })).toBe(10.97));
+  test("a credit-back figure is skipped by the fallback too", () =>
+    expect(extractPrice({ text: "Tickets £1.49 — get £0.05 back in credit" })).toBe(1.49));
   test("labelled per-ticket beats the cash prize", () =>
     expect(extractPrice({ text: "WIN A LAMBO + £2,000 CASH! Entries only £0.35 MAX ENTRIES 599,999" })).toBe(0.35));
   test("cash alternative not mistaken for ticket price", () =>
@@ -182,6 +187,15 @@ describe("JSON-LD + title/image", () => {
   test("ld product parsed", () => { expect(ld.name).toBe("Win a Tesla Model 3"); expect(ld.price).toBe(2.99); });
   test("title prefers ld", () => expect(pickTitleImage($, ld, "https://cdn.test").title).toBe("Win a Tesla Model 3"));
   test("image prefers ld", () => expect(pickTitleImage($, ld, "https://cdn.test").image_url).toBe("https://cdn.test/p.jpg"));
+  // Rev Comps (Oct 2026): the rendered og:title is just the site name; the h1 holds the prize.
+  test("a site-name og:title falls through to the h1", () => {
+    const $$ = load('<meta property="og:title" content="Rev Comps"><h1>1994 PORSCHE 911 (993) CARRERA CABRIOLET + £2,000</h1>');
+    expect(pickTitleImage($$, null, "https://x.test", "Rev Comps").title).toBe("1994 PORSCHE 911 (993) CARRERA CABRIOLET + £2,000");
+  });
+  test("with every candidate generic, the first one is kept", () => {
+    const $$ = load('<meta property="og:title" content="Rev Comps"><h1>Rev Comps</h1>');
+    expect(pickTitleImage($$, null, "https://x.test", "Rev Comps").title).toBe("Rev Comps");
+  });
 });
 
 describe("fieldsFromHtml end-to-end (synthetic woo-style page)", () => {
@@ -488,6 +502,47 @@ describe("mapOperatorCategory — operator's own taxonomy wins", () => {
     expect(mapOperatorCategory([])).toBeNull();
     expect(mapOperatorCategory(undefined)).toBeNull();
   });
+});
+
+// Oct 2026 data patrol: plush toys in tech, a modular home in tech, Jaecoo cars uncounted.
+describe("category fixes — plush, mixed operator labels, newer car brands", () => {
+  test("Jellycat title → collectibles", () => expect(inferCategory({ title: "JellyCat Bartholomew Bear ‘Alpine’" })).toBe("collectibles"));
+  test("Squishmallow title → collectibles", () => expect(inferCategory({ title: "Giant Squishmallows Bundle" })).toBe("collectibles"));
+  test("Hot Comps' JellyCat label beats its Tech label", () => expect(mapOperatorCategory(["Autodraw", "JellyCat", "Tech"])).toBe("collectibles"));
+  test("Jaecoo → car-draws", () => expect(inferCategory({ title: "Win This Brand New 2026 Jaecoo 7 Black Luxury + £1,000 Cash!" })).toBe("car-draws"));
+  test("BYD / Omoda → car-draws", () => {
+    expect(inferCategory({ title: "BYD Atto 3 Design" })).toBe("car-draws");
+    expect(inferCategory({ title: "Omoda 5 Noble" })).toBe("car-draws");
+  });
+  test("plural 'vehicles' counts like 'cars'", () => expect(inferCategory({ title: "125,000 PRIZES INCLUDING 10 VEHICLES" })).toBe("car-draws"));
+  test("modular home → home-garden (with the log cabins), never tech", () =>
+    expect(inferCategory({ title: "2-Bedroom Expandable Modular Home" })).toBe("home-garden"));
+  test("a mixed operator label ('Tech & Luxury') yields to title evidence", () =>
+    expect(resolveCategory({ title: "2-Bedroom Expandable Modular Home", apiCategories: ["Featured Prizes", "Tech &amp; Luxury"] })).toBe("home-garden"));
+  test("a mixed label still decides when the title has no evidence", () =>
+    expect(resolveCategory({ title: "Mystery Bundle #4", apiCategories: ["Tech & Luxury"] })).toBe("tech-giveaways"));
+  test("a kids' ride-on car is not a car draw", () => {
+    expect(inferCategory({ title: "Landrover Defender Official 12V Ride On #2" })).not.toBe("car-draws");
+    expect(inferCategory({ title: "Mercedes-Benz Artic Truck for Kids (Auto Draw)" })).not.toBe("car-draws");
+  });
+  test("an 'Instant Win - Tools' label is not mixed: tools still decide", () =>
+    expect(resolveCategory({ title: "Instant Win Tool Drop", apiCategories: ["Instant Wins", "Instant Win - Tools and Garage"] })).toBe("home-garden"));
+  test("with no title evidence, a mixed non-cash label beats a cash-mechanic label", () =>
+    expect(resolveCategory({ title: "2026 TECH INSTANT WINS!", apiCategories: ["Instant Wins", "Tech &amp; Luxury"] })).toBe("tech-giveaways"));
+  test("a MacBook's M5 in the permalink is not a BMW M5", () =>
+    expect(inferCategory({ title: "2026 MACBOOK AIR M5", url: "https://x.test/product/2026-macbook-air-m5/" })).toBe("tech-giveaways"));
+  test("a car diagnostic tool is not a car draw", () =>
+    expect(inferCategory({ title: "MaxiSYS MS906 Pro Car Diagnostic Tool #5" })).not.toBe("car-draws"));
+  test("a car vacuum keeps its vacuum (tech)", () =>
+    expect(inferCategory({ title: "FANTTIK Slim V8 Apex Car Vacuum" })).toBe("tech-giveaways"));
+  test("a console bundle with a Pokémon game is tech", () =>
+    expect(inferCategory({ title: "Nintendo Switch 2 Console & Pokémon Pokopia Game Bundle", url: "https://x.test/p/nintendo-switch-2-console-pokemon-pokopia-game-bundle/" })).toBe("tech-giveaways"));
+  test("a named N-bedroom house is a house draw, even with a car thrown in", () =>
+    expect(inferCategory({ title: "🏠BRAND NEW 3 BEDROOM HOUSE IN OLDMELDRUM + 2026 VW POLO BLACK EDITION & £10K 🏠" })).toBe("house-draws"));
+  test("the modular home stays home-garden (no bed-count before it)", () =>
+    expect(inferCategory({ title: "2-Bedroom Expandable Modular Home" })).toBe("home-garden"));
+  test("a single-category label still beats the title", () =>
+    expect(resolveCategory({ title: "Warhammer bundle", apiCategories: ["Tech"] })).toBe("tech-giveaways"));
 });
 
 describe("inferCategory — Warhammer factions (no literal 'warhammer' in the title)", () => {
@@ -965,5 +1020,30 @@ describe("fieldsFromHtml free_text (free-draw check input)", () => {
     expect(d.free_text).toContain("No purchase necessary");
     expect(d.free_text).toContain("Answer the question");
     expect(d.free_text.length).toBeLessThanOrEqual(2000);
+  });
+});
+
+// Bounty (RaffleX, Oct 2026): no written date, only Livewire countdowns, several per page.
+describe("RaffleX countdown — the draw's own, from the fetch time", () => {
+  const page = `<html><body>
+    <div class="banner"><div x-data="{ remaining: 31000.5, hasFinished: false }"></div></div>
+    <a>🗽New Year in New York for 2 people 29th Dec '26 🗽</a>
+    <div class="product"><div>
+      <p class="text-3xl font-display">90p</p>
+      <p><span>Max Tickets:</span>1,350</p>
+      <div class="flex"><div>90p</div></div>
+      <div x-data="{ remaining: 86400, hasFinished: false, init() {} }"></div>
+    </div></div>
+    <div class="related"><div x-data="{ remaining: 600000, hasFinished: false }"></div></div>
+  </body></html>`;
+  const at = Date.UTC(2026, 9, 28, 19, 59, 40); // 28 Oct 2026 19:59:40 UTC (GMT)
+  const f = (fetchedAt) => fieldsFromHtml({ html: page, url: "https://b.test/competition/x", op: { name: "B" }, fetchedAt });
+  test("takes the countdown beside Max Tickets, not the banner or a neighbour", () =>
+    expect(f(at).draw_date).toBe("2026-10-29T20:00:00+00:00"));
+  test("without a fetch time the tier is off (the module has no clock)", () =>
+    expect(f(undefined).draw_date).not.toBe("2026-10-29T20:00:00+00:00"));
+  test("a page with no Max Tickets block is untouched", () => {
+    const other = page.replace("Max Tickets:", "Tickets:");
+    expect(fieldsFromHtml({ html: other, url: "https://b.test/x", op: {}, fetchedAt: at }).draw_date).not.toBe("2026-10-29T20:00:00+00:00");
   });
 });
