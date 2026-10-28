@@ -80,6 +80,19 @@ describe("assessQuotas", () => {
     expect(r.lines.join("\n")).not.toContain("fix a");
   });
 
+  test("a warnOnly metric stays red in the table but lifts the level to warn at most", () => {
+    const r = assessQuotas([metric({ key: "logs", value: 2250, warnOnly: true, hint: "fix logs" })]);
+    expect(r.rows[0].level).toBe("red");
+    expect(r.level).toBe("warn");
+    expect(r.lines.join("\n")).toContain("fix logs");
+    expect(assessQuotas([metric({ key: "logs", value: 100, warnOnly: true })]).level).toBe("ok");
+  });
+
+  test("warnOnly does not shield other metrics: a red egress still fails", () => {
+    const r = assessQuotas([metric({ key: "logs", value: 2250, warnOnly: true }), metric({ key: "egress", value: 950 })]);
+    expect(r.level).toBe("red");
+  });
+
   test("bytes print in MB / GB", () => {
     const r = assessQuotas([metric({ unit: "bytes", value: 22e6, limit: 500e6 }), metric({ key: "g", unit: "bytes", value: 1.5e9, limit: 5e9 })]);
     expect(r.rows[0].value).toBe("22 MB");

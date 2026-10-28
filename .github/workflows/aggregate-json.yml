@@ -119,8 +119,8 @@ jobs:
           # bias cannot come back at 200-300 operators; this raise clears the backlog now.
           # ROLLBACK TRIGGER: audit-report.json review count climbing run over run, or the
           # tripwire's publishable-drafts warning inverting into a live-inventory drop.
-          AUTO_PUBLISH_MAX: "110"
-          PER_OP_API: "60"
+          AUTO_PUBLISH_MAX: "200"
+          PER_OP_API: "100"
           BATCHES: "1"
           MAX_DRAWS: "3500"
           OP_BUDGET_MS: "480000"
