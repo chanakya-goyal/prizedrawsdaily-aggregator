@@ -222,7 +222,7 @@ async function isEnded(d) {
     // is exactly what this was supposed to avoid.
     // Keep the WHOLE parse, not just the date: this is the same function over the same page that
     // produced the stored row, so every field it returns is comparable at ingest authority.
-    const fresh = fieldsFromHtml({ html, url: d.entry_url, op }) || null;
+    const fresh = fieldsFromHtml({ html, url: d.entry_url, op, fetchedAt: Date.now() }) || null;
     const freshDate = fresh?.draw_date ?? null;
     if (!saysFinished(html)) return { ended: false, why: "no finished marker", purchasable: true, freshDate, fresh, reachable: true, source: "render" };
     if (isFutureDated(d)) return { ended: null, why: "page says finished but draw_date is still ahead", purchasable: null, freshDate, fresh, reachable: true, source: "render" };

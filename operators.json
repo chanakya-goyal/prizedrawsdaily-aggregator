@@ -655,7 +655,11 @@
   "slug": "bounty-competitions",
   "base": "https://bountycompetitions.co.uk",
   "method": "render",
-  "fetcher": "flaresolverr"
+  "fetcher": "flaresolverr",
+  "selectors": {
+   "price": "p.text-3xl.font-display"
+  },
+  "note": "RaffleX platform (Livewire). Since Oct 2026 the draw page prints no written date, only a countdown, read beside the Max Tickets line (lib/parse.mjs raffleXCountdown). The price is the big \"90p\" chip; page text also carries bundle totals (\"£2.70\")."
  },
  {
   "name": "Phat Lads",

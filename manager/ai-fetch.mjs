@@ -75,7 +75,7 @@ for (const op of operators) {
     try { html = await get(url); } catch { continue; }
     const $ = load(html);
     const ld = findProductLd(parseJsonLd($));
-    const ti = pickTitleImage($, ld, op.base);
+    const ti = pickTitleImage($, ld, op.base, op.name);
     const title = decodeEntities(ld?.name || ti.title || "");
     if (!title) continue;
     const text = textOf(html);
