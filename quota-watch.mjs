@@ -104,6 +104,9 @@ try {
   const logs = assessUsage({ rates: requestRates(history), bytesPerRequest: Number(process.env.LOG_BYTES_PER_REQUEST || LOGS.bytesPerRequest), quotaBytes: LOGS.quotaBytes });
   metrics.push({ key: "supabase_logs", label: "Supabase log ingestion (month, projected)", value: logs.monthlyBytes, limit: LOGS.quotaBytes, unit: "bytes",
     forecast: false, warnShare: LOGS.warnAt, redShare: LOGS.redAt,
+    // Supabase does not bill or enforce log ingestion until 2027: report it (red in the table,
+    // in the alarm issue) but never fail the run for it. Egress and every other limit still do.
+    warnOnly: true,
     hint: "Every Supabase API request writes a log line. Same suspects as egress: is the edge cache serving, did a crawler surge or a scraper loop multiply requests? Real figure: Supabase dashboard → Usage → Log Ingestion." });
 } catch (e) {
   for (const [key, label] of [["supabase_egress", "Supabase data transfer (month, projected)"], ["supabase_logs", "Supabase log ingestion (month, projected)"]]) {

@@ -162,8 +162,8 @@ scheduled separately (see `manager/PROMPT.md`).
 
 The two share the `aggregator` concurrency group so they queue rather than overlap —
 `AUTO_PUBLISH_MAX` is a per-process counter, and two concurrent runs would each cap
-independently. Their caps are budgeted **together** (14×1 + 12×3 = 50/day, the same blast
-radius as the single run before the split); raising one without the other quietly multiplies it.
+independently. Their caps are budgeted **together** (120×1 + 200×3 = 720/day since 2026-10-29; it was
+14×1 + 12×3 = 50/day at the split); raising one without the other quietly multiplies it.
 `test/workflows.test.mjs` asserts both of those, plus that every method is covered exactly once.
 
 ⚠️ **`MIN_OBSERVATION_GAP_MS` is what makes the split safe.** A draft publishes only when a

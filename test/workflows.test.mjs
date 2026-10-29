@@ -41,10 +41,13 @@ describe("split aggregator workflows", () => {
     // dying in the queue, and 277 drafts had died unpublished (84% of them with a category and
     // nothing else wrong). Ordering is now fixed (rotateRoster + byPublishUrgency); this raise
     // clears the backlog those two cannot, since they only change WHICH rows win a fixed budget.
+    // 400 -> 720 on 2026-10-29 (120 render + 200 x 3 json). Why: ~937 drafts queued and the caps
+    // were the bottleneck for the 2,500-enterable-draws goal (from ~1,029). Downstream headroom
+    // was checked first; see the PR body.
     // Evidence for the risk side: the live-row audit re-reads every active row against its own
     // page at the end of every sweep and has returned 0 corrections on ~1,100 rows, twice.
     // ROLLBACK: audit review count climbing run over run, or live inventory falling.
-    const DAILY_CEILING = 400;
+    const DAILY_CEILING = 720;
     const daily = num(RENDER, "AUTO_PUBLISH_MAX") * runsPerDay(RENDER)
                 + num(JSON_SWEEP, "AUTO_PUBLISH_MAX") * runsPerDay(JSON_SWEEP);
     expect(daily).toBeGreaterThan(0);
