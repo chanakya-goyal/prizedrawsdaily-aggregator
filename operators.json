@@ -1051,5 +1051,131 @@
   "base": "https://platinumgiveaways.co.uk",
   "method": "woo",
   "note": "Found via competitor discovery (#111). TP 4.8/55 at add (2026-10-29)."
+ },
+ {
+  "name": "Karma Competitions",
+  "slug": "karmacompetitions",
+  "base": "https://karmacompetitions.co.uk",
+  "method": "api",
+  "apiStyle": "inertia",
+  "listing": "https://karmacompetitions.co.uk/",
+  "note": "Found via competitor discovery (#111). TP 4.3/104 at add (2026-10-29)."
+ },
+ {
+  "name": "Win This Now",
+  "slug": "winthisnowcompetitions",
+  "base": "https://winthisnowcompetitions.co.uk",
+  "method": "api",
+  "apiStyle": "inertia",
+  "listing": "https://winthisnowcompetitions.co.uk/competitions",
+  "note": "Found via competitor discovery (#111). TP 4.9/129 at add (2026-10-29)."
+ },
+ {
+  "name": "Lightning Competitions",
+  "slug": "lightning-competitions",
+  "base": "https://lightning-competitions.co.uk",
+  "method": "api",
+  "apiStyle": "inertia",
+  "listing": "https://lightning-competitions.co.uk/competitions",
+  "note": "Found via competitor discovery (#111). TP 4.7/104 at add (2026-10-29). Behind Cloudflare: plain fetch failed 1 of 3 dry runs, so it goes through FlareSolverr.",
+  "fetcher": "flaresolverr"
+ },
+ {
+  "name": "S2A Competitions",
+  "slug": "s2acompetitions",
+  "base": "https://s2acompetitions.co.uk",
+  "method": "api",
+  "apiStyle": "inertia",
+  "listing": "https://s2acompetitions.co.uk/competitions",
+  "note": "Found via competitor discovery (#111). TP 4.8/52 at add (2026-10-29). Behind Cloudflare: plain fetch failed 1 of 3 dry runs, so it goes through FlareSolverr.",
+  "fetcher": "flaresolverr"
+ },
+ {
+  "name": "AUWins",
+  "slug": "auwincompetitions",
+  "base": "https://auwincompetitions.co.uk",
+  "method": "api",
+  "apiStyle": "inertia",
+  "listing": "https://auwincompetitions.co.uk/competitions",
+  "note": "Found via competitor discovery (#111). TP 4.9/282 at add (2026-10-29)."
+ },
+ {
+  "name": "MPower Competitions",
+  "slug": "mpowercompetitions",
+  "base": "https://mpowercompetitions.co.uk",
+  "method": "api",
+  "apiStyle": "inertia",
+  "listing": "https://mpowercompetitions.co.uk/competitions",
+  "note": "Found via competitor discovery (#111). TP 4.5/315 at add (2026-10-29)."
+ },
+ {
+  "name": "FootyComps",
+  "slug": "footycomps",
+  "base": "https://www.footycomps.com",
+  "method": "render",
+  "note": "Found via competitor discovery (#111). TP 4.8/60 at add (2026-10-29)."
+ },
+ {
+  "name": "Cosmic Comps",
+  "slug": "cosmiccomps",
+  "base": "https://cosmiccomps.co.uk",
+  "method": "render",
+  "note": "Found via competitor discovery (#111). TP 4.9/110 at add (2026-10-29)."
+ },
+ {
+  "name": "Adventure Competitions",
+  "slug": "adventurecompetitions",
+  "base": "https://adventurecompetitions.co.uk",
+  "method": "render",
+  "note": "Found via competitor discovery (#111). TP 4.9/156 at add (2026-10-29)."
+ },
+ {
+  "name": "Pitstop Prizes",
+  "slug": "pitstopprizes",
+  "base": "https://pitstopprizes.co.uk",
+  "method": "render",
+  "note": "Found via competitor discovery (#111). TP 4.7/144 at add (2026-10-29)."
+ },
+ {
+  "name": "Lake District Giveaways",
+  "slug": "lakedistrictgiveaways",
+  "base": "https://lakedistrictgiveaways.co.uk",
+  "method": "render",
+  "note": "Found via competitor discovery (#111). TP 4.8/485 at add (2026-10-29)."
+ },
+ {
+  "name": "Blaze Competitions",
+  "slug": "blazecompetitions",
+  "base": "https://blazecompetitions.co.uk",
+  "method": "render",
+  "note": "Found via competitor discovery (#111). TP 5.0/1,681 at add (2026-10-29)."
+ },
+ {
+  "name": "R Kings Competitions",
+  "slug": "rkingscompetitions",
+  "base": "https://rkingscompetitions.com",
+  "method": "render",
+  "note": "Found via competitor discovery (#111). TP 4.7/253 at add (2026-10-29)."
+ },
+ {
+  "name": "Easy Peasy Prizes",
+  "slug": "easypeasyprizes",
+  "base": "https://easypeasyprizes.com",
+  "method": "render",
+  "note": "Found via competitor discovery (#111). TP 4.1/434 at add (2026-10-29)."
+ },
+ {
+  "name": "HD Competitions",
+  "slug": "hdcompetitions",
+  "base": "https://www.hdcompetitions.co.uk",
+  "method": "render",
+  "note": "Found via competitor discovery (#111). TP 4.9/208 at add (2026-10-29)."
+ },
+ {
+  "name": "UK Minis",
+  "slug": "ukminis",
+  "base": "https://ukminis.co.uk",
+  "method": "render",
+  "note": "Found via competitor discovery (#111). TP 4.5/53 at add (2026-10-29)."
  }
 ]
