@@ -112,5 +112,11 @@
   "grand_prize": null,
   "expected_category": "cash-prizes",
   "found": "2026-08-22 tartan ingest: 'in the bank' is standard UK cash phrasing, was held as no-evidence"
+ },
+ {
+  "title": "Win This Brand New 2026 Jaecoo 7 Black Luxury + £1,000 Cash!",
+  "grand_prize": null,
+  "expected_category": "car-draws",
+  "found": "2026-10-25 patrol: car + cash top-up read as cash-prizes (click-competitions); the vehicle is the headline prize"
  }
 ]
