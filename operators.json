@@ -890,5 +890,166 @@
   "apiStyle": "inertia",
   "listing": "https://vortexcompetitions.com/competitions",
   "note": "Laravel + Inertia (compengine.io whitelabel, same platform as dream-big-competitions) — page state JSON in #app data-page. TP 4.6/1,779 at add (2026-10-11)."
+ },
+ {
+  "name": "Caddy Comps",
+  "slug": "caddycomps",
+  "base": "https://caddycomps.com",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 5.0/8,635 at add (2026-10-29)."
+ },
+ {
+  "name": "Fore Comps",
+  "slug": "forecomps",
+  "base": "https://forecomps.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.9/211 at add (2026-10-29)."
+ },
+ {
+  "name": "Guitar Gear Giveaway",
+  "slug": "guitargeargiveaway",
+  "base": "https://guitargeargiveaway.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 5.0/991 at add (2026-10-29)."
+ },
+ {
+  "name": "Net A Deal",
+  "slug": "net-a-deal",
+  "base": "https://net-a-deal.com",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.8/1,473 at add (2026-10-29)."
+ },
+ {
+  "name": "UK Carp Tech",
+  "slug": "ukcarptech",
+  "base": "https://ukcarptech.com",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.8/2,150 at add (2026-10-29)."
+ },
+ {
+  "name": "Creative Carpers Giveaways",
+  "slug": "creative-carpers-giveaways",
+  "base": "https://creative-carpers-giveaways.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.6/427 at add (2026-10-29)."
+ },
+ {
+  "name": "Guitars Giveaway",
+  "slug": "guitarsgiveaway",
+  "base": "https://guitarsgiveaway.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.9/159 at add (2026-10-29)."
+ },
+ {
+  "name": "Ultimate Tool Competitions",
+  "slug": "ultimatetoolcompetitions",
+  "base": "https://ultimatetoolcompetitions.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.7/132 at add (2026-10-29)."
+ },
+ {
+  "name": "Golf Gear Giveaways",
+  "slug": "golfgeargiveaways",
+  "base": "https://golfgeargiveaways.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.7/1,904 at add (2026-10-29)."
+ },
+ {
+  "name": "Carp Hunter Giveaways",
+  "slug": "carphuntergiveaways",
+  "base": "https://carphuntergiveaways.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.8/618 at add (2026-10-29)."
+ },
+ {
+  "name": "Adrenaline Rush Competitions",
+  "slug": "adrenalinerushcompetitions",
+  "base": "https://adrenalinerushcompetitions.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.8/108 at add (2026-10-29)."
+ },
+ {
+  "name": "Little Win",
+  "slug": "littlewin",
+  "base": "https://littlewin.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.8/60 at add (2026-10-29)."
+ },
+ {
+  "name": "Luck of the Draw Competitions",
+  "slug": "luckofthedrawcompetitions",
+  "base": "https://luckofthedrawcompetitions.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.9/334 at add (2026-10-29)."
+ },
+ {
+  "name": "Tide Together Competitions",
+  "slug": "tidetogethercompetitions",
+  "base": "https://tidetogethercompetitions.com",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.8/406 at add (2026-10-29)."
+ },
+ {
+  "name": "Royalux Competitions",
+  "slug": "royaluxcompetitions",
+  "base": "https://royaluxcompetitions.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.8/1,480 at add (2026-10-29)."
+ },
+ {
+  "name": "Top Trade Competitions",
+  "slug": "toptradecompetitions",
+  "base": "https://toptradecompetitions.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.7/81 at add (2026-10-29)."
+ },
+ {
+  "name": "The Giveaway Lounge",
+  "slug": "thegiveawaylounge",
+  "base": "https://thegiveawaylounge.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.9/124 at add (2026-10-29)."
+ },
+ {
+  "name": "Win Life Comps",
+  "slug": "winlifecomps",
+  "base": "https://winlifecomps.co.uk",
+  "method": "shopify",
+  "note": "Found via competitor discovery (#111). TP 4.7/230 at add (2026-10-29)."
+ },
+ {
+  "name": "Canny Comps",
+  "slug": "cannycomps",
+  "base": "https://cannycomps.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.9/236 at add (2026-10-29)."
+ },
+ {
+  "name": "Competition Bros",
+  "slug": "competitionbros",
+  "base": "https://competitionbros.com",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.9/149 at add (2026-10-29)."
+ },
+ {
+  "name": "Hobby Comps",
+  "slug": "hobbycomps",
+  "base": "https://hobbycomps.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.9/247 at add (2026-10-29)."
+ },
+ {
+  "name": "Quality Time",
+  "slug": "quality-time",
+  "base": "https://quality-time.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.9/110 at add (2026-10-29)."
+ },
+ {
+  "name": "Platinum Giveaways",
+  "slug": "platinumgiveaways",
+  "base": "https://platinumgiveaways.co.uk",
+  "method": "woo",
+  "note": "Found via competitor discovery (#111). TP 4.8/55 at add (2026-10-29)."
  }
 ]
