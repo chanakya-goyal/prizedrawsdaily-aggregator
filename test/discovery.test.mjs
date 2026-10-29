@@ -133,3 +133,57 @@ describe("approve builders", () => {
     expect(row.slug).toBe("acmecomps");
   });
 });
+
+describe("competitor sources", () => {
+  const { candidates, domainFromOperatorPage, slugOf, resolveSlug } = require("../discovery/sources/competitors.mjs");
+  const known = new Set([norm("rev-comps")]);
+  const fx = (map) => async (url) => {
+    for (const [k, v] of Object.entries(map)) if (url.includes(k)) return typeof v === "number" ? new Response("x", { status: v }) : new Response(v, { status: 200 });
+    return new Response("nf", { status: 404 });
+  };
+  test("slugOf + domainFromOperatorPage prefer the Trustpilot link", () => {
+    expect(slugOf("https://findcompetitions.com/operators/elite-competitions")).toBe("elite-competitions");
+    const html = '<a href="https://www.begambleaware.org">x</a><a href="https://www.trustpilot.com/review/elitecompetitions.co.uk">tp</a>';
+    expect(domainFromOperatorPage(html, "findcompetitions.com")).toBe("elitecompetitions.co.uk");
+  });
+  test("findcompetitions: extracts domains, skips known operators without fetching them", async () => {
+    const seen = [];
+    const base = fx({
+      "/sitemap.xml": "<sitemapindex><loc>https://findcompetitions.com/sitemap-operators.xml</loc><loc>https://findcompetitions.com/sitemap-blog.xml</loc></sitemapindex>",
+      "sitemap-operators.xml": "<urlset><loc>https://findcompetitions.com/operators/rev-comps</loc><loc>https://findcompetitions.com/operators/new-comps</loc></urlset>",
+      "/operators/new-comps": '<a href="https://www.trustpilot.com/review/newcomps.co.uk">t</a>',
+    });
+    const fetchImpl = async (u, o) => { seen.push(u); return base(u, o); };
+    const sources = [{ name: "findcompetitions", kind: "operator-pages", sitemap: "https://findcompetitions.com/sitemap.xml", pathMatch: /^\/operators\/[^/]+$/, childMatch: /sitemap-operators/, limit: 10 }];
+    const out = await candidates({ fetchImpl, delayMs: 0, sources, known });
+    expect(out).toEqual([{ domain: "newcomps.co.uk", via: "competitor:findcompetitions", name: "new-comps" }]);
+    expect(seen.some((u) => u.includes("rev-comps"))).toBe(false);
+    expect(seen.some((u) => u.includes("sitemap-blog"))).toBe(false);
+  });
+  test("compwatch: slugs only, never opens its pages; resolves a live domain", async () => {
+    const seen = [];
+    const base = fx({
+      "/sitemap.xml": "<sitemapindex><loc>https://compwatch.co.uk/sitemap-sites.xml</loc></sitemapindex>",
+      "sitemap-sites.xml": "<urlset><loc>https://compwatch.co.uk/sites/rev-comps</loc><loc>https://compwatch.co.uk/sites/lucky-lizards</loc></urlset>",
+      "luckylizards.co.uk": "<html>ok</html>",
+    });
+    const fetchImpl = async (u, o) => { seen.push(u); return base(u, o); };
+    const sources = [{ name: "compwatch", kind: "slugs", sitemap: "https://compwatch.co.uk/sitemap.xml", pathMatch: /^\/sites\/[^/]+$/, childMatch: /sitemap-sites/, limit: 10 }];
+    const out = await candidates({ fetchImpl, delayMs: 0, sources, known });
+    expect(out.map((c) => c.domain)).toEqual(["luckylizards.co.uk"]);
+    expect(seen.some((u) => u.includes("compwatch.co.uk/sites/"))).toBe(false);
+  });
+  test("a 403 stops the source; other sources still run", async () => {
+    const base = fx({
+      "blocked.test/sitemap.xml": 403,
+      "ok.test/sitemap.xml": "<urlset><loc>https://ok.test/operators/a-comps</loc></urlset>",
+      "/operators/a-comps": '<a href="https://www.trustpilot.com/review/acomps.co.uk">t</a>',
+    });
+    const mk = (n, h) => ({ name: n, kind: "operator-pages", sitemap: `https://${h}/sitemap.xml`, pathMatch: /operators/, childMatch: /./, limit: 5 });
+    const out = await candidates({ fetchImpl: base, delayMs: 0, known, sources: [mk("b", "blocked.test"), mk("o", "ok.test")] });
+    expect(out.map((c) => c.domain)).toEqual(["acomps.co.uk"]);
+  });
+  test("resolveSlug returns null when no variant answers", async () => {
+    expect(await resolveSlug("nothing-here", { fetchImpl: async () => new Response("nf", { status: 404 }) })).toBeNull();
+  });
+});
