@@ -22,6 +22,7 @@ import { uniqueSlug } from "./lib/slug.mjs";
 import { CATEGORIES } from "./lib/parse.mjs";
 import { supabaseUrl } from "./lib/sb.mjs";
 import { loadExisting } from "./lib/existing.mjs";
+import { relistIndex } from "./lib/relist-match.mjs";
 
 const SUPABASE_URL = supabaseUrl();
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
@@ -189,6 +190,8 @@ const existing = await loadExisting(sbGetAll);
 const byUrl = new Map(existing.filter((d) => d.entry_url).map((d) => [d.entry_url, d]));
 const takenSlugs = new Set(existing.map((d) => d.slug));
 const twinOf = twinIndex(existing);
+// A re-list under a NEW url is the same draw, not a new one (lib/relist-match.mjs).
+const relists = relistIndex(existing, permalinkKey);
 // Canonical keys of every draw we already hold, so a capped operator still re-reads them.
 const knownUrls = new Set(existing.filter((d) => d.entry_url).map((d) => permalinkKey(d.entry_url)));
 console.log(`loaded ${cats.length} cats, ${dbOps.length} operators, ${existing.length} existing draws\n`);
@@ -199,6 +202,7 @@ const ctx = browser ? await makeContext(browser) : null;
 
 const toInsert = [];
 const toUpdate = [];
+let relistMatched = 0;
 // Provenance-only PATCHes for rows nothing else is written to. See the skip branch below.
 const toStamp = [];
 const counts = [];
@@ -360,11 +364,20 @@ for (const op of operators) {
   let dropped = 0;
   draws = dedupe(draws, { onDrop: () => { dropped++; } });
   if (dropped) console.log(`  ⧉ ${dropped} duplicate URL(s) collapsed`);
+  const scrapedKeys = new Set(draws.map((x) => permalinkKey(x.entry_url)));
   for (const raw of draws) {
     const { pass, stage, reasons, draw: d } = gate(raw, now);
     if (!pass) { skipped++; console.log(`  ⏭  ${(raw.title || "?").slice(0, 40)} — ${stage}: ${reasons.join(", ")}`); continue; }
-    const ex = byUrl.get(d.entry_url);
+    let ex = byUrl.get(d.entry_url);
     const twin = ex ? null : twinOf(d.entry_url);
+    // Same operator + title + close date + price as a stored live row whose URL the operator no
+    // longer lists: the same draw under a new URL. Update that row (and its URL) instead of
+    // inserting a "-2" twin.
+    let adopted = null;
+    if (!ex && !twin) {
+      adopted = relists.match(opMap[op.slug], d, scrapedKeys);
+      if (adopted) ex = adopted;
+    }
     if (twin) { skipped++; twinSkips++; console.log(`  ⏭  ${(d.title || "?").slice(0, 40)} — same page as stored row ${twin.id} (URL differs only by query)`); continue; }
     // The five-way decision (insert / relist / correct / draft / skip) lives in lib/route.mjs so
     // it can be unit-tested; everything below is side effects only — pushes, counters, logging.
@@ -376,6 +389,20 @@ for (const op of operators) {
       minObservationGapMs: MIN_OBSERVATION_GAP_MS,
     });
     const tpv = plan.tpv;
+
+    if (adopted) {
+      // Adopt only on a plan that may write; a skip for a cap or a price guard retries next run.
+      const writes = plan.kind !== "skip" || ["no-correction", "correct-live-off"].includes(plan.reason);
+      if (!writes) { skipped++; continue; }
+      relists.consume(adopted);
+      byUrl.delete(adopted.entry_url);
+      relistMatched++;
+      console.log(`  🔗 ${d.title.slice(0, 44)} — same draw as ${adopted.slug} under a new URL; updating that row, no new slug`);
+      const row = { ...(plan.kind === "skip" ? plan.stamp || {} : plan.row), entry_url: d.entry_url };
+      toUpdate.push({ id: ex.id, opSlug: op.slug, slug: ex.slug, candidate: plan.kind === "draft" ? plan.candidate : false, row });
+      if (plan.kind === "draft") { verdicts.push(plan.verdict); c.inserted++; }
+      continue;
+    }
 
     if (plan.kind === "skip") {
       skipped++;
@@ -465,7 +492,7 @@ if (renderFinished.length) {
     Object.entries(byOp).map(([s, n]) => `${s}:${n}`).join(" "));
   await Bun.write("render-finished.json", JSON.stringify({ mode, total: renderFinished.length, byOperator: byOp, hits: renderFinished }, null, 2));
 }
-console.log(`\n\n==== ${totalNew} new, ${totalRefreshed} refreshed${relisted ? `, ${relisted} relisted` : ""}${correctedLive ? `, ${correctedLive} live rows corrected` : ""} (${pages} pages read, ${skipped} skipped${twinSkips ? `, ${twinSkips} as the same page as a stored row (not refreshed)` : ""}) ====`);
+console.log(`\n\n==== ${totalNew} new, ${totalRefreshed} refreshed${relisted ? `, ${relisted} relisted` : ""}${correctedLive ? `, ${correctedLive} live rows corrected` : ""}${relistMatched ? `, ${relistMatched} re-lists matched to their existing row` : ""} (${pages} pages read, ${skipped} skipped${twinSkips ? `, ${twinSkips} as the same page as a stored row (not refreshed)` : ""}) ====`);
 if (DRY_RUN) {
   console.log("(dry run — nothing written)");
 } else {

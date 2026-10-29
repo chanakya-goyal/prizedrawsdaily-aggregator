@@ -67,7 +67,7 @@ describe("the lean read covers everything routing reads from a non-mutable row",
   });
 
   test("the full column list is unchanged from the single read it replaces", () => {
-    expect(FULL_COLUMNS).toBe("id,entry_url,slug,status,title,ticket_price,total_entries,total_prize_value,draw_date,image_url,prize_description,category_id,category_source,created_at");
+    expect(FULL_COLUMNS).toBe("id,entry_url,slug,status,operator_id,title,ticket_price,total_entries,total_prize_value,draw_date,image_url,prize_description,category_id,category_source,created_at");
   });
 
   test("identity columns are a subset of the full columns", () => {
